@@ -21,6 +21,8 @@ use std::time::Instant;
 use uce_recruit::RecruitPass;
 
 const UCE_RESCUE_ASSEMBLY_KMER: &str = "21";
+const DEFAULT_UCE_FILTER_KMER: &str = "23";
+const DEFAULT_UCE_RESCUE_ROUNDS: &str = "1";
 const UCE_TERMINAL_MIN_EXTENSION: usize = 30;
 const UCE_TERMINAL_MIN_BREADTH: f64 = 0.85;
 const UCE_TERMINAL_MAX_GAP: usize = 30;
@@ -53,6 +55,7 @@ const FLAG_OPTIONS: &[&str] = &[
     "--rad-linked-recruitment",
     "--uce-alignment-shadow",
     "--uce-rescue-reads",
+    "--no-uce-rescue-reads",
     "--stats-count-input-reads",
     "--stats-no-heatmap",
     "--population-panrefv2-include-low-confidence",
@@ -398,7 +401,13 @@ fn parse(args: &[String]) -> Result<Options, String> {
         return Err("--log-format must be text or json".into());
     }
     let (workers, worker_source) = resolve_worker_budget(&value(args, &["-p"], "auto")?)?;
-    let uce_recruit_mode = value(args, &["--uce-recruit-mode"], "fast")?;
+    let legacy_uce_filter = flag(args, "--legacy-uce-filter")?;
+    let default_uce_recruit_mode = if assembly_mode == "uce" && !legacy_uce_filter {
+        "auto"
+    } else {
+        "fast"
+    };
+    let uce_recruit_mode = value(args, &["--uce-recruit-mode"], default_uce_recruit_mode)?;
     if !matches!(uce_recruit_mode.as_str(), "fast" | "auto") {
         return Err("--uce-recruit-mode must be fast or auto".into());
     }
@@ -444,10 +453,19 @@ fn parse(args: &[String]) -> Result<Options, String> {
     {
         return Err("--uce-fallback-min-alignment-identity must be in 0..=1".into());
     }
-    let legacy_uce_filter = flag(args, "--legacy-uce-filter")?;
     if legacy_uce_filter && uce_recruit_mode == "auto" {
         return Err("--uce-recruit-mode auto is unavailable with --legacy-uce-filter".into());
     }
+    let rescue_requested = flag(args, "--uce-rescue-reads")?;
+    let rescue_disabled = flag(args, "--no-uce-rescue-reads")?;
+    if rescue_requested && rescue_disabled {
+        return Err("--uce-rescue-reads and --no-uce-rescue-reads cannot be used together".into());
+    }
+    let rescue = if rescue_disabled {
+        false
+    } else {
+        rescue_requested || assembly_mode == "uce"
+    };
     if commands == ["gene"] {
         commands = vec![
             "filter".into(),
@@ -487,6 +505,11 @@ fn parse(args: &[String]) -> Result<Options, String> {
             ));
         }
     }
+    let default_kf = if assembly_mode == "uce" {
+        DEFAULT_UCE_FILTER_KMER
+    } else {
+        "31"
+    };
     Ok(Options {
         raw: args.to_vec(),
         commands,
@@ -496,7 +519,7 @@ fn parse(args: &[String]) -> Result<Options, String> {
         assembly_mode,
         workers,
         worker_source,
-        kf: value(args, &["-kf"], "31")?,
+        kf: value(args, &["-kf"], default_kf)?,
         step: value(args, &["-s", "--step-size"], "4")?,
         ka: value(args, &["-ka"], "0")?,
         min_ka: value(args, &["--min-ka"], "21")?,
@@ -527,7 +550,7 @@ fn parse(args: &[String]) -> Result<Options, String> {
         uce_fallback_min_alignment_overlap,
         uce_fallback_min_alignment_identity,
         uce_memory_limit_mib: 0,
-        rescue: flag(args, "--uce-rescue-reads")?,
+        rescue,
         stats_count_input_reads: flag(args, "--stats-count-input-reads")?,
         stats_no_heatmap: flag(args, "--stats-no-heatmap")?,
         cleanup_intermediates: flag(args, "--cleanup-intermediates")?,
@@ -1707,7 +1730,7 @@ fn execute_uce_rescue(
     let maximum_rounds = raw_number::<usize>(
         &opt.raw,
         &["--uce-rescue-rounds"],
-        "2",
+        DEFAULT_UCE_RESCUE_ROUNDS,
         "--uce-rescue-rounds",
     )?
     .clamp(1, 2);
@@ -6754,8 +6777,9 @@ cores allowed by affinity/cpuset and caps them by cgroup or scheduler limits.\n 
 Use an integer to override automatic detection.\n\n\
 UCE recruitment:\n  \
 --uce-recruit-mode fast|auto\n               \
-Use the existing single-pass k=31 recruitment (fast, default), or retry only\n               \
-fast-pass unresolved loci with the conservative sensitive pass (auto).\n  \
+Use the default automatic two-pass recruitment, or select fast to keep only\n               \
+the initial pass. UCE defaults to k=23, step=4, and auto; original assembly\n               \
+keeps k=31, step=4, and fast unless the user explicitly overrides them.\n  \
 --uce-fallback-kmer-size INT  Sensitive-pass recruitment k (default: 21).\n  \
 --uce-fallback-step INT       Sensitive-pass read-scan step (default: 1).\n  \
 --uce-fallback-verify-kmer-size INT\n               \
@@ -6770,9 +6794,11 @@ probe at >=80% coverage and >=80% identity, have no near-tied panel locus,\n    
 and pass the provisional-core inverted-repeat guard before rescue. Internal\n               \
 read-chain gaps >=40 bp are reported for review rather than rejected alone.\n\n\
 UCE rescue:\n  \
---uce-rescue-reads  Enable rescue after the initial UCE assembly. In auto mode,\n               \
-only anchored provisional cores seed whole-contig and terminal rescue.\n  \
---uce-rescue-rounds 1|2  Number of rescue rounds (default: 2).\n  \
+--uce-rescue-reads  Explicitly enable rescue after the initial UCE assembly\n               \
+               (already enabled by default in UCE mode). In auto mode, only\n               \
+               anchored provisional cores seed rescue.\n  \
+--no-uce-rescue-reads  Disable the default UCE rescue stage.\n  \
+--uce-rescue-rounds 1|2  Number of rescue rounds (default: 1).\n  \
 --uce-rescue-reverse-reuse-reference-scale FLOAT\n               \
 Scale only the reference bonus when a reverse-complement node is already\n               \
 present in either rescue assembly arm (default: 1.0; range: 0-1; 1 disables).\n  \
@@ -6875,7 +6901,7 @@ mod tests {
     }
 
     #[test]
-    fn uce_recruit_defaults_to_fast_and_auto_builds_a_conservative_fallback() {
+    fn uce_defaults_to_k23_auto_one_round_rescue_and_builds_a_conservative_fallback() {
         let base = [
             "filter",
             "--assembly-mode",
@@ -6890,7 +6916,16 @@ mod tests {
         .into_iter()
         .map(str::to_string)
         .collect::<Vec<_>>();
-        let fast = parse(&base).unwrap();
+        let defaults = parse(&base).unwrap();
+        assert_eq!(defaults.kf, "23");
+        assert_eq!(defaults.step, "4");
+        assert_eq!(defaults.uce_recruit_mode, "auto");
+        assert!(defaults.rescue);
+        assert_eq!(DEFAULT_UCE_RESCUE_ROUNDS, "1");
+
+        let mut fast_options = base.clone();
+        fast_options.extend(["--uce-recruit-mode".into(), "fast".into()]);
+        let fast = parse(&fast_options).unwrap();
         assert_eq!(fast.uce_recruit_mode, "fast");
         let sample = Sample {
             name: "sample".into(),
@@ -6961,6 +6996,61 @@ mod tests {
         assert_eq!(argument_value("--minimum-alignment-identity"), "0.80");
         assert_eq!(argument_value("--max-locus-count"), "1");
         assert_eq!(argument_value("--retain-loci-file"), "unresolved.txt");
+    }
+
+    #[test]
+    fn original_defaults_are_unchanged_and_uce_defaults_can_be_overridden() {
+        let original = parse(&[
+            "filter".into(),
+            "-f".into(),
+            "samples.tsv".into(),
+            "-r".into(),
+            "references".into(),
+            "-o".into(),
+            "out".into(),
+        ])
+        .unwrap();
+        assert_eq!(original.kf, "31");
+        assert_eq!(original.step, "4");
+        assert_eq!(original.uce_recruit_mode, "fast");
+        assert!(!original.rescue);
+
+        let uce_override = parse(&[
+            "filter".into(),
+            "--assembly-mode".into(),
+            "uce".into(),
+            "-kf".into(),
+            "31".into(),
+            "--uce-recruit-mode".into(),
+            "fast".into(),
+            "--no-uce-rescue-reads".into(),
+            "-f".into(),
+            "samples.tsv".into(),
+            "-r".into(),
+            "references".into(),
+            "-o".into(),
+            "out".into(),
+        ])
+        .unwrap();
+        assert_eq!(uce_override.kf, "31");
+        assert_eq!(uce_override.uce_recruit_mode, "fast");
+        assert!(!uce_override.rescue);
+
+        let conflict = parse(&[
+            "filter".into(),
+            "--assembly-mode".into(),
+            "uce".into(),
+            "--uce-rescue-reads".into(),
+            "--no-uce-rescue-reads".into(),
+            "-f".into(),
+            "samples.tsv".into(),
+            "-r".into(),
+            "references".into(),
+            "-o".into(),
+            "out".into(),
+        ])
+        .unwrap_err();
+        assert!(conflict.contains("cannot be used together"));
     }
 
     #[test]
@@ -7496,6 +7586,9 @@ mod tests {
                 "assemble".into(),
                 "--assembly-mode".into(),
                 "uce".into(),
+                "--uce-recruit-mode".into(),
+                "fast".into(),
+                "--no-uce-rescue-reads".into(),
                 "-p".into(),
                 workers.to_string(),
                 "-f".into(),
@@ -7552,6 +7645,9 @@ mod tests {
             "filter".into(),
             "--assembly-mode".into(),
             "uce".into(),
+            "--uce-recruit-mode".into(),
+            "fast".into(),
+            "--no-uce-rescue-reads".into(),
             "-p".into(),
             "1".into(),
             "-f".into(),

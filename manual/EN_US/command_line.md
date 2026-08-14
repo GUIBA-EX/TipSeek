@@ -131,7 +131,7 @@ Optional `--uce-alignment-shadow` collects bounded internal alignment evidence w
 ```bash
 cli/geneminer2 \
   -f samples.tsv -r references -o output -p 8 \
-  --assembly-mode uce --uce-rescue-reads
+  --assembly-mode uce
 ```
 
 For assembly behavior, backend selection, rescue, cache semantics, and QC, see the [Assembler chapter](../../docs/assembler_EN.md). Use this manual for option definitions and the [output guide](output.md) for file fields.
@@ -239,7 +239,7 @@ The tables below list the main public options and current defaults. Run `cli/gen
 
 | Option | Description |
 | --- | --- |
-| `-kf INT` | Filter k-mer size; default `31` |
+| `-kf INT` | Filter k-mer size; default `23` in UCE mode and `31` otherwise |
 | `-s, --step-size INT` | Read-scanning step; default `4` |
 | `--max-reads INT` | Maximum million reads processed per file; `0` means unlimited |
 | `--reuse-reference-cache` | Reuse a fingerprinted reference k-mer index; with explicit `original-rust`, also enable its versioned, k-validated binary assembler cache |
@@ -263,9 +263,11 @@ The tables below list the main public options and current defaults. Run `cli/gen
 | `--assembler-kmer-count-threads INT` | K-mer sorting/counting workers per locus; default `0` selects automatically |
 | `--assembler-graph-format MODE` | Optional graph output: `none` (default), `gfa`, `dot`, or `both` |
 | `--assembly-mode MODE` | `original` or `uce`; default `original` |
-| `--assembly-mode uce` | Uses UCEFilter by default, with fixed safe backbone and QC settings; UCE advanced tuning is intentionally hidden |
-| `--uce-rescue-reads` | Optional fixed-k=21 bounded rescue: whole-contig first, then terminal-only |
-| `--uce-rescue-rounds 1\|2` | Number of rescue rounds; default `2` |
+| `--assembly-mode uce` | Defaults to k=23/step=4, automatic sensitive recruitment, one bounded rescue round, and fixed safe backbone/QC settings |
+| `--uce-recruit-mode fast\|auto` | Recruitment policy; default `auto` in UCE mode and `fast` otherwise |
+| `--uce-rescue-reads` | Explicitly enable fixed-k=21 bounded rescue; retained for compatibility because UCE mode enables it by default |
+| `--no-uce-rescue-reads` | Disable the default UCE rescue stage |
+| `--uce-rescue-rounds 1\|2` | Number of rescue rounds; default `1` |
 | `--uce-rescue-inverted-repeat-min-bp INT` | Revert a locus when the current rescue round newly introduces an exact inverted repeat of at least this length; default `150`, `0` disables |
 | `--uce-rescue-reverse-reuse-reference-scale FLOAT` | Experimental: scale the reference bonus for a node whose reverse complement is already present in either assembly arm; range `0`--`1`, default `1.0` (disabled), with read depth unchanged |
 

@@ -131,7 +131,7 @@ UCE 模式用于从 genome skimming 或 target capture reads 恢复 UCE core 及
 ```bash
 cli/geneminer2 \
   -f samples.tsv -r references -o output -p 8 \
-  --assembly-mode uce --uce-rescue-reads
+  --assembly-mode uce
 ```
 
 组装策略、后端选择、rescue、cache 和 QC 见[Assembler 章节](../../docs/assembler_ZH.md)。本手册只保留参数定义；输出字段见[输出文件说明](output.md)。
@@ -239,7 +239,7 @@ cli/geneminer2 stats \
 
 | 参数 | 说明 |
 | --- | --- |
-| `-kf INT` | 过滤 k-mer 大小，默认 `31` |
+| `-kf INT` | 过滤 k-mer 大小；UCE 模式默认 `23`，其他模式默认 `31` |
 | `-s, --step-size INT` | reads 扫描步长，默认 `4` |
 | `--max-reads INT` | 每个文件最多处理的 reads 数，单位为百万；`0` 表示不限 |
 | `--reuse-reference-cache` | 复用带输入指纹的 reference k-mer index；显式使用 `original-rust` 时也启用带版本和 k 校验的 assembler 二进制 cache |
@@ -263,9 +263,11 @@ cli/geneminer2 stats \
 | `--assembler-kmer-count-threads INT` | 每个 locus 的 k-mer 排序和计数线程；默认 `0`，表示自动分配 |
 | `--assembler-graph-format MODE` | 可选组装图输出：`none`（默认）、`gfa`、`dot` 或 `both` |
 | `--assembly-mode MODE` | `original` 或 `uce`；默认 `original` |
-| `--assembly-mode uce` | 默认使用 UCEFilter，并采用固定的 backbone 与 QC 安全设置；高级 UCE 调参默认隐藏 |
-| `--uce-rescue-reads` | 可选固定 k=21 的受控 rescue：首轮 whole-contig，随后 terminal-only |
-| `--uce-rescue-rounds 1\|2` | rescue 轮数；默认 `2` |
+| `--assembly-mode uce` | 默认使用 k=23/step=4、自动敏感招募、一轮受控 rescue，以及固定的 backbone/QC 安全设置 |
+| `--uce-recruit-mode fast\|auto` | 招募策略；UCE 模式默认 `auto`，其他模式默认 `fast` |
+| `--uce-rescue-reads` | 显式启用固定 k=21 的受控 rescue；为兼容旧命令而保留，UCE 模式已默认启用 |
+| `--no-uce-rescue-reads` | 关闭 UCE 模式默认的 rescue 阶段 |
+| `--uce-rescue-rounds 1\|2` | rescue 轮数；默认 `1` |
 | `--uce-rescue-inverted-repeat-min-bp INT` | 若本轮 rescue 新引入至少该长度的精确倒置重复，则逐 locus 回退；默认 `150`，`0` 关闭 |
 | `--uce-rescue-reverse-reuse-reference-scale FLOAT` | 实验性：缩放与任一组装臂已走路径互为反向互补节点的 reference bonus；范围 `0`--`1`，默认 `1.0`（关闭缩放），不改变 reads depth |
 

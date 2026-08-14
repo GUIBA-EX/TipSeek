@@ -27,7 +27,7 @@ TStools (formerly GeneMiner2-UCE) is a reference-guided short-read recovery tool
 | Production implementation | Upstream implementation | Rust-native production paths; no Python runtime required |
 | Read recruitment | Original recruitment semantics | Canonical bidirectional 2-bit k-mers, content-validated reference caches, and bounded streaming I/O preserve recruitment semantics and legacy output compatibility while reducing CPU, memory, and I/O cost |
 | Conventional assembly | Upstream algorithmic baseline | Deterministic `original-rust` by default; upstream `original` remains available for strict comparison and reproduction |
-| UCE assembly | General, non-specialized assembly route | `ucefilter → uce-rust` combines recruitment, paired-fragment retention, orientation/exact-match evidence, and per-locus selection in one FASTQ scan. Optional rescue accepts only read-supported extension and never reference-fills a gap |
+| UCE assembly | General, non-specialized assembly route | `ucefilter → uce-rust` combines recruitment, paired-fragment retention, orientation/exact-match evidence, and per-locus selection. The default single rescue round accepts only read-supported extension and never reference-fills a gap |
 | Workflow scope | Conventional gene recovery | Also includes mitochondria, marker profiling, UCE population analysis, nuclear gene families, RAD matrix augmentation, and reference-free repeatomes |
 | Interpretation | Primarily recovered sequences | Mitochondrial closure, RAD strict matrices, and population graph paths require explicit evidence and retain QC, provenance, and audit output |
 
@@ -49,20 +49,20 @@ The common entry point is `cli/geneminer2`. Sample manifests are tab-delimited `
 # UCE: paired reads → selective recruitment → UCE assembly
 cli/geneminer2 filter assemble \
   -f samples.tsv -r uce_references -o uce_out -p 8 \
-  --assembly-mode uce --uce-rescue-reads
+  --assembly-mode uce
 ```
 
-Start with `uce_out/uce_assembly_summary.csv` and `uce_out/uce_contigs/`. `--uce-rescue-reads` is an optional, evidence-constrained extension of at most two rounds; it never reference-fills a gap.
+Start with `uce_out/uce_assembly_summary.csv` and `uce_out/uce_contigs/`. UCE mode defaults to `kf=23`, `step=4`, automatic sensitive recruitment, and one evidence-constrained rescue round; rescue never reference-fills a gap. Use `--no-uce-rescue-reads` to disable rescue or `--uce-rescue-rounds 2` to request the second round explicitly.
 
-If divergent reference flanks cause the default k=31 pass to miss some UCEs, enable the conservative sensitive pass explicitly:
+To reproduce the previous single-pass k=31 workflow without rescue, override the defaults explicitly:
 
 ```bash
 cli/geneminer2 filter assemble \
   -f samples.tsv -r uce_references -o uce_out -p auto \
-  --assembly-mode uce --uce-recruit-mode auto
+  --assembly-mode uce -kf 31 --uce-recruit-mode fast --no-uce-rescue-reads
 ```
 
-`auto` first runs the unchanged fast pass, then scans the FASTQs again only for loci with no selected fragments (defaults: k=21, step=1, independent verification k=19). The sensitive pass first uses the unresolved-locus subset as a coarse-recruitment gate; only fragments passing that gate have their candidates expanded against the complete probe panel for multi-locus ambiguity checks. It also requires at least one mate to align locally to the target probe/reference over 45 bp at 80% identity, then merges only reads uniquely supporting an unresolved locus, and assembly runs once afterward. A provisional core recovered only by the sensitive pass must be at least 200 bp, align to the target probe at no less than 80% coverage and 80% identity, have no near-tied locus in the probe panel, and contain no exact long inverted repeat of at least 150 bp before it is anchored to that locus. An internal read-chain gap of at least 40 bp is recorded for review but is not a stand-alone rejection: same-individual calibration showed that a real low-coverage collinear locus can carry this signal. With `--uce-rescue-reads`, only anchored cores without review flags become sample-specific baits for the existing whole-contig/terminal rescue and guards; review-only cores remain candidates but are not extended by rescue. This broadens candidate-read recruitment and is not proof that a recovered locus is correct. The default remains `fast`, so existing commands, runtime, and results are unchanged.
+`auto` first runs a k=23, step=4 fast pass, then scans the FASTQs again only for loci with no selected fragments (fallback defaults: k=21, step=1, independent verification k=19). The sensitive pass first uses the unresolved-locus subset as a coarse-recruitment gate; only fragments passing that gate have their candidates expanded against the complete probe panel for multi-locus ambiguity checks. It also requires at least one mate to align locally to the target probe/reference over 45 bp at 80% identity, then merges only reads uniquely supporting an unresolved locus, and assembly runs once afterward. A provisional core recovered only by the sensitive pass must be at least 200 bp, align to the target probe at no less than 80% coverage and 80% identity, have no near-tied locus in the probe panel, and contain no exact long inverted repeat of at least 150 bp before it is anchored to that locus. An internal read-chain gap of at least 40 bp is recorded for review but is not a stand-alone rejection: same-individual calibration showed that a real low-coverage collinear locus can carry this signal. The default single rescue round lets only anchored cores without review flags become sample-specific baits for whole-contig rescue and its guards; review-only cores remain candidates but are not extended by rescue. This broadens candidate-read recruitment and is not proof that a recovered locus is correct.
 
 Auto recruitment preserves `uce_filter_summary.fast.tsv`; when the second pass runs it also writes `uce_filter_summary.fallback.tsv`. `uce_recruit_passes.tsv` records the fast, fallback, and final source for every locus, while `uce_recruit_contig_probe_gate.tsv` covers every fallback locus and records assembler, probe, anchoring, inverted-repeat, and internal-gap evidence. Rejected outputs are archived under `fallback_probe_rejected/` rather than silently deleted. When rescue is enabled, downstream outcomes remain in `uce_rescue_rounds.csv` and `uce_rescue_summary.csv`.
 

@@ -77,8 +77,8 @@ RAD
 | --- | --- | --- | --- |
 | original | 构建或复用 MainFilter 字典 | `MainFilter → refilter → original-rust` | 可选 consensus / trim / combine / tree |
 | gene | 构建或复用 MainFilter 字典 | `MainFilter → refilter → original-rust → classify` | `gene cohort`，随后可选 resolve/tree |
-| UCE 默认 | 无 | `ucefilter → uce-rust → rescue（显式启用）` | combine / tree |
-| UCE 兼容 | 构建或复用 MainFilter 字典 | `MainFilter → refilter → uce-rust → rescue（显式启用）` | combine / tree |
+| UCE 默认 | 无 | `ucefilter fast → fallback → uce-rust → rescue（默认一轮）` | combine / tree |
+| UCE 兼容 | 构建或复用 MainFilter 字典 | `MainFilter → refilter → uce-rust → rescue（默认一轮）` | combine / tree |
 | mito | `prepare-reference`、构建或复用字典 | `MainFilter → collapse-baits → text refilter → uce-rust → seed rescue（若有）→ finalize` | 无；每样本独立给出 circular 或保留的 linear 证据 |
 | RAD | `probe`、构建或复用 MainFilter 字典 | `MainFilter → refilter → original-rust` | `rad finalize`，随后可选 validate |
 

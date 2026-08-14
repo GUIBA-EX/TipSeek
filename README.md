@@ -27,7 +27,7 @@ TStools（原 GeneMiner2-UCE）是面向短 reads 的参考引导恢复工具：
 | 核心实现 | 上游实现 | Rust 原生生产路径；不依赖 Python 运行时 |
 | reads 招募 | 原始招募语义 | canonical 双链 2-bit k-mer、内容校验的参考缓存及有界流式 I/O；保持招募语义与历史输出兼容，同时降低 CPU、内存和 I/O 开销 |
 | 常规组装 | 上游算法基线 | 默认确定性的 `original-rust`；保留上游 `original` 路线用于严格对照与复现 |
-| UCE 组装 | 非专用的一般组装路径 | `ucefilter → uce-rust` 单次 FASTQ 扫描完成招募、成对 fragments 保留、方向/精确匹配证据和逐 locus 选择；可选 rescue 仅接受 reads 支持的延伸，绝不以参考补洞 |
+| UCE 组装 | 非专用的一般组装路径 | `ucefilter → uce-rust` 完成招募、成对 fragments 保留、方向/精确匹配证据和逐 locus 选择；默认一轮 rescue 仅接受 reads 支持的延伸，绝不以参考补洞 |
 | 工作流范围 | 常规基因恢复 | 另含线粒体、marker profiling、UCE 群体、核基因家族、RAD 矩阵补充和无参考 repeatome |
 | 结果解释 | 以恢复序列为主 | 闭环、RAD 严格矩阵和群体图路径都要求显式证据；输出 QC、provenance 与审计记录 |
 
@@ -49,20 +49,20 @@ cargo run -p xtask -- build
 # UCE：原始 paired reads → 选择性招募 → UCE 组装
 cli/geneminer2 filter assemble \
   -f samples.tsv -r uce_references -o uce_out -p 8 \
-  --assembly-mode uce --uce-rescue-reads
+  --assembly-mode uce
 ```
 
-首先查看 `uce_out/uce_assembly_summary.csv` 和 `uce_out/uce_contigs/`。`--uce-rescue-reads` 是可选的、最多两轮的受证据约束延伸；它不会用参考序列虚构缺口。
+首先查看 `uce_out/uce_assembly_summary.csv` 和 `uce_out/uce_contigs/`。UCE 默认使用 `kf=23`、`step=4`、`auto` 敏感招募和一轮受证据约束的 rescue；rescue 不会用参考序列虚构缺口。可用 `--no-uce-rescue-reads` 关闭 rescue，或用 `--uce-rescue-rounds 2` 显式运行第二轮。
 
-若完整跨物种参考侧翼使默认 k=31 招募漏掉部分 UCE，可显式启用保守的自动敏感招募：
+如需重现旧的单遍 k=31、无 rescue 路径，请显式覆盖默认值：
 
 ```bash
 cli/geneminer2 filter assemble \
   -f samples.tsv -r uce_references -o uce_out -p auto \
-  --assembly-mode uce --uce-recruit-mode auto
+  --assembly-mode uce -kf 31 --uce-recruit-mode fast --no-uce-rescue-reads
 ```
 
-`auto` 先执行与默认行为相同的快速招募，只对快速阶段没有选中 fragments 的 locus 再扫描一次 FASTQ（默认 k=21、step=1、独立验证 k=19）。敏感阶段先用未恢复 locus 子集作粗招募门控；只对命中该子集的 fragments 用完整 probe 面板扩展候选并检查多 locus 歧义，再要求 read pair 至少一端与目标 probe/reference 的局部比对达到 45 bp、80% identity，最后只合并唯一支持某个未恢复 locus 的 reads；随后只组装一次。仅由敏感阶段恢复的 provisional core 还必须达到 200 bp，并与目标 probe 达到至少 80% coverage、80% identity，不能存在得分接近的其他 probe locus，也不能包含至少 150 bp 的长倒置重复，才会锚定为该 locus。锚定 core 中至少 40 bp 的内部 reads 链缺口会被明确标记为复核项，但不会单独硬拒绝；同个体基因组校准显示，低覆盖的真实共线位点也可能出现该信号。若同时启用 `--uce-rescue-reads`，无复核项的锚定 core 才会作为样本自身 bait 进入现有 whole-contig/terminal rescue 与 guard；review-only core 保留为候选，但不会被 rescue 扩展。该策略扩大的是候选 reads 招募范围，不代表候选位点已经被证明正确。默认模式仍为 `fast`，因此现有命令、速度和结果不变。
+`auto` 先以默认 k=23、step=4 执行快速招募，只对快速阶段没有选中 fragments 的 locus 再扫描一次 FASTQ（fallback 默认 k=21、step=1、独立验证 k=19）。敏感阶段先用未恢复 locus 子集作粗招募门控；只对命中该子集的 fragments 用完整 probe 面板扩展候选并检查多 locus 歧义，再要求 read pair 至少一端与目标 probe/reference 的局部比对达到 45 bp、80% identity，最后只合并唯一支持某个未恢复 locus 的 reads；随后只组装一次。仅由敏感阶段恢复的 provisional core 还必须达到 200 bp，并与目标 probe 达到至少 80% coverage、80% identity，不能存在得分接近的其他 probe locus，也不能包含至少 150 bp 的长倒置重复，才会锚定为该 locus。锚定 core 中至少 40 bp 的内部 reads 链缺口会被明确标记为复核项，但不会单独硬拒绝；同个体基因组校准显示，低覆盖的真实共线位点也可能出现该信号。默认的一轮 rescue 只允许无复核项的锚定 core 作为样本自身 bait 进入 whole-contig rescue 与 guard；review-only core 保留为候选，但不会被 rescue 扩展。该策略扩大的是候选 reads 招募范围，不代表候选位点已经被证明正确。
 
 自动敏感招募会保留 `uce_filter_summary.fast.tsv`；实际发生第二阶段时还会生成 `uce_filter_summary.fallback.tsv`。`uce_recruit_passes.tsv` 逐 locus 记录快速阶段、敏感阶段和最终来源，`uce_recruit_contig_probe_gate.tsv` 覆盖所有 fallback locus，记录 assembler、probe、锚定、倒置重复和内部 gap 证据；被拒绝的结果移入 `fallback_probe_rejected/`，不会静默删除。启用 rescue 时，后续状态继续写入 `uce_rescue_rounds.csv` 和 `uce_rescue_summary.csv`。
 

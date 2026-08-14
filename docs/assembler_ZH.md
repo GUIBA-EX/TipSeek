@@ -38,7 +38,7 @@ cli/geneminer2 -f samples.tsv -r references -o output -p 8 \
 
 只有 `--legacy-uce-filter` 会恢复 main + re 兼容路径，主要用于历史结果对照或诊断。其 `filtered_pe/` 是宽松招募候选，`filtered/` 才是组装输入；默认 `ucefilter` 直接写 `filtered/`，不产生前者。
 
-`--uce-rescue-reads` 借鉴 MITObim 的 baiting-and-iterative-mapping 核心思路，只在主组装完成并接受 contig 后启动，rescue 组装固定使用 k=21，默认最多两轮：第一轮用原参考与已接受 contig 共同招募，第二轮只对仍增长的 locus 使用两端窗口。旧 contig 必须完整保留；每侧新增区域独立要求至少 30 bp、85% breadth、最大 gap 30 bp、2 个独立 fragment 和 1 个跨旧 core 边界 fragment；不通过即按侧或按 locus 逐一回退。每轮最终接受前还会比较 rescue 前后序列；若本轮新引入至少 150 bp 的精确倒置重复，则以 `reverted_inverted_repeat` 状态恢复该 locus 的本轮备份。`--uce-rescue-inverted-repeat-min-bp 0` 可关闭该检查。实验性 `--uce-rescue-reverse-reuse-reference-scale` 只缩放与任一组装臂已走路径互为反向互补节点的 reference bonus，默认 `1.0`（不缩放），不改变 reads depth。rescue 是对主结果的受约束延伸，不是参考补洞。
+UCE 模式在主组装接受 contig 后默认执行一轮 rescue；`--no-uce-rescue-reads` 可关闭，`--uce-rescue-rounds 2` 可显式请求第二轮。rescue 借鉴 MITObim 的 baiting-and-iterative-mapping 核心思路，组装固定使用 k=21：第一轮用原参考与已接受 contig 共同招募，第二轮只对仍增长的 locus 使用两端窗口。旧 contig 必须完整保留；每侧新增区域独立要求至少 30 bp、85% breadth、最大 gap 30 bp、2 个独立 fragment 和 1 个跨旧 core 边界 fragment；不通过即按侧或按 locus 逐一回退。每轮最终接受前还会比较 rescue 前后序列；若本轮新引入至少 150 bp 的精确倒置重复，则以 `reverted_inverted_repeat` 状态恢复该 locus 的本轮备份。`--uce-rescue-inverted-repeat-min-bp 0` 可关闭该检查。实验性 `--uce-rescue-reverse-reuse-reference-scale` 只缩放与任一组装臂已走路径互为反向互补节点的 reference bonus，默认 `1.0`（不缩放），不改变 reads depth。rescue 是对主结果的受约束延伸，不是参考补洞。
 
 ## UCE 选择、组装与 QC
 
