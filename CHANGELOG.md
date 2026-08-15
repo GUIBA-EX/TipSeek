@@ -2,11 +2,27 @@
 
 ## Unreleased
 
+## v1.6.2 — TipSeek identity and evidence-bounded UCE recovery
+
 - Renamed the public project to TipSeek and changed the main command from `geneminer2` to `tipseek`; documentation and release links now use the TipSeek identity.
 - Decoupled UCE recruitment k from exact-match verification k inside UCEFilter, while leaving the existing component defaults unchanged.
 - Changed UCE-mode defaults to k=23/step=4 automatic recruitment followed by one evidence-constrained rescue round. Original assembly keeps k=31/step=4 without rescue; explicit `-kf`, `--uce-recruit-mode`, `--uce-rescue-rounds`, and the new `--no-uce-rescue-reads` override the UCE defaults.
-- Added `--uce-recruit-mode auto`: it retries only fast-pass unresolved loci with a sensitive k=21/step=1 coarse-recruitment gate, expands gated fragments against the complete panel before the ambiguity and unresolved-locus output gates, requires fallback reads to provide a 45 bp/80% local alignment, and merges only newly recovered locus FASTQs. Fallback-only contigs must be at least 200 bp, meet 80% target-probe coverage and identity, and have no near-tied panel locus; all pass and rejection evidence is preserved in auditable TSV sidecars and archived outputs.
+- Strengthened `--uce-recruit-mode auto` by expanding gated fragments against the complete panel before ambiguity and unresolved-locus output gates, parallelizing final probe checks, and preserving all pass and rejection evidence in auditable TSV sidecars and archived outputs.
 - Made sensitive-pass contigs explicit provisional cores before rescue. The core gate now audits every fallback locus, rejects a core that already contains an exact long inverted repeat, records internal read-chain gaps as review evidence, and lets only anchored cores without review flags seed the existing whole-contig and terminal rescue path. A gap alone remains review-only because same-individual calibration found a correct low-coverage collinear locus with that signal; the candidate is retained without rescue extension.
+- Added the TipSeek UCE manuscript and supplementary methods, including the coral benchmark across TipSeek R0/R1/R2, GeneMiner2, and SPAdes + PHYLUCE configurations.
+
+## v1.6.1 — Automatic UCE recruitment and manuscript draft
+
+- Added the opt-in `--uce-recruit-mode auto`, which retries only unresolved UCE loci with a sensitive k=21/step=1 recruitment gate and retains auditable pass and rejection evidence.
+- Renamed the public project to TStools while retaining the `geneminer2` entry point and historical compatibility identifiers.
+- Added the initial Chinese UCE manuscript draft for collaborative revision and provenance tracking.
+
+## v1.6.0 — Rescue QC and adaptive mitochondrial completion
+
+- Added per-locus UCE rescue guards that revert newly introduced long inverted repeats and unsupported internal gaps.
+- Added explicit one- or two-round rescue control and corresponding per-locus status reporting.
+- Fixed mitochondrial adaptive checkpoints so deeper read budgets continue until the same validated circular genome is recovered at two consecutive depths.
+- Fixed the nightly FASTX fuzz workflow and expanded regression coverage.
 
 ## v1.5.9 — UCE scheduling and rescue correctness
 
