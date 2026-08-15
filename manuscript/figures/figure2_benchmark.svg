@@ -1,0 +1,67 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="1120" viewBox="0 0 1600 1120" role="img" aria-labelledby="title desc">
+  <title id="title">Coral WGS benchmark</title>
+  <desc id="desc">Four panels compare recovery counts, shared loci, median candidate length, and the relationship between wall time and peak memory.</desc>
+  <defs><style>
+    text{font-family:Arial,Helvetica,sans-serif;fill:#172033}.title{font-size:30px;font-weight:700}.subtitle{font-size:17px;fill:#526077}
+    .panel{font-size:23px;font-weight:700}.axislabel{font-size:16px;fill:#334155}.tick{font-size:14px;fill:#526077}.cat{font-size:15px;fill:#334155}.value{font-size:14px;font-weight:700}
+    .note{font-size:13px;fill:#64748b}.axis{stroke:#475569;stroke-width:2}.grid{stroke:#e2e8f0;stroke-width:1}.leader{stroke:#64748b;stroke-width:1.5;fill:none}
+  </style></defs>
+  <rect width="1600" height="1120" fill="#fff"/>
+  <text x="800" y="43" text-anchor="middle" class="title">Coral WGS benchmark</text>
+  <text x="800" y="70" text-anchor="middle" class="subtitle">11 samples · 3,023-locus panel · TipSeek k=23 · R1 is the default configuration</text>
+  <g transform="translate(360 92)">
+    <rect x="0" y="0" width="16" height="16" fill="#64748B"/><text x="24" y="14" class="note">GeneMiner2 k23</text>
+    <rect x="165" y="0" width="16" height="16" fill="#33BBEE"/><text x="189" y="14" class="note">TipSeek R0</text>
+    <rect x="300" y="0" width="16" height="16" fill="#0077BB"/><text x="324" y="14" class="note">TipSeek R1 (default)</text>
+    <rect x="490" y="0" width="16" height="16" fill="#009988"/><text x="514" y="14" class="note">TipSeek R2</text>
+    <rect x="625" y="0" width="16" height="16" fill="#EE7733"/><text x="649" y="14" class="note">SPAdes + PHYLUCE</text>
+  </g>
+
+  <rect x="55" y="135" width="720" height="430" rx="10" fill="#fff" stroke="#d8dee8"/>
+  <text x="80" y="174" class="panel">A  Sample–locus recoveries</text><text x="745" y="174" text-anchor="end" class="note">accepted candidates (n)</text>
+  <line x1="245" y1="215" x2="245" y2="520" class="axis"/><line x1="245" y1="520" x2="725" y2="520" class="axis"/>
+  <line x1="405" y1="215" x2="405" y2="520" class="grid"/><line x1="565" y1="215" x2="565" y2="520" class="grid"/><line x1="725" y1="215" x2="725" y2="520" class="grid"/>
+  <text x="245" y="542" text-anchor="middle" class="tick">0</text><text x="405" y="542" text-anchor="middle" class="tick">10,000</text><text x="565" y="542" text-anchor="middle" class="tick">20,000</text><text x="725" y="542" text-anchor="middle" class="tick">30,000</text>
+  <text x="228" y="251" text-anchor="end" class="cat">GeneMiner2 k23</text><rect x="245" y="229" width="424" height="30" fill="#64748B"/><text x="677" y="250" class="value">26,528</text>
+  <text x="228" y="311" text-anchor="end" class="cat">TipSeek R0</text><rect x="245" y="289" width="402" height="30" fill="#33BBEE"/><text x="655" y="310" class="value">25,101</text>
+  <text x="228" y="371" text-anchor="end" class="cat">TipSeek R1</text><rect x="245" y="349" width="415" height="30" fill="#0077BB"/><text x="668" y="370" class="value">25,933</text><circle cx="642" cy="364" r="5" fill="#fff"/>
+  <text x="228" y="431" text-anchor="end" class="cat">TipSeek R2</text><rect x="245" y="409" width="415" height="30" fill="#009988"/><text x="668" y="430" class="value">25,933</text>
+  <text x="228" y="491" text-anchor="end" class="cat">SPAdes + PHYLUCE</text><rect x="245" y="469" width="388" height="30" fill="#EE7733"/><text x="641" y="490" class="value">24,231</text>
+
+  <rect x="825" y="135" width="720" height="430" rx="10" fill="#fff" stroke="#d8dee8"/>
+  <text x="850" y="174" class="panel">B  Shared loci recovered in 11/11 samples</text><text x="1515" y="174" text-anchor="end" class="note">loci (n)</text>
+  <line x1="1015" y1="215" x2="1015" y2="520" class="axis"/><line x1="1015" y1="520" x2="1495" y2="520" class="axis"/>
+  <line x1="1148" y1="215" x2="1148" y2="520" class="grid"/><line x1="1282" y1="215" x2="1282" y2="520" class="grid"/><line x1="1415" y1="215" x2="1415" y2="520" class="grid"/>
+  <text x="1015" y="542" text-anchor="middle" class="tick">0</text><text x="1148" y="542" text-anchor="middle" class="tick">500</text><text x="1282" y="542" text-anchor="middle" class="tick">1,000</text><text x="1415" y="542" text-anchor="middle" class="tick">1,500</text>
+  <text x="998" y="251" text-anchor="end" class="cat">GeneMiner2 k23</text><rect x="1015" y="229" width="441" height="30" fill="#64748B"/><text x="1464" y="250" class="value">1,653</text>
+  <text x="998" y="311" text-anchor="end" class="cat">TipSeek R0</text><rect x="1015" y="289" width="300" height="30" fill="#33BBEE"/><text x="1323" y="310" class="value">1,125</text>
+  <text x="998" y="371" text-anchor="end" class="cat">TipSeek R1</text><rect x="1015" y="349" width="392" height="30" fill="#0077BB"/><text x="1415" y="370" class="value">1,471</text><circle cx="1389" cy="364" r="5" fill="#fff"/>
+  <text x="998" y="431" text-anchor="end" class="cat">TipSeek R2</text><rect x="1015" y="409" width="392" height="30" fill="#009988"/><text x="1415" y="430" class="value">1,471</text>
+  <text x="998" y="491" text-anchor="end" class="cat">SPAdes + PHYLUCE</text><rect x="1015" y="469" width="289" height="30" fill="#EE7733"/><text x="1312" y="490" class="value">1,084</text>
+
+  <rect x="55" y="600" width="720" height="455" rx="10" fill="#fff" stroke="#d8dee8"/>
+  <text x="80" y="639" class="panel">C  Median accepted-candidate length</text><text x="745" y="639" text-anchor="end" class="note">base pairs (bp)</text>
+  <line x1="245" y1="680" x2="245" y2="985" class="axis"/><line x1="245" y1="985" x2="725" y2="985" class="axis"/>
+  <line x1="354" y1="680" x2="354" y2="985" class="grid"/><line x1="463" y1="680" x2="463" y2="985" class="grid"/><line x1="572" y1="680" x2="572" y2="985" class="grid"/><line x1="681" y1="680" x2="681" y2="985" class="grid"/>
+  <text x="245" y="1007" text-anchor="middle" class="tick">0</text><text x="354" y="1007" text-anchor="middle" class="tick">500</text><text x="463" y="1007" text-anchor="middle" class="tick">1,000</text><text x="572" y="1007" text-anchor="middle" class="tick">1,500</text><text x="681" y="1007" text-anchor="middle" class="tick">2,000</text>
+  <text x="228" y="716" text-anchor="end" class="cat">GeneMiner2 k23</text><rect x="245" y="694" width="61" height="30" fill="#64748B"/><text x="314" y="715" class="value">281</text>
+  <text x="228" y="776" text-anchor="end" class="cat">TipSeek R0</text><rect x="245" y="754" width="96" height="30" fill="#33BBEE"/><text x="349" y="775" class="value">439</text>
+  <text x="228" y="836" text-anchor="end" class="cat">TipSeek R1</text><rect x="245" y="814" width="168" height="30" fill="#0077BB"/><text x="421" y="835" class="value">771</text><circle cx="395" cy="829" r="5" fill="#fff"/>
+  <text x="228" y="896" text-anchor="end" class="cat">TipSeek R2</text><rect x="245" y="874" width="216" height="30" fill="#009988"/><text x="469" y="895" class="value">990</text>
+  <text x="228" y="956" text-anchor="end" class="cat">SPAdes + PHYLUCE</text><rect x="245" y="934" width="452" height="30" fill="#EE7733"/><text x="705" y="955" class="value">2,072</text>
+  <text x="80" y="1034" class="note">Length is an output-scale metric; sequence correctness is evaluated separately.</text>
+
+  <rect x="825" y="600" width="720" height="455" rx="10" fill="#fff" stroke="#d8dee8"/>
+  <text x="850" y="639" class="panel">D  Resource trade-off</text><text x="1515" y="639" text-anchor="end" class="note">same 11-sample benchmark</text>
+  <line x1="965" y1="970" x2="1495" y2="970" class="axis"/><line x1="965" y1="690" x2="965" y2="970" class="axis"/>
+  <line x1="1116" y1="690" x2="1116" y2="970" class="grid"/><line x1="1268" y1="690" x2="1268" y2="970" class="grid"/><line x1="1419" y1="690" x2="1419" y2="970" class="grid"/>
+  <line x1="965" y1="900" x2="1495" y2="900" class="grid"/><line x1="965" y1="830" x2="1495" y2="830" class="grid"/><line x1="965" y1="760" x2="1495" y2="760" class="grid"/><line x1="965" y1="690" x2="1495" y2="690" class="grid"/>
+  <text x="965" y="992" text-anchor="middle" class="tick">0</text><text x="1116" y="992" text-anchor="middle" class="tick">20</text><text x="1268" y="992" text-anchor="middle" class="tick">40</text><text x="1419" y="992" text-anchor="middle" class="tick">60</text>
+  <text x="953" y="975" text-anchor="end" class="tick">0</text><text x="953" y="905" text-anchor="end" class="tick">2</text><text x="953" y="835" text-anchor="end" class="tick">4</text><text x="953" y="765" text-anchor="end" class="tick">6</text><text x="953" y="695" text-anchor="end" class="tick">8</text>
+  <text x="1230" y="1024" text-anchor="middle" class="axislabel">Wall time (min)</text><text x="860" y="830" text-anchor="middle" class="axislabel" transform="rotate(-90 860 830)">Peak RSS (GiB)</text>
+  <rect x="1040" y="944" width="18" height="18" fill="#64748B"/><path d="M1049 943L1082 912" class="leader"/><text x="1088" y="890" class="cat">GeneMiner2</text><text x="1088" y="909" class="note">10.57 min · 0.51 GiB</text>
+  <path d="M1017 936L1006 957H1028Z" fill="#33BBEE" stroke="#172033" stroke-width="1"/><path d="M1017 935L988 894" class="leader"/><text x="982" y="870" text-anchor="end" class="cat">TipSeek R0</text><text x="982" y="889" text-anchor="end" class="note">6.88 min · 0.72 GiB</text>
+  <circle cx="1177" cy="751" r="16" fill="none" stroke="#EE7733" stroke-width="4"/><circle cx="1177" cy="751" r="10" fill="#0077BB"/><path d="M1165 740L1130 714" class="leader"/><text x="1124" y="691" text-anchor="end" class="cat" font-weight="700">TipSeek R1 (default)</text><text x="1124" y="710" text-anchor="end" class="note">28.02 min · 6.25 GiB</text>
+  <path d="M1434 720L1447 733L1434 746L1421 733Z" fill="#009988" stroke="#172033" stroke-width="1"/><path d="M1434 719L1410 690" class="leader"/><text x="1404" y="667" text-anchor="end" class="cat">TipSeek R2</text><text x="1404" y="686" text-anchor="end" class="note">61.90 min · 7.14 GiB</text>
+  <text x="850" y="1034" class="note">SPAdes + PHYLUCE omitted: no comparable same-run time and memory record.</text>
+</svg>
