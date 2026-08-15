@@ -11,7 +11,7 @@
 推荐以 PanRefV2 构建公共 UCE 参考：
 
 ```bash
-cli/geneminer2 population \
+cli/tipseek population \
   -f samples.tsv -r baits_by_locus -o output -p 32 \
   --assembly-mode uce --engine panrefv2
 ```

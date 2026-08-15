@@ -12,21 +12,21 @@ Each `family_reference/*.fasta` defines one family and may contain several speci
 
 ```bash
 # 1. Recover candidates from reads; original-rust is fixed
-cli/geneminer2 gene -f samples.tsv -r family_reference -o gene_output -p 8
+cli/tipseek gene -f samples.tsv -r family_reference -o gene_output -p 8
 
 # 2. Protein-guided annotation
-cli/geneminer2 gene-annotate --gene-input gene_output/gene \
+cli/tipseek gene-annotate --gene-input gene_output/gene \
   --gene-protein-reference family_proteins -o gene_annotation -p 8
 
 # 3. Align, infer gene trees, and select strict one-to-one clades
-cli/geneminer2 gene-resolve --gene-input gene_annotation -o gene_resolved -p 8
+cli/tipseek gene-resolve --gene-input gene_annotation -o gene_resolved -p 8
 
 # 4a. Strict pseudo-SCO species tree
-cli/geneminer2 gene-tree --gene-input gene_resolved -o species_strict -p 8 \
+cli/tipseek gene-tree --gene-input gene_resolved -o species_strict -p 8 \
   --gene-species-mode strict --gene-aster astral
 
 # 4b. Multicopy-family species tree
-cli/geneminer2 gene-tree --gene-input gene_resolved -o species_multi -p 8 \
+cli/tipseek gene-tree --gene-input gene_resolved -o species_multi -p 8 \
   --gene-species-mode multicopy --gene-aster astral
 ```
 
@@ -46,7 +46,7 @@ cli/geneminer2 gene-tree --gene-input gene_resolved -o species_multi -p 8 \
 `gene-resolve` runs a fast ML tree by default. It applies two conservative QC rounds: pre-alignment retains only translatable candidates at least `--gene-min-aa-length` long (30 aa by default) and checks `--gene-min-taxa` by **distinct sample**; post-alignment checks occupancy again after MAFFT/TAPER and codon backtranslation, and requires at least `--gene-min-effective-codon-sites` effective codon sites (30 by default). `--gene-ufboot` accepts only `0` (default) or `>=1000`; only the latter supplies usable branch support in `tree_selection_qc.tsv`.
 
 ```bash
-cli/geneminer2 gene-resolve --gene-input gene_annotation -o gene_resolved -p 8 \
+cli/tipseek gene-resolve --gene-input gene_annotation -o gene_resolved -p 8 \
   --gene-outgroup outgroups.tsv \
   --gene-taper /path/to/correction_multi.jl --gene-julia julia \
   --gene-ufboot 1000

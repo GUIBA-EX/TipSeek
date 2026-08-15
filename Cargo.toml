@@ -1,7 +1,7 @@
 [workspace]
 members = [
     "rust/build_consensus",
-    "rust/geneminer2_cli",
+    "rust/tipseek_cli",
     "rust/gm2_tools",
     "rust/main_assembler",
     "rust/main_assembler_original",

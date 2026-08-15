@@ -12,21 +12,21 @@
 
 ```bash
 # 1. 从 reads 恢复候选；固定使用 original-rust
-cli/geneminer2 gene -f samples.tsv -r family_reference -o gene_output -p 8
+cli/tipseek gene -f samples.tsv -r family_reference -o gene_output -p 8
 
 # 2. 蛋白引导注释
-cli/geneminer2 gene-annotate --gene-input gene_output/gene \
+cli/tipseek gene-annotate --gene-input gene_output/gene \
   --gene-protein-reference family_proteins -o gene_annotation -p 8
 
 # 3. 对齐、建树、选择 strict 一对一子树
-cli/geneminer2 gene-resolve --gene-input gene_annotation -o gene_resolved -p 8
+cli/tipseek gene-resolve --gene-input gene_annotation -o gene_resolved -p 8
 
 # 4a. strict pseudo-SCO 物种树
-cli/geneminer2 gene-tree --gene-input gene_resolved -o species_strict -p 8 \
+cli/tipseek gene-tree --gene-input gene_resolved -o species_strict -p 8 \
   --gene-species-mode strict --gene-aster astral
 
 # 4b. 多拷贝家族物种树
-cli/geneminer2 gene-tree --gene-input gene_resolved -o species_multi -p 8 \
+cli/tipseek gene-tree --gene-input gene_resolved -o species_multi -p 8 \
   --gene-species-mode multicopy --gene-aster astral
 ```
 
@@ -46,7 +46,7 @@ cli/geneminer2 gene-tree --gene-input gene_resolved -o species_multi -p 8 \
 `gene-resolve` 默认仅做快速 ML tree。它在树推断前后执行两轮保守 QC：pre-alignment 仅保留可翻译且长度不少于 `--gene-min-aa-length`（默认 30 aa）的候选，并按**不同样本数**检查 `--gene-min-taxa`；post-alignment 在 MAFFT/TAPER 与密码子回译后再次检查样本占有率，并要求至少 `--gene-min-effective-codon-sites`（默认 30）个有效 codon 位点。`--gene-ufboot` 只能为 `0`（默认）或 `≥1000`；后者才在 `tree_selection_qc.tsv` 中提供可用的 branch support。可选参数：
 
 ```bash
-cli/geneminer2 gene-resolve --gene-input gene_annotation -o gene_resolved -p 8 \
+cli/tipseek gene-resolve --gene-input gene_annotation -o gene_resolved -p 8 \
   --gene-outgroup outgroups.tsv \
   --gene-taper /path/to/correction_multi.jl --gene-julia julia \
   --gene-ufboot 1000

@@ -1,4 +1,4 @@
-//! Small mitochondrial companion for GeneMiner2-UCE.
+//! Small mitochondrial companion for TipSeek.
 //! References recruit reads; the existing GM2 UCE assembler builds contigs;
 //! this binary only resolves contig overlaps and read-supported mate bridges.
 use gm2_tools::fastx::{FastxFormat, FastxReader, FastxRecord};

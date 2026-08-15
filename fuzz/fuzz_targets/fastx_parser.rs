@@ -7,7 +7,7 @@ fuzz_target!(|data: &[u8]| {
     // FastxReader is path-based; use a single process-local temporary file and
     // accept parser errors as normal outcomes. The CI workflow caps executions
     // and duration, and this target is never run implicitly by normal tests.
-    let path = std::env::temp_dir().join(format!("tstools-fastx-fuzz-{}", std::process::id()));
+    let path = std::env::temp_dir().join(format!("tipseek-fastx-fuzz-{}", std::process::id()));
     if std::fs::write(&path, data).is_err() {
         return;
     }

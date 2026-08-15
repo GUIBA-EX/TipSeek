@@ -1,11 +1,11 @@
 # TE / repeatome
 
-`geneminer2 te` is a short-read repeatome workflow for genome-skimming and WGS data. It reports reproducible repeat evidence and abundance. It does not claim complete TE annotation, insertion sites, or genome-wide copy number from capture data.
+`tipseek te` is a short-read repeatome workflow for genome-skimming and WGS data. It reports reproducible repeat evidence and abundance. It does not claim complete TE annotation, insertion sites, or genome-wide copy number from capture data.
 
 ## Start here
 
 ```bash
-cli/geneminer2 te -f te_samples.tsv -o te_out -p 16
+cli/tipseek te -f te_samples.tsv -o te_out -p 16
 ```
 
 ```text
@@ -28,7 +28,7 @@ The main lane identifies exact repeat units (EQs), preserves paired-read evidenc
 The `interspersed` lane uses shared candidate reads rather than unique EQ assignment: it builds sparse minimizer-overlap components and jointly assembles each component. Run it when the goal is recovery of non-tandem repeat consensuses:
 
 ```bash
-cli/geneminer2 te -f te_samples.tsv -o te_out -p 16 --te-stage interspersed
+cli/tipseek te -f te_samples.tsv -o te_out -p 16 --te-stage interspersed
 ```
 
 ## Read the classes as evidence

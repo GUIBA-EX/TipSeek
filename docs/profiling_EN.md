@@ -7,7 +7,7 @@ Profiling is an assembly-free workflow for recovering reference-level evidence f
 ## Workflow
 
 ```text
-TStools k-mer recruitment → Themisto pseudoalignment → reference-level support
+TipSeek k-mer recruitment → Themisto pseudoalignment → reference-level support
 ```
 
 It runs neither `refilter`, `assemble`, `combine`, nor `tree`. `--profile-kmer-size` sets the same odd k-mer size, from 15 to 31, for both recruitment and Themisto.
@@ -30,7 +30,7 @@ The reference ID is the first whitespace-delimited FASTA-header field. A supplie
 ## Run and cache
 
 ```bash
-cli/geneminer2 profiling \
+cli/tipseek profiling \
   -f samples.tsv -r marker_reference.fasta \
   -o output -p 8
 ```

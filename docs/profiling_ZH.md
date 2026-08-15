@@ -7,7 +7,7 @@ Profiling 是从 WGS 或 metagenome reads 中免组装恢复任意扩增子 mark
 ## 流程
 
 ```text
-TStools k-mer 招募 → Themisto 伪比对 → 参考序列级证据
+TipSeek k-mer 招募 → Themisto 伪比对 → 参考序列级证据
 ```
 
 不会运行 `refilter`、`assemble`、`combine` 或 `tree`。`--profile-kmer-size` 同时设定招募与 Themisto 的 k-mer，必须是 15–31 的奇数。
@@ -30,7 +30,7 @@ reference ID 是 FASTA 标题第一个空白前字段。若提供 map，它必�
 ## 运行与 cache
 
 ```bash
-cli/geneminer2 profiling \
+cli/tipseek profiling \
   -f samples.tsv -r marker_reference.fasta \
   -o output -p 8
 ```

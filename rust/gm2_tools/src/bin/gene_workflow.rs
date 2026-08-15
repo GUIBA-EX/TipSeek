@@ -1,4 +1,4 @@
-//! Conservative first-pass gene-family summaries for GeneMiner2-UCE.
+//! Conservative first-pass gene-family summaries for TipSeek.
 //!
 //! This program deliberately does not infer phased alleles or biological copy
 //! numbers. It turns the ranked candidate contigs emitted by original-rust

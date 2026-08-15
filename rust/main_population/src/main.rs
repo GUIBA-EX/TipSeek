@@ -170,7 +170,7 @@ struct Site {
 
 fn print_help() {
     println!(
-        "main_population (GeneMiner2-UCE Rust population pipeline)\n\
+        "main_population (TipSeek Rust population pipeline)\n\
          Usage: main_population --output DIR --samples FILE [options]\n\n\
          --output DIR              Existing GeneMiner2 output directory\n\
          --samples FILE            TSV: sample, R1, [R2, population, batch]\n\

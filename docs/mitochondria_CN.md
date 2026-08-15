@@ -13,7 +13,7 @@
 ## 最小命令
 
 ```bash
-cli/geneminer2 mito \
+cli/tipseek mito \
   -f samples.tsv \
   -o mito_output \
   -p 8 \

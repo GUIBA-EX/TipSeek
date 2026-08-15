@@ -1,11 +1,11 @@
 # TE / repeatome
 
-`geneminer2 te` 面向 genome-skimming 与 WGS 短读长，输出可复现的重复证据与相对丰度。它不宣称完成 TE 注释、插入位点检测，也不能从 capture 数据推断全基因组拷贝数。
+`tipseek te` 面向 genome-skimming 与 WGS 短读长，输出可复现的重复证据与相对丰度。它不宣称完成 TE 注释、插入位点检测，也不能从 capture 数据推断全基因组拷贝数。
 
 ## 从这里开始
 
 ```bash
-cli/geneminer2 te -f te_samples.tsv -o te_out -p 16
+cli/tipseek te -f te_samples.tsv -o te_out -p 16
 ```
 
 ```text
@@ -28,7 +28,7 @@ reads → discover → curate → annotate → quantify
 `interspersed` 通道不要求 reads 唯一归属 EQ，而使用共享候选 reads 建立稀疏 minimizer-overlap component，再对每个 component 联合组装。需要恢复非串联重复 consensus 时运行：
 
 ```bash
-cli/geneminer2 te -f te_samples.tsv -o te_out -p 16 --te-stage interspersed
+cli/tipseek te -f te_samples.tsv -o te_out -p 16 --te-stage interspersed
 ```
 
 ## 将类别读作证据，而不是结论
