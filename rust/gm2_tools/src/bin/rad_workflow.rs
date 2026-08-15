@@ -1,4 +1,4 @@
-//! RAD matrix augmentation helpers for GeneMiner2-UCE.
+//! RAD matrix augmentation helpers for TipSeek.
 //!
 //! The workflow deliberately treats the two sequenced RAD arms as independent
 //! observations.  It never invents the unsequenced insert between them.

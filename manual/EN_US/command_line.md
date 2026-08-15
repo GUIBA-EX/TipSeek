@@ -1,6 +1,6 @@
-# TStools Command-Line Guide
+# TipSeek Command-Line Guide
 
-TStools (formerly GeneMiner2-UCE) is a command-line workflow for UCEs and other phylogenetic markers. This repository does not include the former GUI, bundled demonstration data, or legacy graphical documentation.
+TipSeek is a command-line workflow for UCEs and other phylogenetic markers. This repository does not include a GUI, bundled demonstration data, or legacy graphical documentation.
 
 ## 1. Building from source
 
@@ -39,15 +39,15 @@ Population executables are located through `PATH` by default. Override them indi
 ### 1.3 Download and build
 
 ```bash
-git clone --depth 1 https://github.com/GUIBA-EX/GeneMiner2-UCE.git
-cd GeneMiner2-UCE
+git clone --depth 1 https://github.com/GUIBA-EX/TipSeek.git
+cd TipSeek
 cargo run -p xtask -- build
 ```
 
 The generated entry point is:
 
 ```bash
-cli/geneminer2 -h
+cli/tipseek -h
 ```
 
 Run the same Cargo command again after updating the source.
@@ -113,7 +113,7 @@ When no subcommand is given:
 Default original-mode example:
 
 ```bash
-cli/geneminer2 \
+cli/tipseek \
   -f /home/user/project/samples.tsv \
   -r /home/user/project/references \
   -o /home/user/project/output \
@@ -129,7 +129,7 @@ UCE mode recovers UCE cores and read-supported flanks from genome-skimming or ta
 Optional `--uce-alignment-shadow` collects bounded internal alignment evidence without changing adaptive read selection. It is disabled by default.
 
 ```bash
-cli/geneminer2 \
+cli/tipseek \
   -f samples.tsv -r references -o output -p 8 \
   --assembly-mode uce
 ```
@@ -141,7 +141,7 @@ For assembly behavior, backend selection, rescue, cache semantics, and QC, see t
 Profiling performs one recruitment followed by Themisto pseudoalignment and reference-level support reporting; it does not assemble. It requires one `.fa` or `.fasta` marker library. `--profile-group-map` is optional and adds a group annotation column.
 
 ```bash
-cli/geneminer2 profiling \
+cli/tipseek profiling \
   -f samples.tsv -r marker_reference.fasta \ -o output -p 8
 ```
 
@@ -152,18 +152,18 @@ Inputs, decoys, cache control, QC, and quantitative interpretation are in the [P
 `gene` is a complete workflow: one bait FASTA defines one family and may contain multiple species. It fixes the backend to `original-rust`, retains candidate contigs, and does not directly claim single-copy status.
 
 ```bash
-cli/geneminer2 gene -f samples.tsv -r family_reference -o gene_output -p 8
-cli/geneminer2 gene-annotate --gene-input gene_output/gene \
+cli/tipseek gene -f samples.tsv -r family_reference -o gene_output -p 8
+cli/tipseek gene-annotate --gene-input gene_output/gene \
   --gene-protein-reference family_proteins -o gene_annotation -p 8
-cli/geneminer2 gene-resolve --gene-input gene_annotation -o gene_resolved -p 8
+cli/tipseek gene-resolve --gene-input gene_annotation -o gene_resolved -p 8
 ```
 
 `gene-resolve` requires MAFFT and IQ-TREE; `--gene-taper correction_multi.jl` enables optional masking. It applies pre-alignment QC by distinct-sample occupancy and `--gene-min-aa-length` (30 aa by default), then post-alignment QC by occupancy and `--gene-min-effective-codon-sites` (30 by default); see `occupancy_qc.tsv`. `--gene-ufboot` must be `0` (default) or `>=1000`. `family_qc.tsv` is alignment QC for post-QC families, while `tree_selection_qc.tsv` records selected strict clades and occupancy.
 
 ```bash
-cli/geneminer2 gene-tree --gene-input gene_resolved -o species_strict -p 8 \
+cli/tipseek gene-tree --gene-input gene_resolved -o species_strict -p 8 \
   --gene-species-mode strict --gene-aster astral
-cli/geneminer2 gene-tree --gene-input gene_resolved -o species_multi -p 8 \
+cli/tipseek gene-tree --gene-input gene_resolved -o species_multi -p 8 \
   --gene-species-mode multicopy --gene-aster astral
 ```
 
@@ -174,7 +174,7 @@ The strict route supplies one leaf per sample to ASTER2. The multicopy route als
 `te` is a complete standalone workflow and does not require `-r`. It uses a four-field manifest, `taxon_id sample_id read1 read2` (omit the fourth field for single-end data), and runs `discover → curate → annotate → quantify`.
 
 ```bash
-cli/geneminer2 te -f te_samples.tsv -o te_output -p 32
+cli/tipseek te -f te_samples.tsv -o te_output -p 32
 ```
 
 `--te-library` optionally supplies a classified `name#Class/Subclass` FASTA. Annotation never merges EQs and does not replace complete-TE annotation. See the [TE / repeatome chapter](../../docs/te_EN.md) for thresholds, rerun rules, and output interpretation.
@@ -186,7 +186,7 @@ cli/geneminer2 te -f te_samples.tsv -o te_output -p 32
 `population` uses multiple completed UCE assemblies and their original reads to create a cohort pseudo-reference, joint VCF, PCA, and ADMIXTURE inputs. Each sample must retain `uce_assembly_summary.csv`, accepted contigs in `results/`, and the reads listed in the sample table.
 
 ```bash
-cli/geneminer2 population \
+cli/tipseek population \
   -f /home/user/project/samples.tsv \
   -r /home/user/project/references -o output -p 8 \
   --assembly-mode uce --engine panrefv2 \
@@ -200,7 +200,7 @@ For pseudo-reference strategies, stage restarts, SNP panels, and required QC, se
 Rebuild only a concatenated tree from existing results:
 
 ```bash
-cli/geneminer2 tree \
+cli/tipseek tree \
   -f samples.tsv -r references -o output \
   -m concatenation --phylo-program iqtree
 ```
@@ -208,7 +208,7 @@ cli/geneminer2 tree \
 Generate consensus sequences, trim them to references, and combine them:
 
 ```bash
-cli/geneminer2 consensus trim combine \
+cli/tipseek consensus trim combine \
   -f samples.tsv -r references -o output \
   -c 0.75 -ts consensus -tm all -tr 0.5 \
   -cs trimmed
@@ -217,14 +217,14 @@ cli/geneminer2 consensus trim combine \
 Generate tables from existing UCE results without plotting heatmaps:
 
 ```bash
-cli/geneminer2 stats \
+cli/tipseek stats \
   -f samples.tsv -r references -o output \
   --stats-no-heatmap
 ```
 
 ## 7. Parameter reference
 
-The tables below list the main public options and current defaults. Run `cli/geneminer2 -h` for the complete help associated with the checked-out source.
+The tables below list the main public options and current defaults. Run `cli/tipseek -h` for the complete help associated with the checked-out source.
 
 ### 7.1 General input and parallelism
 

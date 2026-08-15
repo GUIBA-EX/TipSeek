@@ -2,7 +2,7 @@
 
 [English](filter_EN.md) · [输出说明](../manual/ZH_CN/output.md) · [命令行指南](../manual/ZH_CN/command_line.md)
 
-MainFilter 是 TStools（原 GeneMiner2-UCE）的通用 reads 招募层。它用参考序列中的 k-mer 扫描原始 reads，把命中 read（或完整 paired-end fragment）分配到相应 locus，供后续 `refilter` 和组装使用。它不是比对器，也不直接判定 contig 正确性、marker 丰度或群体结构。默认 UCE 不使用本页的两步路径，而使用融合的 `ucefilter`；见 [Assembler](assembler_ZH.md)。
+MainFilter 是 TipSeek 的通用 reads 招募层。它用参考序列中的 k-mer 扫描原始 reads，把命中 read（或完整 paired-end fragment）分配到相应 locus，供后续 `refilter` 和组装使用。它不是比对器，也不直接判定 contig 正确性、marker 丰度或群体结构。默认 UCE 不使用本页的两步路径，而使用融合的 `ucefilter`；见 [Assembler](assembler_ZH.md)。
 
 ## 在工作流中的位置
 

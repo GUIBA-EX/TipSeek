@@ -1,4 +1,4 @@
-//! Buffered byte-level FASTA/FASTQ readers shared by GeneMiner2-UCE tools.
+//! Buffered byte-level FASTA/FASTQ readers shared by TipSeek tools.
 //! Text is kept as bytes: sequence tools do not need UTF-8 validation or a
 //! temporary `String` for every FASTQ line.
 use std::ffi::{c_char, c_int, c_uint, c_void, CString};

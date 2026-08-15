@@ -20,7 +20,7 @@ Assembler 将招募后的逐 locus reads 组装为 contig。应按生物学目�
 原版算法优先延伸权重最高的边，将其他分支压栈以便回溯。每侧最多保留三条候选，再组合和评分。该行为适用于 exon 与细胞器 marker 等较短的参考引导目标。
 
 ```bash
-cli/geneminer2 -f samples.tsv -r references -o output -p 8 \
+cli/tipseek -f samples.tsv -r references -o output -p 8 \
   --assembly-mode original
 ```
 
@@ -42,9 +42,9 @@ UCE 模式在主组装接受 contig 后默认执行一轮 rescue；`--no-uce-res
 
 ## UCE 选择、组装与 QC
 
-UCE 模式默认通过融合的 Rust `ucefilter` 招募和选择 reads：rolling k-mer 粗招募、run-k 方向验证、最大精确匹配和逐 locus 自动选择在同一次原始 reads 扫描中完成，最终直接写入 `filtered/`。自动选择先沿用动态 exact-match 阈值去除弱证据；候选少于 512、估计深度不超过 160×或只覆盖少于 48/64 个参考区间的 locus 不做 reservoir 压缩。饱和 locus 至少保留 60% 合格核心，并按参考位置分散选择；跨 bait/contig 边缘的 reads 按 overhang 长度分层，每个长度保留少量高质量 PE fragment，避免切断 core 到 flank 的重叠阶梯。它不产生 GM2 或按 locus 重复的候选 FASTQ；完整 PE fragment 只保存一次并作为一个单位保留。TStools 沿用 GeneMiner2 原版的资源预算调度：`-p` 由已就绪的 filter、refilter 和 assemble 任务共享；样品完成一个阶段后立即进入下一阶段队列。`-p 1` 时各阶段串行；更大数值时，assemble/refilter 任务获得受限的 2--6 线程份额，每个招募任务预留 1--2 个预算线程。fragment bank 上限为内部自动策略：取 Linux `MemAvailable` 与进程 cgroup 剩余内存的较小值，预留一半给系统及工作流其他缓冲区，再按可能并发的 UCEFilter 样品数均分，并将每样品限制在 4 GiB；无法获得内存信息时回退到 512 MiB。`backbone` 策略在每个气泡作一次有限前瞻决策，提交胜出分支而不回溯。`--uce-rescue-reads` 的细节见前文"UCE reads 路径"一节。
+UCE 模式默认通过融合的 Rust `ucefilter` 招募和选择 reads：rolling k-mer 粗招募、run-k 方向验证、最大精确匹配和逐 locus 自动选择在同一次原始 reads 扫描中完成，最终直接写入 `filtered/`。自动选择先沿用动态 exact-match 阈值去除弱证据；候选少于 512、估计深度不超过 160×或只覆盖少于 48/64 个参考区间的 locus 不做 reservoir 压缩。饱和 locus 至少保留 60% 合格核心，并按参考位置分散选择；跨 bait/contig 边缘的 reads 按 overhang 长度分层，每个长度保留少量高质量 PE fragment，避免切断 core 到 flank 的重叠阶梯。它不产生 GM2 或按 locus 重复的候选 FASTQ；完整 PE fragment 只保存一次并作为一个单位保留。TipSeek 沿用 GeneMiner2 原版的资源预算调度：`-p` 由已就绪的 filter、refilter 和 assemble 任务共享；样品完成一个阶段后立即进入下一阶段队列。`-p 1` 时各阶段串行；更大数值时，assemble/refilter 任务获得受限的 2--6 线程份额，每个招募任务预留 1--2 个预算线程。fragment bank 上限为内部自动策略：取 Linux `MemAvailable` 与进程 cgroup 剩余内存的较小值，预留一半给系统及工作流其他缓冲区，再按可能并发的 UCEFilter 样品数均分，并将每样品限制在 4 GiB；无法获得内存信息时回退到 512 MiB。`backbone` 策略在每个气泡作一次有限前瞻决策，提交胜出分支而不回溯。`--uce-rescue-reads` 的细节见前文"UCE reads 路径"一节。
 
-CPU 并行度默认使用 `-p auto`：TStools 统计 affinity/cpuset 允许的物理核心，再应用 cgroup 或作业调度器上限；显式整数可覆盖自动检测。调度器保留原版每个招募任务 1--2 个预算单位的设计，并将该预算与 UCEFilter 当前支持的单个主体计算 worker 分开。
+CPU 并行度默认使用 `-p auto`：TipSeek 统计 affinity/cpuset 允许的物理核心，再应用 cgroup 或作业调度器上限；显式整数可覆盖自动检测。调度器保留原版每个招募任务 1--2 个预算单位的设计，并将该预算与 UCEFilter 当前支持的单个主体计算 worker 分开。
 
 `--uce-alignment-shadow` 是默认关闭的证据模式：在自动选择完成后确定性、均匀地抽取每 locus 最多 64 个 fragment，用最大精确匹配定位参考窗口，再执行局部 affine-gap 比对。原始逐 mate 证据和 per-locus 汇总分别写入 `alignment_shadow.tsv` 与 `alignment_shadow_summary.tsv`。初始 bait、whole-contig rescue 和 terminal rescue 分轮保存；短 bait terminal 只代表设计边界，只有 assembly contig 上的 terminal 才可用于评价延伸。
 

@@ -1,6 +1,6 @@
-# TStools 命令行指南
+# TipSeek 命令行指南
 
-TStools（原 GeneMiner2-UCE）是面向 UCE 和其他系统发育标记的命令行流程。本仓库不包含 GUI、内置演示数据或旧版图形界面文档。
+TipSeek 是面向 UCE 和其他系统发育标记的命令行流程。本仓库不包含 GUI、内置演示数据或旧版图形界面文档。
 
 ## 1. 从源码构建
 
@@ -39,15 +39,15 @@ population 外部程序默认从 `PATH` 查找，也可通过 `--population-mini
 ### 1.3 下载与构建
 
 ```bash
-git clone --depth 1 https://github.com/GUIBA-EX/GeneMiner2-UCE.git
-cd GeneMiner2-UCE
+git clone --depth 1 https://github.com/GUIBA-EX/TipSeek.git
+cd TipSeek
 cargo run -p xtask -- build
 ```
 
 构建后的统一入口为：
 
 ```bash
-cli/geneminer2 -h
+cli/tipseek -h
 ```
 
 源码更新后应重新运行相同的 Cargo 命令。
@@ -113,7 +113,7 @@ references/
 默认 original 模式示例：
 
 ```bash
-cli/geneminer2 \
+cli/tipseek \
   -f /home/user/project/samples.tsv \
   -r /home/user/project/references \
   -o /home/user/project/output \
@@ -129,7 +129,7 @@ UCE 模式用于从 genome skimming 或 target capture reads 恢复 UCE core 及
 可选 `--uce-alignment-shadow` 只收集有界的内部比对证据，不改变自动 reads 选择；默认关闭。
 
 ```bash
-cli/geneminer2 \
+cli/tipseek \
   -f samples.tsv -r references -o output -p 8 \
   --assembly-mode uce
 ```
@@ -141,7 +141,7 @@ cli/geneminer2 \
 Profiling 执行一次招募、Themisto 伪比对并输出参考序列级支持，不组装。它需要一个 `.fa` 或 `.fasta` marker 参考库；`--profile-group-map` 可选，仅增加 group 注释列。
 
 ```bash
-cli/geneminer2 profiling \
+cli/tipseek profiling \
   -f samples.tsv -r marker_reference.fasta \ -o output -p 8
 ```
 
@@ -152,18 +152,18 @@ cli/geneminer2 profiling \
 `gene` 是独立完整流程：每个 bait FASTA 为一个 family，可含多个物种。它固定使用 `original-rust`，输出候选而不直接宣称单拷贝。
 
 ```bash
-cli/geneminer2 gene -f samples.tsv -r family_reference -o gene_output -p 8
-cli/geneminer2 gene-annotate --gene-input gene_output/gene \
+cli/tipseek gene -f samples.tsv -r family_reference -o gene_output -p 8
+cli/tipseek gene-annotate --gene-input gene_output/gene \
   --gene-protein-reference family_proteins -o gene_annotation -p 8
-cli/geneminer2 gene-resolve --gene-input gene_annotation -o gene_resolved -p 8
+cli/tipseek gene-resolve --gene-input gene_annotation -o gene_resolved -p 8
 ```
 
 `gene-resolve` 需要 MAFFT 与 IQ-TREE；可用 `--gene-taper correction_multi.jl` 做 masking。它先按不同样本数和 `--gene-min-aa-length`（默认 30 aa）做 pre-alignment QC，再以 `--gene-min-effective-codon-sites`（默认 30）和占有率做 post-alignment QC；详情见 `occupancy_qc.tsv`。`--gene-ufboot` 只能为 `0`（默认）或 `≥1000`。`family_qc.tsv` 是通过 post-alignment QC 的对齐统计，`tree_selection_qc.tsv` 记录 strict 子树和占有率。
 
 ```bash
-cli/geneminer2 gene-tree --gene-input gene_resolved -o species_strict -p 8 \
+cli/tipseek gene-tree --gene-input gene_resolved -o species_strict -p 8 \
   --gene-species-mode strict --gene-aster astral
-cli/geneminer2 gene-tree --gene-input gene_resolved -o species_multi -p 8 \
+cli/tipseek gene-tree --gene-input gene_resolved -o species_multi -p 8 \
   --gene-species-mode multicopy --gene-aster astral
 ```
 
@@ -174,7 +174,7 @@ strict 使用每树一条/样本的 ASTRAL 输入；multicopy 同时传入候选
 `te` 是独立完整流程，不需要 `-r`。它使用四列样本表：`taxon_id sample_id read1 read2`（单端时省略第四列），并按 `discover → curate → annotate → quantify` 运行。
 
 ```bash
-cli/geneminer2 te -f te_samples.tsv -o te_output -p 32
+cli/tipseek te -f te_samples.tsv -o te_output -p 32
 ```
 
 `--te-library` 可选地提供 `name#Class/Subclass` 格式的已分类 TE FASTA；注释不会合并 EQ 或替代完整 TE 注释。输出解释、阈值与重跑规则见 [TE / repeatome 章节](../../docs/te_ZH.md)。
@@ -186,7 +186,7 @@ cli/geneminer2 te -f te_samples.tsv -o te_output -p 32
 `population` 拿多个已完成 UCE 组装的样本及其原始 reads，构建公共伪参考、联合 VCF、PCA 和 ADMIXTURE 输入。每个样本必须保留 `uce_assembly_summary.csv`、`results/` 中已接受的 contig，以及样本表所列 reads。
 
 ```bash
-cli/geneminer2 population \
+cli/tipseek population \
   -f /home/user/project/samples.tsv \
   -r /home/user/project/references -o output -p 8 \
   --assembly-mode uce \
@@ -200,7 +200,7 @@ cli/geneminer2 population \
 只基于已有结果重建串联树：
 
 ```bash
-cli/geneminer2 tree \
+cli/tipseek tree \
   -f samples.tsv -r references -o output \
   -m concatenation --phylo-program iqtree
 ```
@@ -208,7 +208,7 @@ cli/geneminer2 tree \
 生成 consensus，按参考裁切并合并：
 
 ```bash
-cli/geneminer2 consensus trim combine \
+cli/tipseek consensus trim combine \
   -f samples.tsv -r references -o output \
   -c 0.75 -ts consensus -tm all -tr 0.5 \
   -cs trimmed
@@ -217,14 +217,14 @@ cli/geneminer2 consensus trim combine \
 从已有 UCE 结果生成统计表但不绘图：
 
 ```bash
-cli/geneminer2 stats \
+cli/tipseek stats \
   -f samples.tsv -r references -o output \
   --stats-no-heatmap
 ```
 
 ## 7. 参数参考
 
-以下列出主要公开参数及当前默认值。运行 `cli/geneminer2 -h` 可查看同版本的完整帮助。
+以下列出主要公开参数及当前默认值。运行 `cli/tipseek -h` 可查看同版本的完整帮助。
 
 ### 7.1 通用输入与并行
 

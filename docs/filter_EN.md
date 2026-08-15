@@ -2,7 +2,7 @@
 
 [中文](filter_ZH.md) · [output guide](../manual/EN_US/output.md) · [command-line guide](../manual/EN_US/command_line.md)
 
-MainFilter is TStools' general read-recruitment layer. It scans reads with reference k-mers and assigns matching reads (or complete paired fragments) to loci for `refilter` and assembly. It is not an aligner and does not itself decide contig validity, marker abundance, or population structure. Default UCE does not use this two-stage route; it uses fused `ucefilter` instead; see [Assembler](assembler_EN.md).
+MainFilter is TipSeek's general read-recruitment layer. It scans reads with reference k-mers and assigns matching reads (or complete paired fragments) to loci for `refilter` and assembly. It is not an aligner and does not itself decide contig validity, marker abundance, or population structure. Default UCE does not use this two-stage route; it uses fused `ucefilter` instead; see [Assembler](assembler_EN.md).
 
 ## Place in the workflow
 

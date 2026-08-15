@@ -1,29 +1,29 @@
-# TStools（原 GeneMiner2-UCE）
+# TipSeek
 
-[![CI](https://github.com/GUIBA-EX/GeneMiner2-UCE/actions/workflows/ci.yml/badge.svg?branch=master)](https://github.com/GUIBA-EX/GeneMiner2-UCE/actions/workflows/ci.yml)
-[![CodeQL](https://github.com/GUIBA-EX/GeneMiner2-UCE/actions/workflows/codeql.yml/badge.svg?branch=master)](https://github.com/GUIBA-EX/GeneMiner2-UCE/actions/workflows/codeql.yml)
-[![Fuzz smoke](https://github.com/GUIBA-EX/GeneMiner2-UCE/actions/workflows/fuzz-smoke.yml/badge.svg?branch=master)](https://github.com/GUIBA-EX/GeneMiner2-UCE/actions/workflows/fuzz-smoke.yml)
+[![CI](https://github.com/GUIBA-EX/TipSeek/actions/workflows/ci.yml/badge.svg?branch=master)](https://github.com/GUIBA-EX/TipSeek/actions/workflows/ci.yml)
+[![CodeQL](https://github.com/GUIBA-EX/TipSeek/actions/workflows/codeql.yml/badge.svg?branch=master)](https://github.com/GUIBA-EX/TipSeek/actions/workflows/codeql.yml)
+[![Fuzz smoke](https://github.com/GUIBA-EX/TipSeek/actions/workflows/fuzz-smoke.yml/badge.svg?branch=master)](https://github.com/GUIBA-EX/TipSeek/actions/workflows/fuzz-smoke.yml)
 [![MSRV: 1.87](https://img.shields.io/badge/MSRV-1.87-orange)](rust-toolchain.toml)
 [![Rust edition: 2021](https://img.shields.io/badge/Rust%20edition-2021-orange)](Cargo.toml)
 [![Dependency policy: cargo-deny](https://img.shields.io/badge/dependency%20policy-cargo--deny-blue)](deny.toml)
 [![SBOM: SPDX 2.3](https://img.shields.io/badge/SBOM-SPDX%202.3-blueviolet)](rust/xtask/src/main.rs)
 [![Release integrity: SHA-256](https://img.shields.io/badge/release%20integrity-SHA--256-blueviolet)](rust/xtask/src/main.rs)
-[![Latest release](https://img.shields.io/github/v/release/GUIBA-EX/GeneMiner2-UCE?display_name=tag)](https://github.com/GUIBA-EX/GeneMiner2-UCE/releases/latest)
+[![Latest release](https://img.shields.io/github/v/release/GUIBA-EX/TipSeek?display_name=tag)](https://github.com/GUIBA-EX/TipSeek/releases/latest)
 [![License: GPL-3.0-or-later](https://img.shields.io/badge/License-GPL--3.0--or--later-blue.svg)](LICENSE)
 
-**[English](README_EN.md)** · [更新记录](CHANGELOG.md) · [报告问题](https://github.com/GUIBA-EX/GeneMiner2-UCE/issues)
+**[English](README_EN.md)** · [更新记录](CHANGELOG.md) · [报告问题](https://github.com/GUIBA-EX/TipSeek/issues)
 
-TStools（原 GeneMiner2-UCE）是面向短 reads 的参考引导恢复工具：先以参考序列招募 reads，再按任务完成组装、证据量化或群体分析。它覆盖 genome skimming、target capture、UCE、线粒体、核基因家族、RAD 补充和无参考 repeatome；生产工作流为 Rust 原生实现，不需要 Python 运行时。
+TipSeek 是面向短 reads 的参考引导恢复工具：先以参考序列招募 reads，再按任务完成组装、证据量化或群体分析。它覆盖 genome skimming、target capture、UCE、线粒体、核基因家族、RAD 补充和无参考 repeatome；生产工作流为 Rust 原生实现，不需要 Python 运行时。
 
-> **与原版 GeneMiner2 的关系：** GeneMiner2 是本项目的算法来源与结果兼容基线；TStools 不是对上游的维护型 fork，而是独立演进的工作流工具箱。`cli/geneminer2`、部分历史输出名、仓库地址和论文中的旧名称仅为兼容标识，并不表示两者功能或实现完全相同。
+> **方法来源：** TipSeek 采用参考引导招募和加权 de Bruijn 图等既有方法，并针对不同工作流实现独立的状态转换、证据预算、路径选择与质量控制。GeneMiner2 是相关算法来源和 benchmark comparator。
 
-![TStools 流程](docs/images/summary_ZH.png)
+![TipSeek 流程](docs/images/summary_ZH.png)
 
-## 与原版 GeneMiner2 的主要区别
+## 与 GeneMiner2 的主要差异
 
-| 维度 | 原版 GeneMiner2 | 当前 TStools（v1.5.8） |
+| 维度 | 原版 GeneMiner2 | 当前 TipSeek（v1.5.8） |
 | --- | --- | --- |
-| 项目定位 | 基因组浅层测序数据的基因恢复算法与原始工作流 | 在兼容基线之上独立演进的短 reads 恢复与分析工具箱 |
+| 项目定位 | 基因组浅层测序数据的基因恢复算法与工作流 | 面向多类短 reads 数据的参考引导恢复与分析工具箱 |
 | 核心实现 | 上游实现 | Rust 原生生产路径；不依赖 Python 运行时 |
 | reads 招募 | 原始招募语义 | canonical 双链 2-bit k-mer、内容校验的参考缓存及有界流式 I/O；保持招募语义与历史输出兼容，同时降低 CPU、内存和 I/O 开销 |
 | 常规组装 | 上游算法基线 | 默认确定性的 `original-rust`；保留上游 `original` 路线用于严格对照与复现 |
@@ -31,7 +31,7 @@ TStools（原 GeneMiner2-UCE）是面向短 reads 的参考引导恢复工具：
 | 工作流范围 | 常规基因恢复 | 另含线粒体、marker profiling、UCE 群体、核基因家族、RAD 矩阵补充和无参考 repeatome |
 | 结果解释 | 以恢复序列为主 | 闭环、RAD 严格矩阵和群体图路径都要求显式证据；输出 QC、provenance 与审计记录 |
 
-因此，若目标是复现上游基线，可显式选择 `original` 并保留完整输入与参数；若目标是 UCE、群体或扩展工作流，应按 TStools 的专用模式和 QC 规则解释结果，不能将其直接等同于原版 GeneMiner2 的输出。
+`original` 模式用于 GeneMiner2 基线复现；UCE、群体和其他工作流使用各自的 TipSeek 模式、证据表与 QC 规则。
 
 算法、性能与适用边界见 [Filter](docs/filter_ZH.md)、[Assembler](docs/assembler_ZH.md) 和 [Population](docs/population_ZH.md)。
 
@@ -43,11 +43,11 @@ TStools（原 GeneMiner2-UCE）是面向短 reads 的参考引导恢复工具：
 cargo run -p xtask -- build
 ```
 
-统一入口是 `cli/geneminer2`。样本表使用 tab 分隔的 `sample_id  R1  [R2]`；参考目录中每个 FASTA 文件代表一个 locus 或 bait。
+统一入口是 `cli/tipseek`。样本表使用 tab 分隔的 `sample_id  R1  [R2]`；参考目录中每个 FASTA 文件代表一个 locus 或 bait。
 
 ```bash
 # UCE：原始 paired reads → 选择性招募 → UCE 组装
-cli/geneminer2 filter assemble \
+cli/tipseek filter assemble \
   -f samples.tsv -r uce_references -o uce_out -p 8 \
   --assembly-mode uce
 ```
@@ -57,7 +57,7 @@ cli/geneminer2 filter assemble \
 如需重现旧的单遍 k=31、无 rescue 路径，请显式覆盖默认值：
 
 ```bash
-cli/geneminer2 filter assemble \
+cli/tipseek filter assemble \
   -f samples.tsv -r uce_references -o uce_out -p auto \
   --assembly-mode uce -kf 31 --uce-recruit-mode fast --no-uce-rescue-reads
 ```
@@ -85,24 +85,24 @@ cli/geneminer2 filter assemble \
 
 ```bash
 # 常规 marker；original 为默认模式
-cli/geneminer2 filter assemble -f samples.tsv -r references -o marker_out -p 8
+cli/tipseek filter assemble -f samples.tsv -r references -o marker_out -p 8
 
 # 单环动物线粒体；需要带注释的 GenBank 参考
-cli/geneminer2 mito -f samples.tsv -o mito_out -p 8 \
+cli/tipseek mito -f samples.tsv -o mito_out -p 8 \
   --mito-genbank mitochondrial_reference.gb
 
 # 核基因家族
-cli/geneminer2 gene -f samples.tsv -r family_baits -o gene_out -p 8
+cli/tipseek gene -f samples.tsv -r family_baits -o gene_out -p 8
 
 # 不组装，只评估 reads 对 marker 的支持
-cli/geneminer2 profiling -f samples.tsv -r marker_reference.fasta -o profile_out -p 8
+cli/tipseek profiling -f samples.tsv -r marker_reference.fasta -o profile_out -p 8
 
 # UCE 组装完成后的群体流程
-cli/geneminer2 population -f samples.tsv -r uce_references -o population_out -p 8 \
+cli/tipseek population -f samples.tsv -r uce_references -o population_out -p 8 \
   --assembly-mode uce --engine panrefv2
 
 # 无参考 repeatome；使用独立样本表
-cli/geneminer2 te -f te_samples.tsv -o te_out -p 32
+cli/tipseek te -f te_samples.tsv -o te_out -p 32
 ```
 
 ## 结果的边界
@@ -139,12 +139,12 @@ cli/geneminer2 te -f te_samples.tsv -o te_out -p 32
 请引用：Yu XY, Tang ZZ, Zhang Z, Song YX, He H, Shi Y, Hou JQ, Yu Y. 2026. **GeneMiner2**: Accurate and automated recovery of genes from genome-skimming data. *Molecular Ecology Resources* 26: e70111. [doi:10.1111/1755-0998.70111](https://doi.org/10.1111/1755-0998.70111)
 
 ```bibtex
-@software{TStools,
+@software{TipSeek,
   author  = {XIA, Fei and TANG, Zizhen and XU, Yan},
-  title   = {TStools (formerly GeneMiner2-UCE): Reference-Guided Short-Read Recovery for UCE, Mitochondrial, Gene-Family, and RAD Workflows},
+  title   = {TipSeek: Reference-Guided Short-Read Recovery for UCE, Mitochondrial, Gene-Family, and RAD Workflows},
   year    = {2026},
   version = {1.5.8},
-  url     = {https://github.com/GUIBA-EX/GeneMiner2-UCE},
+  url     = {https://github.com/GUIBA-EX/TipSeek},
   publisher = {GitHub},
   note    = {GPL-3.0-or-later licensed software}
 }

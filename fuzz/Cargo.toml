@@ -1,5 +1,5 @@
 [package]
-name = "tstools-fuzz"
+name = "tipseek-fuzz"
 version = "0.0.0"
 publish = false
 edition = "2021"

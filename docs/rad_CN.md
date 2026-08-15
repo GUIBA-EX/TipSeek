@@ -10,14 +10,14 @@
 
 ```bash
 # 从已完成 ipyrad .loci 建立可复用 probe
-cli/geneminer2 rad-probe --ipyrad-loci assembly.loci -o rad_probe
+cli/tipseek rad-probe --ipyrad-loci assembly.loci -o rad_probe
 
 # 为新 WGS 样本恢复独立的两条 arm
-cli/geneminer2 rad --rad-probe rad_probe/rad_reference \
+cli/tipseek rad --rad-probe rad_probe/rad_reference \
   -f wgs_samples.tsv -o rad_out -p 8
 
 # 写入独立验证后的 strict 矩阵
-cli/geneminer2 rad-validate --rad-probe rad_probe/rad_reference \
+cli/tipseek rad-validate --rad-probe rad_probe/rad_reference \
   --rad-recovery rad_out/rad_recovery -o rad_validate_out
 ```
 

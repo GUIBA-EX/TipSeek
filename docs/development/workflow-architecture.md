@@ -8,7 +8,7 @@
 
 ## 唯一入口
 
-`geneminer2` 负责解析参数、验证输入、生成计划、按样本并发执行，并在成功后运行 cohort、验证和清理。它不应理解某个组件的内部参数格式。
+`tipseek` 负责解析参数、验证输入、生成计划、按样本并发执行，并在成功后运行 cohort、验证和清理。它不应理解某个组件的内部参数格式。
 
 规划器先产生一个 `SamplePlan`（有序 `Stage` 列表），再产生零或一个 `CohortPlan`。每个阶段使用同一契约：
 
@@ -29,7 +29,7 @@ Stage {
 
 ```mermaid
 flowchart LR
-  CLI[geneminer2 CLI] --> P[Planner]
+  CLI[tipseek CLI] --> P[Planner]
   P --> S1[SamplePlan: sample A]
   P --> S2[SamplePlan: sample B]
   S1 --> R[Runner + manifest]
@@ -89,7 +89,7 @@ CLI 只选择 workflow，并交给 `Planner` 产生阶段。`Planner` 是唯一�
 ## 组件分层
 
 ```text
-geneminer2-cli
+tipseek-cli
   Planner: 选择上面的规范工作流，生成 SamplePlan + CohortPlan
   Runner: 并发、失败汇总、profile、resume、cleanup
   Registry: 组件名、能力、输入/输出契约、版本

@@ -22,7 +22,7 @@ const BINARIES: &[(&str, &str)] = &[
     ("rad_workflow", "rad_workflow"),
     ("marker_profile", "marker_profile"),
     ("main_repeat", "main_repeat"),
-    ("geneminer2_cli", "geneminer2-rust"),
+    ("tipseek", "tipseek-rust"),
 ];
 
 fn usage() {
@@ -89,11 +89,11 @@ fn build(root: &Path) -> io::Result<()> {
         mark_executable(&destination)?;
     }
 
-    let entrypoint = cli.join("geneminer2");
+    let entrypoint = cli.join("tipseek");
     if entrypoint.exists() || entrypoint.is_symlink() {
         fs::remove_file(&entrypoint)?;
     }
-    make_entrypoint(Path::new("bin/geneminer2-rust"), &entrypoint)?;
+    make_entrypoint(Path::new("bin/tipseek-rust"), &entrypoint)?;
     write_release_metadata(root, &cli, &bin_dir)
 }
 
@@ -112,7 +112,7 @@ fn sha256(path: &Path) -> io::Result<String> {
 }
 
 fn release_version(root: &Path) -> io::Result<String> {
-    let manifest = fs::read_to_string(root.join("rust/geneminer2_cli/Cargo.toml"))?;
+    let manifest = fs::read_to_string(root.join("rust/tipseek_cli/Cargo.toml"))?;
     manifest
         .lines()
         .map(str::trim)
@@ -145,7 +145,7 @@ fn write_release_metadata(root: &Path, cli: &Path, bin_dir: &Path) -> io::Result
     namespace_digest.update(checksums.join("\n").as_bytes());
     let namespace_hash = format!("{:x}", namespace_digest.finalize());
     let namespace = format!(
-        "https://github.com/GUIBA-EX/GeneMiner2-UCE/releases/binary-sbom/{version}/{}",
+        "https://github.com/GUIBA-EX/TipSeek/releases/binary-sbom/{version}/{}",
         namespace_hash
     );
 
@@ -164,7 +164,7 @@ fn write_release_metadata(root: &Path, cli: &Path, bin_dir: &Path) -> io::Result
         })
         .collect::<io::Result<Vec<_>>>()?;
     let sbom = format!(
-        "{{\"spdxVersion\":\"SPDX-2.3\",\"dataLicense\":\"CC0-1.0\",\"SPDXID\":\"SPDXRef-DOCUMENT\",\"name\":\"TStools binaries\",\"documentNamespace\":\"{namespace}\",\"creationInfo\":{{\"creators\":[\"Tool: TStools xtask\"]}},\"documentDescribes\":[\"SPDXRef-Package-TStools\"],\"packages\":[{{\"SPDXID\":\"SPDXRef-Package-TStools\",\"name\":\"TStools\",\"versionInfo\":\"{version}\",\"downloadLocation\":\"NOASSERTION\",\"licenseConcluded\":\"GPL-3.0-or-later\",\"licenseDeclared\":\"GPL-3.0-or-later\",\"copyrightText\":\"NOASSERTION\"}}],\"files\":[{}]}}",
+        "{{\"spdxVersion\":\"SPDX-2.3\",\"dataLicense\":\"CC0-1.0\",\"SPDXID\":\"SPDXRef-DOCUMENT\",\"name\":\"TipSeek binaries\",\"documentNamespace\":\"{namespace}\",\"creationInfo\":{{\"creators\":[\"Tool: TipSeek xtask\"]}},\"documentDescribes\":[\"SPDXRef-Package-TipSeek\"],\"packages\":[{{\"SPDXID\":\"SPDXRef-Package-TipSeek\",\"name\":\"TipSeek\",\"versionInfo\":\"{version}\",\"downloadLocation\":\"NOASSERTION\",\"licenseConcluded\":\"GPL-3.0-or-later\",\"licenseDeclared\":\"GPL-3.0-or-later\",\"copyrightText\":\"NOASSERTION\"}}],\"files\":[{}]}}",
         file_entries.join(",")
     );
     fs::write(cli.join("SBOM.spdx.json"), sbom)
@@ -177,7 +177,7 @@ fn clean(root: &Path) -> io::Result<()> {
     if bin_dir.exists() {
         fs::remove_dir_all(bin_dir)?;
     }
-    let entrypoint = cli.join("geneminer2");
+    let entrypoint = cli.join("tipseek");
     if entrypoint.exists() || entrypoint.is_symlink() {
         fs::remove_file(entrypoint)?;
     }

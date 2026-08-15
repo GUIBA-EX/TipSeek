@@ -9,7 +9,7 @@
 Each sample needs its completed UCE assembly (`uce_assembly_summary.csv` and accepted contigs in `results/`) plus the original R1/R2 files listed in the sample table. For `population`, optional `population` and `batch` fields may follow R2; leave the R2 field empty for single-end samples with metadata. The workflow requires minibwa, samtools, bcftools, and PLINK 1.9; ADMIXTURE is optional.
 
 ```bash
-cli/geneminer2 population \
+cli/tipseek population \
   -f samples.tsv -r baits_by_locus -o output -p 32 \
   --assembly-mode uce --engine panrefv2
 ```

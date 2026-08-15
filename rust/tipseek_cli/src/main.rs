@@ -6769,8 +6769,8 @@ fn execute_native(mut opt: Options) -> Result<(), String> {
 fn print_help() {
     let (workers, source) = auto_worker_budget();
     println!(
-        "GeneMiner2 Rust CLI\n\nNative Rust command dispatcher; no Python runtime is required.\n\n\
-Usage: geneminer2 [COMMAND ...] -f SAMPLES -r REFERENCES -o OUTPUT [-p INT|auto]\n\n\
+        "TipSeek CLI\n\nNative Rust command dispatcher; no Python runtime is required.\n\n\
+Usage: tipseek [COMMAND ...] -f SAMPLES -r REFERENCES -o OUTPUT [-p INT|auto]\n\n\
 Parallelism:\n  \
 -p INT|auto  Shared CPU budget. The default is auto, which counts physical\n               \
 cores allowed by affinity/cpuset and caps them by cgroup or scheduler limits.\n               \

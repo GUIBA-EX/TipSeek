@@ -30,5 +30,5 @@ runtime. The former Python implementation has been removed; release execution ha
 
 ## Cutover criterion
 
-`cli/geneminer2` points to the Rust binary. Each matrix row remains subject to
+`cli/tipseek` points to the Rust binary. Each matrix row remains subject to
 its listed fixture coverage; No Python implementation or dispatcher remains in the repository.

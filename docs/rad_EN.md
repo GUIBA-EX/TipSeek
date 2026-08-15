@@ -10,14 +10,14 @@
 
 ```bash
 # Build a reusable probe from a completed ipyrad matrix
-cli/geneminer2 rad-probe --ipyrad-loci assembly.loci -o rad_probe
+cli/tipseek rad-probe --ipyrad-loci assembly.loci -o rad_probe
 
 # Recover independent arms for new WGS samples
-cli/geneminer2 rad --rad-probe rad_probe/rad_reference \
+cli/tipseek rad --rad-probe rad_probe/rad_reference \
   -f wgs_samples.tsv -o rad_out -p 8
 
 # Write a separate validated strict matrix
-cli/geneminer2 rad-validate --rad-probe rad_probe/rad_reference \
+cli/tipseek rad-validate --rad-probe rad_probe/rad_reference \
   --rad-recovery rad_out/rad_recovery -o rad_validate_out
 ```
 
