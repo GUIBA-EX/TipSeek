@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="docs/images/tipseek_logo.png" alt="TipSeek logo" width="760">
+</p>
+
 # TipSeek
 
 [![CI](https://github.com/GUIBA-EX/TipSeek/actions/workflows/ci.yml/badge.svg?branch=master)](https://github.com/GUIBA-EX/TipSeek/actions/workflows/ci.yml)
