@@ -21,7 +21,7 @@ TipSeek is a reference-guided short-read recovery toolkit: it recruits reads wit
 
 ## Differences from GeneMiner2
 
-| Dimension | GeneMiner2 | Current TipSeek (v1.5.8) |
+| Dimension | GeneMiner2 | Current TipSeek (v1.6.2) |
 | --- | --- | --- |
 | Positioning | Algorithm and workflow for gene recovery from genome-skimming data | Reference-guided recovery and analysis toolkit for multiple short-read data types |
 | Production implementation | Upstream implementation | Rust-native production paths; no Python runtime required |
@@ -143,7 +143,7 @@ Please cite: Yu XY, Tang ZZ, Zhang Z, Song YX, He H, Shi Y, Hou JQ, Yu Y. 2026. 
   author  = {XIA, Fei and TANG, Zizhen and XU, Yan},
   title   = {TipSeek: Reference-Guided Short-Read Recovery for UCE, Mitochondrial, Gene-Family, and RAD Workflows},
   year    = {2026},
-  version = {1.5.8},
+  version = {1.6.2},
   url     = {https://github.com/GUIBA-EX/TipSeek},
   publisher = {GitHub},
   note    = {GPL-3.0-or-later licensed software}

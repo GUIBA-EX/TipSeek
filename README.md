@@ -21,7 +21,7 @@ TipSeek 是面向短 reads 的参考引导恢复工具：先以参考序列招�
 
 ## 与 GeneMiner2 的主要差异
 
-| 维度 | 原版 GeneMiner2 | 当前 TipSeek（v1.5.8） |
+| 维度 | 原版 GeneMiner2 | 当前 TipSeek（v1.6.2） |
 | --- | --- | --- |
 | 项目定位 | 基因组浅层测序数据的基因恢复算法与工作流 | 面向多类短 reads 数据的参考引导恢复与分析工具箱 |
 | 核心实现 | 上游实现 | Rust 原生生产路径；不依赖 Python 运行时 |
@@ -143,7 +143,7 @@ cli/tipseek te -f te_samples.tsv -o te_out -p 32
   author  = {XIA, Fei and TANG, Zizhen and XU, Yan},
   title   = {TipSeek: Reference-Guided Short-Read Recovery for UCE, Mitochondrial, Gene-Family, and RAD Workflows},
   year    = {2026},
-  version = {1.5.8},
+  version = {1.6.2},
   url     = {https://github.com/GUIBA-EX/TipSeek},
   publisher = {GitHub},
   note    = {GPL-3.0-or-later licensed software}
