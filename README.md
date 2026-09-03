@@ -44,6 +44,10 @@ cli/tipseek -h
 
 构建结果位于 `cli/`，并包含 `SHA256SUMS` 和 `SBOM.spdx.json`。
 
+不希望在服务器手工安装 Rust 和外部依赖时，可使用包含可再分发工作流软件的
+[Apptainer/Singularity 或 Docker 完整镜像](deployment/README.zh-CN.md)；
+ADMIXTURE 按其学术许可作为本地可选扩展。
+
 ## UCE 最小示例
 
 样本表为 tab 分隔文本，每行为 `sample_id  R1  [R2]`；参考目录中的每个 FASTA 文件代表一个 locus 或 bait。

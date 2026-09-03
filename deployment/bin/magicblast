@@ -1,0 +1,6 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+magicblast_prefix=${TIPSEEK_MAGICBLAST_PREFIX:-/opt/conda/envs/tipseek-magicblast}
+
+exec "$magicblast_prefix/bin/magicblast" "$@"

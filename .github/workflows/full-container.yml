@@ -1,0 +1,64 @@
+name: Full container
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - "Cargo.lock"
+      - "Cargo.toml"
+      - "rust/**"
+      - "rust-toolchain.toml"
+      - "deployment/**"
+      - ".dockerignore"
+      - ".github/workflows/full-container.yml"
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  linux-amd64:
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Image metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/guiba-ex/tipseek
+          tags: |
+            type=semver,pattern={{version}},suffix=-full
+            type=raw,value=full,enable=${{ startsWith(github.ref, 'refs/tags/') }}
+            type=ref,event=pr,suffix=-full
+            type=raw,value=full-test,enable=${{ github.event_name == 'workflow_dispatch' }}
+
+      - name: Build, validate, and optionally publish
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: deployment/Dockerfile
+          platforms: linux/amd64
+          push: ${{ startsWith(github.ref, 'refs/tags/') }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          build-args: |
+            TIPSEEK_VERSION=${{ github.ref_name }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          provenance: true
+          sbom: true
