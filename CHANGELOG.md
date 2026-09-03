@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Added a full Linux x86-64 Docker/OCI and Apptainer deployment with pinned
+  workflow dependencies, zlib-ng runtime checks, preserved license metadata,
+  release-versioned SBOMs, and tag-driven GHCR publication.
+
 ## v1.6.2 — TipSeek identity and evidence-bounded UCE recovery
 
 - Renamed the public project to TipSeek and changed the main command from `geneminer2` to `tipseek`; documentation and release links now use the TipSeek identity.

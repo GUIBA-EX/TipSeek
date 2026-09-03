@@ -1,0 +1,119 @@
+Bootstrap: docker
+From: rust:1.87.0-bookworm@sha256:6d79f767859a5f025a062505fa9f2c1a041cadafcee71fbcbd226223be462f18
+Stage: builder
+
+%arguments
+    TIPSEEK_VERSION=dev
+
+%files
+    Cargo.toml /src/Cargo.toml
+    Cargo.lock /src/Cargo.lock
+    rust-toolchain.toml /src/rust-toolchain.toml
+    rust /src/rust
+
+%post
+    export DEBIAN_FRONTEND=noninteractive
+    export TIPSEEK_RELEASE_VERSION='{{ TIPSEEK_VERSION }}'
+    apt-get update
+    apt-get install -y --no-install-recommends binutils build-essential ca-certificates curl pkg-config zlib1g-dev
+    rm -rf /var/lib/apt/lists/*
+
+    cd /src
+    export PKG_CONFIG_PATH=/nonexistent
+    export PKG_CONFIG_LIBDIR=/usr/lib/x86_64-linux-gnu/pkgconfig:/usr/share/pkgconfig
+    cargo run -p xtask -- build
+    ! readelf -d cli/bin/tipseek-rust | grep -q '/home/'
+    ! readelf -d cli/bin/tipseek-rust | grep -q 'libz-ng'
+
+    mkdir -p /third-party/themisto /third-party/alifilter
+    curl -fL --retry 3 -o /tmp/themisto.tar.gz \
+        https://github.com/algbio/themisto/releases/download/v3.2.2/themisto_linux-v3.2.2.tar.gz
+    echo '1ae148e2eff478ad444da61c5b43f8293ea9c52b72940c7aadd610a0f01217d0  /tmp/themisto.tar.gz' | sha256sum -c -
+    tar -xzf /tmp/themisto.tar.gz -C /third-party/themisto --strip-components=1
+    curl -fL --retry 3 -o /tmp/alifilter.tar.gz \
+        https://github.com/arklumpus/AliFilter/releases/download/v1.0.1/AliFilter-linux-x64.tar.gz
+    echo 'db9cb301d25e67edccd4efb644f9619b520062f15c557010d049330b9411a300  /tmp/alifilter.tar.gz' | sha256sum -c -
+    tar -xzf /tmp/alifilter.tar.gz -C /third-party/alifilter
+    curl -fL --retry 3 -o /third-party/alifilter/LICENSE.md \
+        https://raw.githubusercontent.com/arklumpus/AliFilter/v1.0.1/LICENSE.md
+    echo '585e25ef8f5946a52bf2aed68d5becfc38be94a8663aa01c1b31d88aa57f1de3  /third-party/alifilter/LICENSE.md' \
+        | sha256sum -c -
+
+Bootstrap: docker
+From: mambaorg/micromamba:2.9.0-debian12-slim@sha256:4f29126d15f60e722538868c7d95f5ed905c9b0f0e9eb833f60f0b966d0b7652
+Stage: runtime
+
+%files from builder
+    /src/cli /opt/tipseek/cli
+    /third-party/themisto/themisto /usr/local/bin/themisto
+    /third-party/alifilter/AliFilter /usr/local/bin/AliFilter
+    /third-party/themisto/LICENSE.txt /opt/tipseek/licenses/Themisto-LICENSE.txt
+    /third-party/alifilter/LICENSE.md /opt/tipseek/licenses/AliFilter-LICENSE.md
+
+%files
+    deployment/conda/environment-full.yml /tmp/environment-full.yml
+    deployment/conda/environment-magicblast.yml /tmp/environment-magicblast.yml
+    deployment/bin/magicblast /usr/local/bin/magicblast
+    deployment/bin/tipseek-doctor /usr/local/bin/tipseek-doctor
+    deployment/bin/tipseek-container-entrypoint /usr/local/bin/tipseek-container-entrypoint
+    deployment/THIRD_PARTY.md /opt/tipseek/THIRD_PARTY.md
+    LICENSE /opt/tipseek/LICENSE
+
+%post
+    export DEBIAN_FRONTEND=noninteractive
+    export MAMBA_ROOT_PREFIX=/opt/conda
+    export CONDA_OVERRIDE_ARCHSPEC=x86_64
+    apt-get update
+    apt-get install -y --no-install-recommends ca-certificates libgomp1 zlib1g
+    rm -rf /var/lib/apt/lists/*
+
+    micromamba install --yes --name base --file /tmp/environment-full.yml
+    micromamba create --yes --name tipseek-magicblast --file /tmp/environment-magicblast.yml
+    mkdir -p /opt/tipseek/licenses/conda
+    for license_dir in /opt/conda/pkgs/*/info/licenses; do
+        [ -d "$license_dir" ] || continue
+        package_dir="${license_dir%/info/licenses}"
+        package_name="${package_dir##*/}"
+        mkdir -p "/opt/tipseek/licenses/conda/$package_name"
+        cp -aL "$license_dir"/. "/opt/tipseek/licenses/conda/$package_name"/
+    done
+    micromamba clean --all --yes
+
+    cp -a /opt/conda/lib/libz-ng.so* /usr/local/lib/
+    ldconfig
+    ln -s /opt/tipseek/cli/tipseek /usr/local/bin/tipseek
+    chmod 0755 /usr/local/bin/themisto /usr/local/bin/AliFilter \
+        /usr/local/bin/magicblast /usr/local/bin/tipseek-doctor \
+        /usr/local/bin/tipseek-container-entrypoint
+    mkdir -p /work
+    chmod 0777 /work
+    micromamba list --name base --explicit > /opt/tipseek/conda-base-explicit.txt
+    micromamba list --name tipseek-magicblast --explicit > /opt/tipseek/conda-magicblast-explicit.txt
+
+%environment
+    export TIPSEEK_HOME=/opt/tipseek
+    export MAMBA_ROOT_PREFIX=/opt/conda
+    export PATH=/opt/tipseek/cli:/usr/local/bin:/opt/conda/bin:$PATH
+
+%runscript
+    exec /usr/local/bin/tipseek-container-entrypoint "$@"
+
+%test
+    /opt/tipseek/cli/tipseek --help >/dev/null
+    /opt/tipseek/cli/tipseek --version >/dev/null
+    /usr/local/bin/tipseek-doctor --profile all
+
+%labels
+    org.opencontainers.image.title TipSeek-full
+    org.opencontainers.image.source https://github.com/GUIBA-EX/TipSeek
+    org.opencontainers.image.version {{ TIPSEEK_VERSION }}
+
+%help
+    TipSeek full runtime for Linux x86-64.
+
+    Examples:
+      singularity run tipseek-full.sif --help
+      singularity exec tipseek-full.sif tipseek-doctor --profile all
+      singularity run --bind /data:/data tipseek-full.sif \
+        filter assemble -f /data/samples.tsv -r /data/references \
+        -o /data/output -p auto --assembly-mode uce

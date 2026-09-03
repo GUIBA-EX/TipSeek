@@ -44,6 +44,11 @@ cli/tipseek -h
 
 Build artifacts are written to `cli/` together with `SHA256SUMS` and `SBOM.spdx.json`.
 
+For a zero-setup server installation, use the
+[full Apptainer/Singularity or Docker image](deployment/README.md), which includes
+the redistributable workflow programs; ADMIXTURE remains a local, academic-use
+extension.
+
 ## Minimal UCE example
 
 The sample manifest is tab-delimited, with one `sample_id  R1  [R2]` record per line. Each FASTA file in the reference directory represents one locus or bait.

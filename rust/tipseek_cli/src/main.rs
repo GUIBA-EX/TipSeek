@@ -28,6 +28,9 @@ const UCE_TERMINAL_MIN_BREADTH: f64 = 0.85;
 const UCE_TERMINAL_MAX_GAP: usize = 30;
 const UCE_TERMINAL_MIN_FRAGMENTS: usize = 2;
 const UCE_TERMINAL_MIN_BRIDGES: usize = 1;
+fn tool_version() -> &'static str {
+    option_env!("TIPSEEK_RELEASE_VERSION").unwrap_or(env!("CARGO_PKG_VERSION"))
+}
 
 const COMMANDS: &[&str] = &[
     "filter",
@@ -5819,7 +5822,7 @@ fn workflow_manifest_text(opt: &Options, samples: &[Sample]) -> Result<String, S
     let mut rows = vec![
         "field\tvalue".into(),
         "schema_version\t1".into(),
-        format!("tool_version\t{}", env!("CARGO_PKG_VERSION")),
+        format!("tool_version\t{}", tool_version()),
         format!("commands\t{}", manifest_value(opt.commands.join(","))),
         format!("assembly_mode\t{}", manifest_value(&opt.assembly_mode)),
         format!("workers\t{}", opt.workers),
@@ -6811,6 +6814,10 @@ Detected auto budget: {workers} ({source})"
 
 fn main() -> ExitCode {
     let args = env::args().skip(1).collect::<Vec<_>>();
+    if matches!(args.as_slice(), [arg] if arg == "-V" || arg == "--version") {
+        println!("TipSeek {}", tool_version());
+        return ExitCode::SUCCESS;
+    }
     if args.iter().any(|arg| arg == "-h" || arg == "--help") {
         print_help();
         return ExitCode::SUCCESS;

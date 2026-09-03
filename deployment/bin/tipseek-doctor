@@ -1,0 +1,175 @@
+#!/usr/bin/env bash
+set -uo pipefail
+
+usage() {
+    cat <<'EOF'
+Usage: tipseek-doctor [--profile PROFILE]
+
+Profiles:
+  core         TipSeek native executables and gzip runtime
+  phylogeny    alignment, trimming, similarity search, and tree programs
+  profiling    Themisto marker profiling
+  population   mapping, variant, PLINK, and optional ADMIXTURE detection
+  gene         protein annotation, gene trees, and optional Julia runtime
+  rad          ipyrad input route
+  te           native TipSeek repeatome route
+  all          every program shipped in the full image (default)
+EOF
+}
+
+zlib_ng_smoke() (
+    set -e
+    local tipseek_home=$1
+    local smoke_dir
+
+    smoke_dir=$(mktemp -d "${TMPDIR:-/tmp}/tipseek-zlib-smoke.XXXXXX")
+    case "$smoke_dir" in
+        */tipseek-zlib-smoke.*) ;;
+        *) exit 1 ;;
+    esac
+    trap 'rm -rf -- "$smoke_dir"' EXIT
+
+    printf '%s\n' '>probe' 'ACGTACGTACGTACGTACGTACGTACGTACGT' \
+        > "$smoke_dir/reference.fasta"
+    python -c 'import gzip, sys; gzip.open(sys.argv[1], "wt").write("@read\nACGTACGTACGTACGTACGTACGTACGTACGT\n+\nIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIII\n")' \
+        "$smoke_dir/reads.fastq.gz"
+    "$tipseek_home/cli/bin/MainFilterNew" \
+        -r "$smoke_dir/reference.fasta" \
+        -q1 "$smoke_dir/reads.fastq.gz" \
+        -o "$smoke_dir/output" \
+        -kf 16 >/dev/null 2>&1
+    grep -Fq 'Gzip backend: zlib-ng.' "$smoke_dir/output/log.txt"
+)
+
+profile=all
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --profile)
+            [[ $# -ge 2 ]] || { echo "--profile requires a value" >&2; exit 2; }
+            profile=$2
+            shift 2
+            ;;
+        -h|--help)
+            usage
+            exit 0
+            ;;
+        *)
+            echo "Unknown argument: $1" >&2
+            usage >&2
+            exit 2
+            ;;
+    esac
+done
+
+case "$profile" in
+    core|te)
+        commands=(tipseek)
+        ;;
+    phylogeny)
+        commands=(tipseek mafft clustalo trimal AliFilter FastTree VeryFastTree iqtree raxml-ng astral blastn makeblastdb magicblast minimap2)
+        ;;
+    profiling)
+        commands=(tipseek themisto)
+        ;;
+    population)
+        commands=(tipseek minibwa samtools bcftools plink pigz)
+        ;;
+    gene)
+        commands=(tipseek miniprot mafft iqtree astral julia)
+        ;;
+    rad)
+        commands=(tipseek ipyrad)
+        ;;
+    all)
+        commands=(tipseek mafft clustalo trimal AliFilter FastTree VeryFastTree iqtree raxml-ng astral blastn makeblastdb magicblast minimap2 themisto minibwa samtools bcftools plink pigz miniprot julia ipyrad)
+        ;;
+    *)
+        echo "Unknown profile: $profile" >&2
+        usage >&2
+        exit 2
+        ;;
+esac
+
+printf 'component\tstatus\tpath\n'
+failures=0
+declare -A seen=()
+for command_name in "${commands[@]}"; do
+    if [[ -n ${seen[$command_name]+x} ]]; then
+        continue
+    fi
+    seen[$command_name]=1
+    command_path=$(command -v "$command_name" 2>/dev/null || true)
+    if [[ -n "$command_path" && -x "$command_path" ]]; then
+        printf '%s\tok\t%s\n' "$command_name" "$command_path"
+    else
+        printf '%s\tmissing\t-\n' "$command_name"
+        failures=$((failures + 1))
+    fi
+done
+
+if [[ "$profile" == population || "$profile" == all ]]; then
+    admixture_path=$(command -v admixture 2>/dev/null || true)
+    if [[ -n "$admixture_path" && -x "$admixture_path" ]]; then
+        printf 'admixture\toptional-present\t%s\n' "$admixture_path"
+    else
+        printf 'admixture\toptional-not-shipped\tsee deployment guide\n'
+    fi
+fi
+
+# Existence alone does not catch an incompatible Python interpreter.
+if [[ "$profile" == rad || "$profile" == all ]]; then
+    if ! ipyrad --version >/dev/null 2>&1; then
+        printf 'ipyrad-runtime\tbroken\tipyrad --version failed\n'
+        failures=$((failures + 1))
+    fi
+fi
+
+
+if [[ "$profile" == core || "$profile" == te || "$profile" == all ]]; then
+    tipseek_home=${TIPSEEK_HOME:-/opt/tipseek}
+    internal=(
+        build_consensus MainFilterNew main_refilter_new uce_filter
+        main_assembler-original-rust main_assembler-rust main_population
+        fix_alignment merge_seq build_trimed gm2_stats mito_workflow
+        gene_workflow rad_workflow marker_profile main_repeat tipseek-rust
+    )
+    for executable in "${internal[@]}"; do
+        executable_path="$tipseek_home/cli/bin/$executable"
+        if [[ -x "$executable_path" ]]; then
+            printf 'internal:%s\tok\t%s\n' "$executable" "$executable_path"
+        else
+            printf 'internal:%s\tmissing\t%s\n' "$executable" "$executable_path"
+            failures=$((failures + 1))
+        fi
+    done
+
+    zlib_ng_path=''
+    zlib_ng_candidates=(/usr/local/lib/libz-ng.so.2 /opt/conda/lib/libz-ng.so.2)
+    if [[ -n ${CONDA_PREFIX:-} ]]; then
+        zlib_ng_candidates+=("$CONDA_PREFIX/lib/libz-ng.so.2")
+    fi
+    for candidate in "${zlib_ng_candidates[@]}"; do
+        if [[ -e "$candidate" ]]; then
+            zlib_ng_path=$candidate
+            break
+        fi
+    done
+    if [[ -z "$zlib_ng_path" ]]; then
+        printf 'zlib-ng\tmissing\t-\n'
+        failures=$((failures + 1))
+    else
+        printf 'zlib-ng\tok\t%s\n' "$zlib_ng_path"
+        if zlib_ng_smoke "$tipseek_home"; then
+            printf 'zlib-ng-runtime\tok\tMainFilterNew gzip smoke\n'
+        else
+            printf 'zlib-ng-runtime\tbroken\tMainFilterNew did not select zlib-ng\n'
+            failures=$((failures + 1))
+        fi
+    fi
+fi
+
+if (( failures > 0 )); then
+    printf 'summary\tfailed\t%d missing component(s)\n' "$failures"
+    exit 1
+fi
+printf 'summary\tok\tprofile=%s\n' "$profile"

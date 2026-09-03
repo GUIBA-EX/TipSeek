@@ -1,0 +1,15 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+tipseek_home=${TIPSEEK_HOME:-/opt/tipseek}
+tipseek_command="$tipseek_home/cli/tipseek"
+
+if [[ $# -eq 0 ]]; then
+    exec "$tipseek_command" --help
+fi
+
+if [[ $1 != -* ]] && command -v "$1" >/dev/null 2>&1; then
+    exec "$@"
+fi
+
+exec "$tipseek_command" "$@"

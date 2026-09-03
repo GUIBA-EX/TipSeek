@@ -49,6 +49,20 @@ fn run_cargo(root: &Path, args: &[&str]) -> io::Result<()> {
     }
 }
 
+fn cargo_target_dir(root: &Path) -> PathBuf {
+    match env::var_os("CARGO_TARGET_DIR") {
+        Some(configured) => {
+            let configured = PathBuf::from(configured);
+            if configured.is_absolute() {
+                configured
+            } else {
+                root.join(configured)
+            }
+        }
+        None => root.join("target"),
+    }
+}
+
 #[cfg(unix)]
 fn make_entrypoint(target: &Path, entrypoint: &Path) -> io::Result<()> {
     use std::os::unix::fs::symlink;
@@ -81,7 +95,7 @@ fn build(root: &Path) -> io::Result<()> {
     }
     fs::create_dir_all(&bin_dir)?;
 
-    let release_dir = root.join("target/release");
+    let release_dir = cargo_target_dir(root).join("release");
     for (source, destination) in BINARIES {
         let source = release_dir.join(source);
         let destination = bin_dir.join(destination);
@@ -112,6 +126,20 @@ fn sha256(path: &Path) -> io::Result<String> {
 }
 
 fn release_version(root: &Path) -> io::Result<String> {
+    if let Ok(configured) = env::var("TIPSEEK_RELEASE_VERSION") {
+        let configured = configured.trim();
+        if configured.is_empty()
+            || !configured
+                .chars()
+                .all(|character| character.is_ascii_alphanumeric() || ".-_+/".contains(character))
+        {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "TIPSEEK_RELEASE_VERSION contains unsupported characters",
+            ));
+        }
+        return Ok(configured.to_owned());
+    }
     let manifest = fs::read_to_string(root.join("rust/tipseek_cli/Cargo.toml"))?;
     manifest
         .lines()

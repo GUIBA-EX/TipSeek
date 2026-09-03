@@ -1,0 +1,15 @@
+# syntax=docker/dockerfile:1.7
+
+# Build this extension locally only after reviewing ADMIXTURE's academic-use
+# terms. The project workflow deliberately does not publish this image.
+ARG TIPSEEK_BASE_IMAGE=tipseek:full
+FROM ${TIPSEEK_BASE_IMAGE}
+
+COPY deployment/conda/environment-admixture-academic.yml /tmp/environment-admixture-academic.yml
+
+RUN micromamba install --yes --name base --file /tmp/environment-admixture-academic.yml \
+    && micromamba clean --all --yes \
+    && admixture --help >/dev/null
+
+LABEL org.opencontainers.image.title="TipSeek full academic extension" \
+      org.opencontainers.image.description="Locally built TipSeek image with ADMIXTURE"
