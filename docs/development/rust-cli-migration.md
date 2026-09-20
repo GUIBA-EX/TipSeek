@@ -5,13 +5,13 @@ runtime. The former Python implementation has been removed; release execution ha
 
 | Command family | Native backend(s) | Rust CLI state | Completion evidence |
 | --- | --- | --- | --- |
-| `filter` / `refilter` / `assemble` original | `MainFilterNew`, `main_refilter_new`, `main_assembler-original-rust` | partial (native standalone + gene route) | paired/single-end recovery and generic original-workflow fixtures |
+| default `gene` recovery (`filter` / `refilter` / `assemble`) | `MainFilterNew`, `main_refilter_new`, `main_assembler-original-rust`, `gene_workflow` | partial | paired/single-end recovery and gene-cohort fixtures |
 | UCE recovery | `uce_filter`, `main_assembler-rust`, `gm2_tools` | partial (paired native and legacy-candidate paths) | paired native/legacy fixtures; single-end and shadow failure fixtures remain |
 | UCE rescue | UCE recovery backends | partial (whole-contig + terminal-only rounds with per-end read-evidence reconciliation) | broader biological fixtures and end-to-end parity fixtures remain |
 | `mito` | `mito_workflow`, UCE tools | partial (native full skeleton) | bait collapse, text refilter, seed rescue and circular adaptive-stop fixture; biological circular/linear fixtures pending |
 | `rad`, `rad-probe`, `rad-validate` | `rad_workflow`, optional ipyrad, MainFilter, refilter, original-rust | native route | synthetic `.loci`, inferred ipyrad output, strict/phylogeny arm matrix, partial-arm and CLI-dispatch fixtures |
-| `gene` | `gene_workflow`, original-rust tools | partial | single/paired recovery and cohort fixtures |
-| gene annotate/resolve/tree | `gene_workflow` + external tools | partial (standalone routes) | annotation dispatch + ASTER/provenance fixtures; resolve fixture pending |
+| `--assembly-mode exon` | `gene_workflow`, original-rust tools, miniprot | partial | integrated annotation dispatch and structural/N-padding fixtures |
+| `gene-resolve` / `gene-tree` | `gene_workflow` + external tools | partial (standalone routes) | ASTER/provenance fixtures; resolve fixture pending |
 | `profiling` | `marker_profile` | partial (native complete route) | single-marker recruitment/quantification fixture; cache and decoy fixtures pending |
 | `population` | `main_population` + external tools | partial (standalone route) | default/panref option forwarding fixtures; staged-output fixture pending |
 | `te` | `main_repeat` | partial (standalone route) | default/stage/optional-library forwarding fixture; full stage fixture pending |

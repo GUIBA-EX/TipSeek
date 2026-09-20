@@ -4,27 +4,17 @@
 
 Assembly turns recruited locus reads into contigs. Choose the workflow by biological target, not by sequencer or library label.
 
-| Workflow | Appropriate target | Default backend | Result |
-|---|---|---|---|
-| `--assembly-mode original` | Exons, SCOs, nuclear markers, and mitochondrial markers | `original-rust` | Reference-guided contigs, trimmed by default |
-| `--assembly-mode uce` | UCEs from genome-skimming or target-capture data | `uce-rust` | UCE cores plus read-supported flanks |
-
-## Backends
-
-`original-rust` is the deterministic Rust compatibility backend for `original`; `original` remains an alias for compatibility. `uce-rust` is the only backend for `uce`.
+| Mode | Appropriate target | Result |
+|---|---|---|
+| `gene` (default) | Nuclear gene families and other reference-guided markers | Per-sample candidate contigs and cohort family summaries |
+| `exon` | Gene families requiring exon/intron structure | Gene candidates plus validated CDS, exons, introns, and supercontigs |
+| `uce` | UCEs from genome-skimming or target-capture data | UCE cores plus read-supported flanks |
 
 All backends use reference-positioned seeds, read-k-mer support, bidirectional extension, and read-slice validation.
 
-## Original workflow
+## Gene assembly
 
-The original algorithm extends the highest-weight edge first and keeps alternatives on a stack for backtracking. It retains up to three candidates per side before combining and scoring them. This is appropriate for shorter reference-guided targets such as exons and organellar markers.
-
-```bash
-cli/tipseek -f samples.tsv -r references -o output -p 8 \
-  --assembly-mode original
-```
-
-`original-rust` can reuse a versioned binary reference-k-mer cache with `--reuse-reference-cache`.
+The gene assembler extends the highest-weight edge first and keeps alternatives for bounded backtracking. It retains up to three candidates per side before combining and scoring them. `gene` builds family summaries from those candidates; `exon` adds protein-guided miniprot annotation and structural validation. Use `--reuse-reference-cache` to reuse the validated reference k-mer cache. Commands, exon-model QC, and N-padding validation are documented in the [gene workflow guide](gene_EN.md).
 
 ## UCE read routes: `ucefilter` and main + re
 

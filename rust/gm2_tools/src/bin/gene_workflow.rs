@@ -12,9 +12,101 @@ use std::env;
 use std::fs::{self, File};
 use std::io::{self, BufRead, BufReader, BufWriter, Write};
 use std::path::{Path, PathBuf};
-use std::process::Command;
+use std::process::{Command, Output};
+
+use gm2_tools::gene_annotation::{
+    build_gene_model, read_dna_fasta, reverse_complement as reverse_complement_iupac,
+    select_competing_models, GeneModel, Interval, ModelConfig, ModelState, Strand,
+};
 
 const FASTA_EXTENSIONS: &[&str] = &["fa", "fas", "fasta"];
+
+fn complementary_union_fraction(
+    left: Interval,
+    right: Interval,
+    protein_len: usize,
+) -> Option<f64> {
+    if protein_len == 0 {
+        return None;
+    }
+    let overlap = left.overlap(right);
+    let shorter = left.len().min(right.len());
+    let covered_union = left.len() + right.len() - overlap;
+    let improvement = covered_union.saturating_sub(left.len().max(right.len()));
+    (overlap * 10 <= shorter && improvement * 5 >= protein_len)
+        .then_some(covered_union as f64 / protein_len as f64)
+}
+
+fn complete_fragment_union_fraction(
+    left: Interval,
+    right: Interval,
+    protein_len: usize,
+    complete_coverage: f64,
+) -> Option<f64> {
+    let fraction = complementary_union_fraction(left, right, protein_len)?;
+    let terminal_tolerance = 3usize.max((protein_len as f64 * 0.02).ceil() as usize);
+    let start = left.start.min(right.start);
+    let end = left.end.max(right.end);
+    (fraction >= complete_coverage
+        && start <= terminal_tolerance
+        && protein_len.saturating_sub(end) <= terminal_tolerance)
+        .then_some(fraction)
+}
+
+fn oriented_candidate(sequence: &str, strand: Strand) -> String {
+    match strand {
+        Strand::Forward => sequence.to_owned(),
+        Strand::Reverse => reverse_complement_iupac(sequence),
+    }
+}
+
+fn run_miniprot(
+    executable: &str,
+    target: &Path,
+    proteins: &Path,
+    threads: &str,
+    max_intron: usize,
+) -> io::Result<(Output, String)> {
+    let max_intron = max_intron.to_string();
+    let command = format!(
+        "{executable} --gff -j 1 -G {max_intron} --outc 0.10 --outs 0.20 -N 32 --outn 32 -t {threads} {} {}",
+        target.display(),
+        proteins.display()
+    );
+    let output = Command::new(executable)
+        .args([
+            "--gff",
+            "-j",
+            "1",
+            "-G",
+            &max_intron,
+            "--outc",
+            "0.10",
+            "--outs",
+            "0.20",
+            "-N",
+            "32",
+            "--outn",
+            "32",
+            "-t",
+            threads,
+        ])
+        .arg(target)
+        .arg(proteins)
+        .output()?;
+    Ok((output, command))
+}
+
+#[derive(Clone, Debug)]
+struct FragmentOutcome {
+    left_model: usize,
+    right_model: usize,
+    covered_union_fraction: f64,
+    padding_nt: usize,
+    derived_candidate: String,
+    status: String,
+    reason: String,
+}
 
 #[derive(Clone, Debug)]
 struct Candidate {
@@ -30,7 +122,7 @@ struct Call {
 
 fn usage() -> ! {
     eprintln!(
-        "Usage:\n  gene_workflow classify --reference DIR --contigs DIR --sample NAME --out DIR\n  gene_workflow cohort --reference DIR --out DIR --sample NAME [--sample NAME ...]\n  gene_workflow annotate --input DIR --protein-reference DIR --out DIR --miniprot FILE [--threads N]\n  gene_workflow resolve --input DIR --out DIR --mafft FILE --iqtree FILE --min-taxa N [--threads N] [--outgroup FILE] [--ufboot N] [--min-aa-length N] [--min-effective-codon-sites N] [--taper-script FILE --julia FILE]"
+        "Usage:\n  gene_workflow classify --reference DIR --contigs DIR --sample NAME --out DIR\n  gene_workflow cohort --reference DIR --out DIR --sample NAME [--sample NAME ...]\n  gene_workflow annotate --input DIR --protein-reference DIR --out DIR --miniprot FILE [--threads N] [--max-intron N] [--minimum-coverage F] [--complete-coverage F] [--flank N] [--fragment-padding N]\n  gene_workflow resolve --input DIR --out DIR --mafft FILE --iqtree FILE --min-taxa N [--threads N] [--outgroup FILE] [--ufboot N] [--min-aa-length N] [--min-effective-codon-sites N] [--taper-script FILE --julia FILE]"
     );
     std::process::exit(2);
 }
@@ -98,6 +190,39 @@ fn option_positive_usize(
         Ok(n) if n > 0 => n,
         _ => {
             eprintln!("{name} must be a positive integer");
+            usage();
+        }
+    }
+}
+
+fn option_usize(options: &HashMap<String, Vec<String>>, name: &str, default: usize) -> usize {
+    let value = options
+        .get(name)
+        .and_then(|values| values.first())
+        .map(String::as_str)
+        .unwrap_or("");
+    if value.is_empty() {
+        return default;
+    }
+    value.parse::<usize>().unwrap_or_else(|_| {
+        eprintln!("{name} must be a non-negative integer");
+        usage();
+    })
+}
+
+fn option_fraction(options: &HashMap<String, Vec<String>>, name: &str, default: f64) -> f64 {
+    let value = options
+        .get(name)
+        .and_then(|values| values.first())
+        .map(String::as_str)
+        .unwrap_or("");
+    if value.is_empty() {
+        return default;
+    }
+    match value.parse::<f64>() {
+        Ok(value) if value.is_finite() && (0.0..=1.0).contains(&value) => value,
+        _ => {
+            eprintln!("{name} must be a finite number between 0 and 1");
             usage();
         }
     }
@@ -192,25 +317,6 @@ fn read_raw_fasta(path: &Path) -> io::Result<Vec<(String, String)>> {
     }
     Ok(records)
 }
-fn codon_aa(codon: &[u8]) -> char {
-    fn b(x: u8) -> Option<usize> {
-        match x {
-            b'T' => Some(0),
-            b'C' => Some(1),
-            b'A' => Some(2),
-            b'G' => Some(3),
-            _ => None,
-        }
-    }
-    let (Some(a), Some(b), Some(c)) = (b(codon[0]), b(codon[1]), b(codon[2])) else {
-        return 'X';
-    };
-    const TABLE: &str = "FFLLSSSSYY**CC*WLLLLPPPPHHQQRRRRIIIMTTTTNNKKSSRRVVVVAAAADDEEGGGG";
-    TABLE.as_bytes()[a * 16 + b * 4 + c] as char
-}
-fn translate_cds(sequence: &str) -> String {
-    sequence.as_bytes().chunks_exact(3).map(codon_aa).collect()
-}
 fn codon_backtranslate(aligned: &str, cds: &str) -> Option<String> {
     let mut offset = 0usize;
     let mut out = String::new();
@@ -223,7 +329,65 @@ fn codon_backtranslate(aligned: &str, cds: &str) -> Option<String> {
             offset += 3
         }
     }
-    Some(out)
+    (offset == cds.len()).then_some(out)
+}
+
+fn trim_terminal_stop<'a>(cds: &'a str, protein: &mut String) -> &'a str {
+    if protein.ends_with('*') {
+        protein.pop();
+        &cds[..cds.len() - 3]
+    } else {
+        cds
+    }
+}
+
+fn resolve_eligible_headers(input: &Path) -> io::Result<Option<BTreeSet<String>>> {
+    let manifest = input.join("models/gene_models.tsv");
+    if !manifest.is_file() {
+        return Ok(None);
+    }
+    let mut lines = BufReader::new(File::open(manifest)?).lines();
+    let Some(header) = lines.next().transpose()? else {
+        return Ok(Some(BTreeSet::new()));
+    };
+    let columns: Vec<_> = header.split('\t').collect();
+    let index = |name: &str| {
+        columns
+            .iter()
+            .position(|column| *column == name)
+            .ok_or_else(|| {
+                io::Error::new(
+                    io::ErrorKind::InvalidData,
+                    format!("gene_models.tsv lacks required column {name}"),
+                )
+            })
+    };
+    let sample_index = index("sample")?;
+    let family_index = index("family_id")?;
+    let candidate_index = index("candidate")?;
+    let model_index = index("model")?;
+    let eligible_index = index("eligible_for_resolve")?;
+    let mut eligible = BTreeSet::new();
+    for line in lines {
+        let fields: Vec<_> = line?.split('\t').map(str::to_owned).collect();
+        if fields.get(eligible_index).map(String::as_str) != Some("1") {
+            continue;
+        }
+        let Some(sample) = fields.get(sample_index) else {
+            continue;
+        };
+        let Some(family) = fields.get(family_index) else {
+            continue;
+        };
+        let Some(candidate) = fields.get(candidate_index) else {
+            continue;
+        };
+        let Some(model) = fields.get(model_index) else {
+            continue;
+        };
+        eligible.insert(format!("{sample}|{family}|{candidate}|{model}"));
+    }
+    Ok(Some(eligible))
 }
 
 fn reverse_complement(sequence: &str) -> String {
@@ -589,64 +753,340 @@ fn ensure_nonoverlapping_paths(inputs: &[&Path], out: &Path) -> io::Result<()> {
     Ok(())
 }
 
+fn sorted_directory_paths(path: &Path) -> io::Result<Vec<PathBuf>> {
+    let mut paths = fs::read_dir(path)?
+        .map(|entry| entry.map(|entry| entry.path()))
+        .collect::<io::Result<Vec<_>>>()?;
+    paths.sort();
+    Ok(paths)
+}
+
+fn append_fasta(path: &Path, header: &str, sequence: &str) -> io::Result<()> {
+    let mut writer = BufWriter::new(File::options().create(true).append(true).open(path)?);
+    writeln!(writer, ">{header}\n{sequence}")
+}
+
+fn safe_identifier(value: &str) -> String {
+    value
+        .chars()
+        .map(|character| {
+            if character.is_ascii_alphanumeric() || matches!(character, '.' | '_' | '-') {
+                character
+            } else {
+                '_'
+            }
+        })
+        .collect()
+}
+
+fn write_normalized_gff(
+    path: &Path,
+    sample: &str,
+    family: &str,
+    model_name: &str,
+    model: &GeneModel,
+) -> io::Result<()> {
+    let mut writer = BufWriter::new(File::create(path)?);
+    let root = safe_identifier(&format!(
+        "{sample}.{family}.{}.{}",
+        model.candidate_id, model_name
+    ));
+    let gene_id = format!("{root}.gene");
+    let transcript_id = format!("{root}.mrna");
+    let seqid = &model.candidate_id;
+    let start = model.genomic_interval.start + 1;
+    let end = model.genomic_interval.end;
+    let strand = model.strand.as_char();
+    writeln!(writer, "##gff-version 3")?;
+    writeln!(
+        writer,
+        "{seqid}\tTipSeek\tgene\t{start}\t{end}\t{}\t{strand}\t.\tID={gene_id};family={}",
+        model.alignment_score,
+        safe_identifier(family)
+    )?;
+    writeln!(
+        writer,
+        "{seqid}\tTipSeek\tmRNA\t{start}\t{end}\t{}\t{strand}\t.\tID={transcript_id};Parent={gene_id};protein_reference={};state={}",
+        model.alignment_score,
+        safe_identifier(&model.protein_id),
+        model.state.as_str()
+    )?;
+    for exon in &model.exons {
+        let exon_start = exon.interval.start + 1;
+        let exon_end = exon.interval.end;
+        let phase = exon
+            .phase
+            .map(|value| value.to_string())
+            .unwrap_or_else(|| ".".to_owned());
+        writeln!(
+            writer,
+            "{seqid}\tTipSeek\texon\t{exon_start}\t{exon_end}\t.\t{strand}\t.\tID={transcript_id}.exon{};Parent={transcript_id}",
+            exon.index
+        )?;
+        writeln!(
+            writer,
+            "{seqid}\tTipSeek\tCDS\t{exon_start}\t{exon_end}\t{}\t{strand}\t{phase}\tID={transcript_id}.cds{};Parent={transcript_id}",
+            model.alignment_score,
+            exon.index
+        )?;
+    }
+    for intron in &model.introns {
+        let intron_start = intron.interval.start + 1;
+        let intron_end = intron.interval.end;
+        writeln!(
+            writer,
+            "{seqid}\tTipSeek\tintron\t{intron_start}\t{intron_end}\t.\t{strand}\t.\tID={transcript_id}.intron{};Parent={transcript_id};donor={};acceptor={};splice_class={}",
+            intron.index,
+            intron.donor,
+            intron.acceptor,
+            intron.splice_class.as_str()
+        )?;
+    }
+    Ok(())
+}
+
+fn manifest_header() -> &'static str {
+    "sample\tfamily_id\tcandidate\tmodel\tprotein_reference\tquery_length_aa\tquery_start_aa\tquery_end_aa\tprotein_coverage\talignment_score\tidentity\tpositive\tstrand\tgenomic_start\tgenomic_end\tframeshifts\tinternal_stops\texon_count\tintron_count\tcds_length\tprotein_length\tgene_length\tfive_prime_trim_nt\tthree_prime_trim_nt\tstate\tqc_flags\tcompetition_group\tselected\teligible_for_resolve"
+}
+
+fn write_status_row<W: Write>(
+    writer: &mut W,
+    sample: &str,
+    family: &str,
+    candidate: &str,
+    state: &str,
+    qc: &str,
+) -> io::Result<()> {
+    let mut fields = vec![sample.to_owned(), family.to_owned(), candidate.to_owned()];
+    fields.extend((0..21).map(|_| String::new()));
+    fields.push(state.to_owned());
+    fields.push(qc.to_owned());
+    fields.extend((0..3).map(|_| "0".to_owned()));
+    writeln!(writer, "{}", fields.join("\t"))
+}
+
+fn model_manifest_fields(
+    sample: &str,
+    family: &str,
+    candidate: &str,
+    model_name: &str,
+    model: &GeneModel,
+) -> Vec<String> {
+    vec![
+        sample.to_owned(),
+        family.to_owned(),
+        candidate.to_owned(),
+        model_name.to_owned(),
+        model.protein_id.clone(),
+        model.protein_len_aa.to_string(),
+        model.query_interval_aa.start.to_string(),
+        model.query_interval_aa.end.to_string(),
+        format!("{:.6}", model.coverage()),
+        model.alignment_score.to_string(),
+        format!("{:.6}", model.identity()),
+        format!("{:.6}", model.positive_fraction()),
+        model.strand.as_char().to_string(),
+        (model.genomic_interval.start + 1).to_string(),
+        model.genomic_interval.end.to_string(),
+        model.frameshifts.to_string(),
+        model.inframe_stops.to_string(),
+        model.exons.len().to_string(),
+        model.introns.len().to_string(),
+        model.cds.len().to_string(),
+        model
+            .protein
+            .as_ref()
+            .map(String::len)
+            .unwrap_or(0)
+            .to_string(),
+        model.gene.len().to_string(),
+        model.five_prime_trim_nt.to_string(),
+        model.three_prime_trim_nt.to_string(),
+        model.state.as_str().to_owned(),
+        model.qc_flags.join(";"),
+        model.competition_group.to_string(),
+        usize::from(model.selected).to_string(),
+        usize::from(model.selected && model.eligible_for_resolve).to_string(),
+    ]
+}
+
+fn write_unresolved_sequence(
+    unresolved: &Path,
+    family: &str,
+    state: &str,
+    header: &str,
+    sequence: &str,
+) -> io::Result<()> {
+    let directory = unresolved.join(state);
+    fs::create_dir_all(&directory)?;
+    append_fasta(&directory.join(format!("{family}.fasta")), header, sequence)
+}
+
+fn validated_miniprot_version(executable: &str) -> io::Result<String> {
+    let output = Command::new(executable).arg("--version").output()?;
+    if !output.status.success() {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "miniprot --version failed",
+        ));
+    }
+    let text = format!(
+        "{} {}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let version = text
+        .split_whitespace()
+        .find(|token| {
+            token
+                .chars()
+                .next()
+                .is_some_and(|value| value.is_ascii_digit())
+        })
+        .ok_or_else(|| {
+            io::Error::new(
+                io::ErrorKind::InvalidData,
+                "could not parse miniprot version",
+            )
+        })?;
+    let numeric = version.split('-').next().unwrap_or(version);
+    let mut parts = numeric.split('.');
+    let major = parts.next().and_then(|value| value.parse::<usize>().ok());
+    let minor = parts.next().and_then(|value| value.parse::<usize>().ok());
+    if !matches!((major, minor), (Some(major), Some(minor)) if major > 0 || minor >= 18) {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            format!("miniprot >=0.18 is required; found {version}"),
+        ));
+    }
+    Ok(version.to_owned())
+}
+
+#[allow(clippy::too_many_arguments)]
 fn annotate(
     input: PathBuf,
     proteins: PathBuf,
     out: PathBuf,
     miniprot: String,
     threads: String,
+    max_intron: usize,
+    minimum_coverage: f64,
+    complete_coverage: f64,
+    flank: usize,
+    fragment_padding: usize,
 ) -> io::Result<()> {
     ensure_nonoverlapping_paths(&[input.as_path(), proteins.as_path()], &out)?;
+    if !(0.0..=1.0).contains(&minimum_coverage)
+        || !(0.0..=1.0).contains(&complete_coverage)
+        || minimum_coverage > complete_coverage
+    {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "gene model coverage thresholds must satisfy 0 <= minimum <= complete <= 1",
+        ));
+    }
+    let miniprot_version = validated_miniprot_version(&miniprot)?;
     if out.exists() {
         fs::remove_dir_all(&out)?;
     }
     let manifest_dir = out.join("manifest");
-    let gff_dir = out.join("gff");
+    let models_dir = out.join("models");
+    let raw_dir = out.join("raw_miniprot");
+    let gff_dir = out.join("gff3");
     let cds_dir = out.join("cds");
+    let protein_dir = out.join("proteins");
+    let exon_dir = out.join("exons");
     let intron_dir = out.join("introns");
+    let gene_dir = out.join("genes");
+    let flanked_dir = out.join("genes_flanked");
     let super_dir = out.join("supercontigs");
-    fs::create_dir_all(&manifest_dir)?;
-    fs::create_dir_all(&gff_dir)?;
-    fs::create_dir_all(&cds_dir)?;
-    fs::create_dir_all(&intron_dir)?;
-    fs::create_dir_all(&super_dir)?;
-    let mut manifest = BufWriter::new(File::create(manifest_dir.join("candidate_manifest.tsv"))?);
+    let unresolved_dir = out.join("unresolved");
+    let work_dir = out.join(".work");
+    for directory in [
+        &manifest_dir,
+        &models_dir,
+        &raw_dir,
+        &gff_dir,
+        &cds_dir,
+        &protein_dir,
+        &exon_dir,
+        &intron_dir,
+        &gene_dir,
+        &flanked_dir,
+        &super_dir,
+        &unresolved_dir,
+        &work_dir,
+    ] {
+        fs::create_dir_all(directory)?;
+    }
+    let mut candidate_manifest =
+        BufWriter::new(File::create(manifest_dir.join("candidate_manifest.tsv"))?);
+    let mut gene_models = BufWriter::new(File::create(models_dir.join("gene_models.tsv"))?);
+    let mut gene_segments = BufWriter::new(File::create(models_dir.join("gene_segments.tsv"))?);
+    let mut id_map = BufWriter::new(File::create(manifest_dir.join("id_map.tsv"))?);
+    let mut warnings = BufWriter::new(File::create(manifest_dir.join("annotation_warnings.tsv"))?);
+    let mut fragments = BufWriter::new(File::create(manifest_dir.join("fragment_groups.tsv"))?);
+    let mut provenance = BufWriter::new(File::create(manifest_dir.join("command_provenance.tsv"))?);
+    writeln!(candidate_manifest, "{}", manifest_header())?;
+    writeln!(gene_models, "{}", manifest_header())?;
+    writeln!(gene_segments, "sample\tfamily_id\tcandidate\tmodel\tsegment_index\tkind\ttarget_start\ttarget_end\tstrand\tphase\tlength\tdonor\tacceptor\tsplice_class\tobserved")?;
     writeln!(
-        manifest,
-        "sample\tfamily_id\tcandidate\tprotein_reference\tminiprot_score\tprotein_identity\tprotein_coverage\texon_count\tcds_length\tintron_length\tsupercontig_length\tstructure_state"
+        id_map,
+        "sample\tfamily_id\tinternal_candidate\tcandidate\tsequence_length"
     )?;
-    for family_entry in fs::read_dir(input.join("samples"))? {
-        let sample_path = family_entry?.path();
+    writeln!(warnings, "sample\tfamily_id\tcandidate\tstage\tdetail")?;
+    writeln!(fragments, "sample\tfamily_id\tcandidate_a\tmodel_a\tcandidate_b\tmodel_b\tprotein_reference\tcovered_union_fraction\tpadding_nt\tderived_candidate\tstatus\treason")?;
+    writeln!(
+        provenance,
+        "sample\tfamily_id\tcandidate\tminiprot_version\tcommand"
+    )?;
+    let config = ModelConfig {
+        minimum_coverage,
+        complete_coverage,
+    };
+    let mut eligible_counts: BTreeMap<(String, String), usize> = BTreeMap::new();
+
+    for sample_path in sorted_directory_paths(&input.join("samples"))? {
         if !sample_path.is_dir() {
             continue;
-        };
+        }
         let sample = sample_path
             .file_name()
             .unwrap()
             .to_string_lossy()
             .to_string();
-        let candidates = sample_path.join("candidates");
-        if !candidates.is_dir() {
+        let candidates_dir = sample_path.join("candidates");
+        if !candidates_dir.is_dir() {
             continue;
-        };
-        for entry in fs::read_dir(candidates)? {
-            let fasta = entry?.path();
+        }
+        for fasta in sorted_directory_paths(&candidates_dir)? {
             let Some(family) = family_id(&fasta) else {
                 continue;
             };
-            let protein = proteins.join(format!("{family}.faa"));
-            let records = read_fasta(&fasta)?;
-            if !protein.is_file() {
-                for (header, _) in &records {
-                    let candidate = header.split('|').next_back().unwrap_or("candidate");
-                    writeln!(
-                        manifest,
-                        "{sample}\t{family}\t{candidate}\t\t0\t0\t0\t0\t0\t0\t0\tmissing_protein_reference"
+            let records = read_dna_fasta(&fasta)?;
+            let protein_path = proteins.join(format!("{family}.faa"));
+            if !protein_path.is_file() {
+                for record in &records {
+                    let candidate = record.id.split('|').next_back().unwrap_or(&record.id);
+                    write_status_row(
+                        &mut candidate_manifest,
+                        &sample,
+                        &family,
+                        candidate,
+                        "missing_protein_reference",
+                        "missing_protein_reference",
+                    )?;
+                    write_unresolved_sequence(
+                        &unresolved_dir,
+                        &family,
+                        "missing_protein_reference",
+                        &format!("{sample}|{family}|{candidate}"),
+                        &record.sequence,
                     )?;
                 }
                 continue;
             }
-            let protein_lengths: BTreeMap<String, usize> = read_raw_fasta(&protein)?
+            let protein_lengths: BTreeMap<String, usize> = read_raw_fasta(&protein_path)?
                 .into_iter()
                 .map(|(header, sequence)| {
                     (
@@ -659,207 +1099,560 @@ fn annotate(
                     )
                 })
                 .collect();
-            for (header, seq) in records {
-                let candidate = header
+            let family_work = work_dir.join(&sample).join(&family);
+            fs::create_dir_all(&family_work)?;
+            let mut candidate_map: BTreeMap<String, (String, String)> = BTreeMap::new();
+            for (index, record) in records.iter().enumerate() {
+                let internal = format!("TSK{:06}", index + 1);
+                let candidate = record
+                    .id
                     .split('|')
                     .next_back()
-                    .unwrap_or("candidate")
-                    .to_string();
-                let work = out.join(".work");
-                fs::create_dir_all(&work)?;
-                let dna = work.join(format!("{sample}_{family}_{candidate}.fa"));
+                    .unwrap_or(&record.id)
+                    .to_owned();
+                writeln!(
+                    id_map,
+                    "{sample}\t{family}\t{internal}\t{candidate}\t{}",
+                    record.sequence.len()
+                )?;
+                candidate_map.insert(internal, (candidate, record.sequence.clone()));
+            }
+            let family_raw = raw_dir.join(&sample).join(&family);
+            fs::create_dir_all(&family_raw)?;
+            let mut built_models = Vec::new();
+            let mut handled_candidates = BTreeSet::new();
+            for (internal, (candidate, sequence)) in &candidate_map {
+                let targets_path = family_work.join(format!("{internal}.targets.fasta"));
                 {
-                    let mut w = BufWriter::new(File::create(&dna)?);
-                    writeln!(w, ">{candidate}\n{seq}")?;
+                    let mut target_writer = BufWriter::new(File::create(&targets_path)?);
+                    writeln!(target_writer, ">{internal}\n{sequence}")?;
                 }
-                let result = Command::new(&miniprot)
-                    .args(["--gff-only", "-t", &threads])
-                    .arg(&dna)
-                    .arg(&protein)
-                    .output()?;
+                let (result, command_text) = run_miniprot(
+                    &miniprot,
+                    &targets_path,
+                    &protein_path,
+                    &threads,
+                    max_intron,
+                )?;
+                writeln!(
+                    provenance,
+                    "{sample}\t{family}\t{candidate}\t{miniprot_version}\t{command_text}"
+                )?;
+                fs::write(family_raw.join(format!("{internal}.gff3")), &result.stdout)?;
+                fs::write(
+                    family_raw.join(format!("{internal}.stderr.txt")),
+                    &result.stderr,
+                )?;
                 if !result.status.success() {
-                    writeln!(
-                        manifest,
-                        "{sample}\t{family}\t{candidate}\t{family}\t0\t0\t0\t0\t0\t0\t0\tminiprot_failed"
+                    handled_candidates.insert(candidate.clone());
+                    write_status_row(
+                        &mut candidate_manifest,
+                        &sample,
+                        &family,
+                        candidate,
+                        "miniprot_failed",
+                        "miniprot_failed",
+                    )?;
+                    write_unresolved_sequence(
+                        &unresolved_dir,
+                        &family,
+                        "miniprot_failed",
+                        &format!("{sample}|{family}|{candidate}"),
+                        sequence,
                     )?;
                     continue;
                 }
-                let gff = String::from_utf8_lossy(&result.stdout);
-                let mut by_parent: BTreeMap<String, Vec<(usize, usize, &str)>> = BTreeMap::new();
-                let mut hit_meta: BTreeMap<String, (String, String, String, String)> =
-                    BTreeMap::new();
-                for line in gff.lines() {
-                    let f: Vec<_> = line.split('\t').collect();
-                    if f.len() == 9 && f[2] == "mRNA" {
-                        let id = f[8]
-                            .split(';')
-                            .find_map(|x| x.strip_prefix("ID="))
-                            .unwrap_or("")
-                            .to_string();
-                        let identity = f[8]
-                            .split(';')
-                            .find_map(|x| x.strip_prefix("Identity="))
-                            .unwrap_or("0")
-                            .to_string();
-                        let target_fields = f[8]
-                            .split(';')
-                            .find_map(|x| x.strip_prefix("Target="))
-                            .unwrap_or("")
-                            .split_whitespace()
-                            .collect::<Vec<_>>();
-                        let target = target_fields.first().copied().unwrap_or("").to_string();
-                        let coverage = if let (Some(start), Some(end), Some(length)) = (
-                            target_fields.get(1).and_then(|x| x.parse::<usize>().ok()),
-                            target_fields.get(2).and_then(|x| x.parse::<usize>().ok()),
-                            protein_lengths.get(&target),
-                        ) {
-                            let denominator = if end > *length {
-                                length.saturating_mul(3)
-                            } else {
-                                *length
-                            };
-                            format!(
-                                "{:.4}",
-                                ((end.saturating_sub(start) + 1) as f64 / denominator as f64)
-                                    .min(1.0)
-                            )
+                let raw_text = String::from_utf8_lossy(&result.stdout);
+                let report = gm2_tools::gene_annotation::parse_miniprot_output(&raw_text);
+                for warning in &report.warnings {
+                    writeln!(
+                        warnings,
+                        "{sample}\t{family}\t{candidate}\tparse\t{warning}"
+                    )?;
+                }
+                if report.unassigned_paf > 0 {
+                    writeln!(
+                        warnings,
+                        "{sample}\t{family}\t{candidate}\tparse\tunassigned_paf={}",
+                        report.unassigned_paf
+                    )?;
+                }
+                if !report.models.is_empty() {
+                    handled_candidates.insert(candidate.clone());
+                }
+                for mut raw_model in report.models {
+                    if raw_model.candidate_id != *internal {
+                        writeln!(
+                            warnings,
+                            "{sample}\t{family}\t{candidate}\tbuild\tunknown_internal_candidate={}",
+                            raw_model.candidate_id
+                        )?;
+                        continue;
+                    }
+                    raw_model.candidate_id = candidate.clone();
+                    match build_gene_model(
+                        &raw_model,
+                        sequence,
+                        protein_lengths.get(&raw_model.protein_id).copied(),
+                        config,
+                    ) {
+                        Ok(model) => built_models.push(model),
+                        Err(error) => {
+                            writeln!(warnings, "{sample}\t{family}\t{candidate}\tbuild\t{error}")?;
+                            write_status_row(
+                                &mut candidate_manifest,
+                                &sample,
+                                &family,
+                                candidate,
+                                "model_build_failed",
+                                &error,
+                            )?;
+                            write_unresolved_sequence(
+                                &unresolved_dir,
+                                &family,
+                                "model_build_failed",
+                                &format!(
+                                    "{sample}|{family}|{candidate}|{}",
+                                    safe_identifier(&raw_model.gff_id)
+                                ),
+                                sequence,
+                            )?;
+                        }
+                    }
+                }
+            }
+            for (candidate, sequence) in candidate_map.values() {
+                if !handled_candidates.contains(candidate) {
+                    write_status_row(
+                        &mut candidate_manifest,
+                        &sample,
+                        &family,
+                        candidate,
+                        "protein_unsupported",
+                        "no_miniprot_model",
+                    )?;
+                    write_unresolved_sequence(
+                        &unresolved_dir,
+                        &family,
+                        "protein_unsupported",
+                        &format!("{sample}|{family}|{candidate}"),
+                        sequence,
+                    )?;
+                }
+            }
+            built_models.sort_by(|left, right| {
+                left.candidate_id
+                    .cmp(&right.candidate_id)
+                    .then_with(|| {
+                        left.genomic_interval
+                            .start
+                            .cmp(&right.genomic_interval.start)
+                    })
+                    .then_with(|| left.protein_id.cmp(&right.protein_id))
+                    .then_with(|| left.gff_id.cmp(&right.gff_id))
+            });
+            select_competing_models(&mut built_models);
+            let complete_proteins: BTreeSet<String> = built_models
+                .iter()
+                .filter(|model| {
+                    model.selected
+                        && model.eligible_for_resolve
+                        && model.state == ModelState::Complete
+                })
+                .map(|model| model.protein_id.clone())
+                .collect();
+            let mut compatible_pairs = Vec::new();
+            for left in 0..built_models.len() {
+                for right in left + 1..built_models.len() {
+                    let a = &built_models[left];
+                    let b = &built_models[right];
+                    if !a.selected
+                        || !b.selected
+                        || !a.eligible_for_resolve
+                        || !b.eligible_for_resolve
+                        || a.state != ModelState::TerminalPartial
+                        || b.state != ModelState::TerminalPartial
+                        || a.candidate_id == b.candidate_id
+                        || a.protein_id != b.protein_id
+                        || a.protein_len_aa != b.protein_len_aa
+                        || complete_proteins.contains(&a.protein_id)
+                    {
+                        continue;
+                    }
+                    if let Some(fraction) = complete_fragment_union_fraction(
+                        a.query_interval_aa,
+                        b.query_interval_aa,
+                        a.protein_len_aa,
+                        complete_coverage,
+                    ) {
+                        let pair = if a.query_interval_aa.start <= b.query_interval_aa.start {
+                            (left, right, fraction)
                         } else {
-                            "0".to_string()
+                            (right, left, fraction)
                         };
-                        hit_meta.insert(id, (target, f[5].to_string(), identity, coverage));
+                        compatible_pairs.push(pair);
                     }
-                    if f.len() == 9 && f[2] == "CDS" {
-                        if let (Ok(a), Ok(b)) = (f[3].parse::<usize>(), f[4].parse::<usize>()) {
-                            let parent = f[8]
-                                .split(';')
-                                .find_map(|x| x.strip_prefix("Parent="))
-                                .unwrap_or("ungrouped")
-                                .to_string();
-                            if a >= 1 && a <= b && b <= seq.len() {
-                                by_parent.entry(parent).or_default().push((a, b, f[6]));
+                }
+            }
+            let mut fragment_outcomes = Vec::new();
+            if compatible_pairs.len() > 1 {
+                for (left, right, fraction) in compatible_pairs {
+                    fragment_outcomes.push(FragmentOutcome {
+                        left_model: left,
+                        right_model: right,
+                        covered_union_fraction: fraction,
+                        padding_nt: 0,
+                        derived_candidate: String::new(),
+                        status: "ambiguous_fragment_set".to_owned(),
+                        reason: "multiple_compatible_pairs".to_owned(),
+                    });
+                }
+            } else if let Some((left, right, fraction)) = compatible_pairs.pop() {
+                if fragment_padding == 0 {
+                    fragment_outcomes.push(FragmentOutcome {
+                        left_model: left,
+                        right_model: right,
+                        covered_union_fraction: fraction,
+                        padding_nt: 0,
+                        derived_candidate: String::new(),
+                        status: "compatible_unstitched".to_owned(),
+                        reason: "fragment_padding_disabled".to_owned(),
+                    });
+                } else {
+                    let left_model = built_models[left].clone();
+                    let right_model = built_models[right].clone();
+                    let left_sequence = candidate_map
+                        .values()
+                        .find(|(candidate, _)| candidate == &left_model.candidate_id)
+                        .map(|(_, sequence)| oriented_candidate(sequence, left_model.strand));
+                    let right_sequence = candidate_map
+                        .values()
+                        .find(|(candidate, _)| candidate == &right_model.candidate_id)
+                        .map(|(_, sequence)| oriented_candidate(sequence, right_model.strand));
+                    let derived_candidate = "padded_join_1".to_owned();
+                    let derived_internal = "TSKPAD001".to_owned();
+                    let mut accepted_model = None;
+                    let mut failure_reason = "source_candidate_missing".to_owned();
+                    if let (Some(left_sequence), Some(right_sequence)) =
+                        (left_sequence, right_sequence)
+                    {
+                        let padding_start = left_sequence.len();
+                        let padding_end = padding_start + fragment_padding;
+                        let mut padded_sequence = String::with_capacity(
+                            left_sequence.len() + fragment_padding + right_sequence.len(),
+                        );
+                        padded_sequence.push_str(&left_sequence);
+                        padded_sequence.push_str(&"N".repeat(fragment_padding));
+                        padded_sequence.push_str(&right_sequence);
+                        let target_path =
+                            family_work.join(format!("{derived_internal}.targets.fasta"));
+                        {
+                            let mut writer = BufWriter::new(File::create(&target_path)?);
+                            writeln!(writer, ">{derived_internal}\n{padded_sequence}")?;
+                        }
+                        let (result, command_text) = run_miniprot(
+                            &miniprot,
+                            &target_path,
+                            &protein_path,
+                            &threads,
+                            max_intron,
+                        )?;
+                        writeln!(
+                            provenance,
+                            "{sample}\t{family}\t{derived_candidate}\t{miniprot_version}\t{command_text}"
+                        )?;
+                        fs::write(
+                            family_raw.join(format!("{derived_internal}.gff3")),
+                            &result.stdout,
+                        )?;
+                        fs::write(
+                            family_raw.join(format!("{derived_internal}.stderr.txt")),
+                            &result.stderr,
+                        )?;
+                        if result.status.success() {
+                            let raw_text = String::from_utf8_lossy(&result.stdout);
+                            let report =
+                                gm2_tools::gene_annotation::parse_miniprot_output(&raw_text);
+                            for warning in &report.warnings {
+                                writeln!(
+                                    warnings,
+                                    "{sample}\t{family}\t{derived_candidate}\tparse\t{warning}"
+                                )?;
                             }
-                        }
-                    }
-                }
-                let (best_parent, mut exons) = by_parent
-                    .into_iter()
-                    .max_by_key(|(_, v)| v.iter().map(|x| x.1 - x.0 + 1).sum::<usize>())
-                    .unwrap_or_else(|| (String::new(), Vec::new()));
-                let (protein_id, miniprot_score, protein_identity, protein_coverage) = hit_meta
-                    .remove(&best_parent)
-                    .unwrap_or_else(|| (String::new(), "0".into(), "0".into(), "0".into()));
-                exons.sort_by_key(|x| x.0);
-                if exons
-                    .iter()
-                    .any(|x| x.2 != exons.first().map(|y| y.2).unwrap_or("+"))
-                {
-                    exons.clear();
-                }
-                let reverse = exons.first().map(|x| x.2 == "-").unwrap_or(false);
-                if reverse {
-                    exons.reverse();
-                }
-                let mut cds = String::new();
-                let mut introns = String::new();
-                for (i, (a, b, strand)) in exons.iter().enumerate() {
-                    let part = &seq[a - 1..*b];
-                    let oriented = if *strand == "-" {
-                        reverse_complement(part)
-                    } else {
-                        part.to_string()
-                    };
-                    cds.push_str(&oriented);
-                    if i + 1 < exons.len() {
-                        let (na, nb, _) = exons[i + 1];
-                        let (l, r) = if reverse { (nb, *a) } else { (*b, na) };
-                        if l < r {
-                            let part = &seq[l..r - 1];
-                            let oriented = if reverse {
-                                reverse_complement(part)
+                            let mut padded_models = Vec::new();
+                            for mut raw_model in report.models.into_iter().filter(|model| {
+                                model.candidate_id == derived_internal
+                                    && model.protein_id == left_model.protein_id
+                            }) {
+                                raw_model.candidate_id = derived_candidate.clone();
+                                match build_gene_model(
+                                    &raw_model,
+                                    &padded_sequence,
+                                    protein_lengths.get(&raw_model.protein_id).copied(),
+                                    config,
+                                ) {
+                                    Ok(model) => padded_models.push(model),
+                                    Err(error) => {
+                                        writeln!(warnings, "{sample}\t{family}\t{derived_candidate}\tbuild\t{error}")?;
+                                    }
+                                }
+                            }
+                            select_competing_models(&mut padded_models);
+                            let mut valid = padded_models.into_iter().filter(|model| {
+                                model.selected
+                                    && model.eligible_for_resolve
+                                    && model.state == ModelState::Complete
+                                    && model.strand == Strand::Forward
+                                    && model.genomic_interval.start <= padding_start
+                                    && model.genomic_interval.end >= padding_end
+                                    && model.introns.iter().any(|intron| {
+                                        intron.interval.start <= padding_start
+                                            && intron.interval.end >= padding_end
+                                    })
+                                    && model.exons.iter().all(|exon| {
+                                        exon.interval.overlap(Interval {
+                                            start: padding_start,
+                                            end: padding_end,
+                                        }) == 0
+                                    })
+                            });
+                            if let Some(mut model) = valid.next() {
+                                if valid.next().is_none() {
+                                    model.qc_flags.push("padded_fragment_join".to_owned());
+                                    accepted_model = Some((model, padded_sequence));
+                                    failure_reason.clear();
+                                } else {
+                                    failure_reason = "multiple_validated_padded_models".to_owned();
+                                }
                             } else {
-                                part.to_string()
+                                failure_reason = "padded_model_not_validated".to_owned();
+                            }
+                        } else {
+                            failure_reason = "padded_miniprot_failed".to_owned();
+                        }
+                    }
+                    if let Some((mut model, padded_sequence)) = accepted_model {
+                        built_models[left].selected = false;
+                        built_models[left].eligible_for_resolve = false;
+                        built_models[left]
+                            .qc_flags
+                            .push("superseded_by_padded_join".to_owned());
+                        built_models[right].selected = false;
+                        built_models[right].eligible_for_resolve = false;
+                        built_models[right]
+                            .qc_flags
+                            .push("superseded_by_padded_join".to_owned());
+                        model.competition_group = built_models
+                            .iter()
+                            .map(|model| model.competition_group)
+                            .max()
+                            .unwrap_or(0)
+                            + 1;
+                        candidate_map.insert(
+                            derived_internal.clone(),
+                            (derived_candidate.clone(), padded_sequence.clone()),
+                        );
+                        writeln!(
+                            id_map,
+                            "{sample}\t{family}\t{derived_internal}\t{derived_candidate}\t{}",
+                            padded_sequence.len()
+                        )?;
+                        built_models.push(model);
+                        fragment_outcomes.push(FragmentOutcome {
+                            left_model: left,
+                            right_model: right,
+                            covered_union_fraction: fraction,
+                            padding_nt: fragment_padding,
+                            derived_candidate,
+                            status: "padded_validated".to_owned(),
+                            reason: String::new(),
+                        });
+                    } else {
+                        fragment_outcomes.push(FragmentOutcome {
+                            left_model: left,
+                            right_model: right,
+                            covered_union_fraction: fraction,
+                            padding_nt: fragment_padding,
+                            derived_candidate,
+                            status: "padded_validation_failed".to_owned(),
+                            reason: failure_reason,
+                        });
+                    }
+                }
+            }
+            let mut model_numbers: BTreeMap<String, usize> = BTreeMap::new();
+            let model_names: Vec<String> = built_models
+                .iter()
+                .map(|model| {
+                    let number = model_numbers.entry(model.candidate_id.clone()).or_default();
+                    *number += 1;
+                    format!("model_{number}")
+                })
+                .collect();
+            for outcome in fragment_outcomes {
+                let left = &built_models[outcome.left_model];
+                let right = &built_models[outcome.right_model];
+                writeln!(
+                    fragments,
+                    "{sample}\t{family}\t{}\t{}\t{}\t{}\t{}\t{:.6}\t{}\t{}\t{}\t{}",
+                    left.candidate_id,
+                    model_names[outcome.left_model],
+                    right.candidate_id,
+                    model_names[outcome.right_model],
+                    left.protein_id,
+                    outcome.covered_union_fraction,
+                    outcome.padding_nt,
+                    outcome.derived_candidate,
+                    outcome.status,
+                    outcome.reason,
+                )?;
+            }
+            for (model, model_name) in built_models.into_iter().zip(model_names) {
+                let header = format!("{sample}|{family}|{}|{model_name}", model.candidate_id);
+                let fields = model_manifest_fields(
+                    &sample,
+                    &family,
+                    &model.candidate_id,
+                    &model_name,
+                    &model,
+                );
+                writeln!(candidate_manifest, "{}", fields.join("\t"))?;
+                writeln!(gene_models, "{}", fields.join("\t"))?;
+                for exon in &model.exons {
+                    let observed = usize::from(
+                        !model
+                            .qc_flags
+                            .iter()
+                            .any(|flag| flag == "padded_fragment_join")
+                            || !exon.sequence.contains('N'),
+                    );
+                    writeln!(gene_segments, "{sample}\t{family}\t{}\t{model_name}\t{}\tcds_exon\t{}\t{}\t{}\t{}\t{}\t\t\t\t{observed}",
+                        model.candidate_id, exon.index, exon.interval.start + 1, exon.interval.end, model.strand.as_char(), exon.phase.map(|value| value.to_string()).unwrap_or_else(|| ".".into()), exon.sequence.len())?;
+                }
+                for intron in &model.introns {
+                    let observed = usize::from(
+                        !model
+                            .qc_flags
+                            .iter()
+                            .any(|flag| flag == "padded_fragment_join")
+                            || !intron.sequence.contains('N'),
+                    );
+                    writeln!(gene_segments, "{sample}\t{family}\t{}\t{model_name}\t{}\tintron\t{}\t{}\t{}\t.\t{}\t{}\t{}\t{}\t{observed}",
+                        model.candidate_id, intron.index, intron.interval.start + 1, intron.interval.end, model.strand.as_char(), intron.sequence.len(), intron.donor, intron.acceptor, intron.splice_class.as_str())?;
+                }
+                let model_gff_dir = gff_dir.join(&sample).join(&family);
+                fs::create_dir_all(&model_gff_dir)?;
+                write_normalized_gff(
+                    &model_gff_dir.join(format!("{}.{}.gff3", model.candidate_id, model_name)),
+                    &sample,
+                    &family,
+                    &model_name,
+                    &model,
+                )?;
+                if model.selected {
+                    for exon in &model.exons {
+                        append_fasta(
+                            &exon_dir.join(format!("{family}.fasta")),
+                            &format!("{header}|exon_{}", exon.index),
+                            &exon.sequence,
+                        )?;
+                    }
+                    for intron in &model.introns {
+                        append_fasta(
+                            &intron_dir.join(format!("{family}.fasta")),
+                            &format!("{header}|intron_{}", intron.index),
+                            &intron.sequence,
+                        )?;
+                    }
+                    if !model
+                        .qc_flags
+                        .iter()
+                        .any(|flag| flag == "padded_fragment_join")
+                    {
+                        append_fasta(
+                            &gene_dir.join(format!("{family}.fasta")),
+                            &header,
+                            &model.gene,
+                        )?;
+                    }
+                    append_fasta(
+                        &super_dir.join(format!("{family}.fasta")),
+                        &header,
+                        &model.gene,
+                    )?;
+                    if flank > 0 {
+                        if let Some((_, sequence)) = candidate_map
+                            .values()
+                            .find(|(candidate, _)| candidate == &model.candidate_id)
+                        {
+                            let start = model.genomic_interval.start.saturating_sub(flank);
+                            let end = (model.genomic_interval.end + flank).min(sequence.len());
+                            let part = &sequence[start..end];
+                            let flanked = if model.strand == Strand::Reverse {
+                                reverse_complement_iupac(part)
+                            } else {
+                                part.to_owned()
                             };
-                            introns.push_str(&oriented);
+                            append_fasta(
+                                &flanked_dir.join(format!("{family}.fasta")),
+                                &header,
+                                &flanked,
+                            )?;
                         }
                     }
                 }
-                let supercontig = if exons.is_empty() {
-                    String::new()
+                if model.selected && model.eligible_for_resolve {
+                    append_fasta(
+                        &cds_dir.join(format!("{family}.fasta")),
+                        &header,
+                        &model.cds,
+                    )?;
+                    append_fasta(
+                        &protein_dir.join(format!("{family}.fasta")),
+                        &header,
+                        model.protein.as_deref().unwrap_or(""),
+                    )?;
+                    *eligible_counts
+                        .entry((sample.clone(), family.clone()))
+                        .or_default() += 1;
                 } else {
-                    let lo = exons.iter().map(|x| x.0).min().unwrap();
-                    let hi = exons.iter().map(|x| x.1).max().unwrap();
-                    let part = &seq[lo - 1..hi];
-                    if reverse {
-                        reverse_complement(part)
+                    let unresolved_state = if model
+                        .qc_flags
+                        .iter()
+                        .any(|flag| flag == "superseded_by_padded_join")
+                    {
+                        "superseded_by_padded_join"
+                    } else if !model.selected
+                        && model
+                            .qc_flags
+                            .iter()
+                            .any(|flag| flag == "competing_model_not_selected")
+                    {
+                        "competing_model_not_selected"
                     } else {
-                        part.to_string()
-                    }
-                };
-                let state = if exons.is_empty() {
-                    "protein_unsupported"
-                } else {
-                    "protein_supported"
-                };
-                let gf = gff_dir.join(&sample).join(&family);
-                fs::create_dir_all(&gf)?;
-                fs::write(gf.join(format!("{candidate}.gff3")), gff.as_bytes())?;
-                if !cds.is_empty() {
-                    let mut w = BufWriter::new(
-                        File::options()
-                            .create(true)
-                            .append(true)
-                            .open(cds_dir.join(format!("{family}.fasta")))?,
-                    );
-                    writeln!(w, ">{sample}|{family}|{candidate}\n{cds}")?;
-                    let mut w = BufWriter::new(
-                        File::options()
-                            .create(true)
-                            .append(true)
-                            .open(intron_dir.join(format!("{family}.fasta")))?,
-                    );
-                    if !introns.is_empty() {
-                        writeln!(w, ">{sample}|{family}|{candidate}\n{introns}")?;
-                    }
-                    let mut w = BufWriter::new(
-                        File::options()
-                            .create(true)
-                            .append(true)
-                            .open(super_dir.join(format!("{family}.fasta")))?,
-                    );
-                    writeln!(w, ">{sample}|{family}|{candidate}\n{supercontig}")?;
+                        model.state.as_str()
+                    };
+                    write_unresolved_sequence(
+                        &unresolved_dir,
+                        &family,
+                        unresolved_state,
+                        &header,
+                        &model.cds,
+                    )?;
                 }
-                writeln!(
-                    manifest,
-                    "{sample}\t{family}\t{candidate}\t{protein_id}\t{miniprot_score}\t{protein_identity}\t{protein_coverage}\t{}\t{}\t{}\t{}\t{state}",
-                    exons.len(),
-                    cds.len(),
-                    introns.len(),
-                    supercontig.len()
-                )?;
             }
         }
     }
     let mut multi = BufWriter::new(File::create(
         manifest_dir.join("long_multiple_candidates.tsv"),
     )?);
-    writeln!(multi, "sample\tfamily_id\tprotein_supported_candidates")?;
-    for entry in fs::read_dir(&cds_dir)? {
-        let fasta = entry?.path();
-        let Some(family) = family_id(&fasta) else {
-            continue;
-        };
-        let mut counts: BTreeMap<String, usize> = BTreeMap::new();
-        for (header, _) in read_fasta(&fasta)? {
-            if let Some(sample) = header.split('|').next() {
-                *counts.entry(sample.to_owned()).or_default() += 1
-            }
-        }
-        for (sample, count) in counts {
-            if count > 1 {
-                writeln!(multi, "{sample}\t{family}\t{count}")?;
-            }
+    writeln!(multi, "sample\tfamily_id\tresolve_eligible_models")?;
+    for ((sample, family), count) in eligible_counts {
+        if count > 1 {
+            writeln!(multi, "{sample}\t{family}\t{count}")?;
         }
     }
+    fs::remove_dir_all(&work_dir)?;
     Ok(())
 }
 
@@ -1019,6 +1812,8 @@ fn resolve_workflow(
         None => BTreeSet::new(),
     };
     let cds = input.join("cds");
+    let eligible_headers = resolve_eligible_headers(&input)?;
+    let mut seen_eligible_headers = BTreeSet::new();
     let work = out.join("work");
     let strict = out.join("resolved_1to1");
     let unresolved = out.join("unresolved_multicandidate");
@@ -1040,25 +1835,41 @@ fn resolve_workflow(
     writeln!(family_qc, "family_id\tstatus\tinput_candidates\taa_alignment_columns\tcodon_alignment_columns\teffective_codon_columns\teffective_codon_fraction\ttaper_applied")?;
     writeln!(occupancy_qc, "family_id\tstage\tinput_candidates\tretained_candidates\tdistinct_samples\tmedian_sequence_length\tminimum_required\tstatus\treason")?;
     writeln!(selection_qc, "family_id\ttree_samples\tsingle_candidate_samples\tmulti_candidate_samples\tselected_clade\tclade_taxa\tclade_occupancy\tclade_support\tselected_leaves")?;
-    for entry in fs::read_dir(&cds)? {
-        let fasta = entry?.path();
+    for fasta in sorted_directory_paths(&cds)? {
         let Some(family) = family_id(&fasta) else {
             continue;
         };
         let records = read_fasta(&fasta)?;
+        if let Some(eligible) = &eligible_headers {
+            for (header, _) in &records {
+                if !eligible.contains(header) {
+                    return Err(io::Error::new(
+                        io::ErrorKind::InvalidData,
+                        format!("CDS record is not marked eligible_for_resolve: {header}"),
+                    ));
+                }
+                seen_eligible_headers.insert(header.clone());
+            }
+        }
         let family_work = work.join(&family);
         fs::create_dir_all(&family_work)?;
         let aa_input = family_work.join("proteins.fasta");
         let mut aa_records = Vec::new();
+        let mut cds_by_header = BTreeMap::new();
         let mut invalid_translation = 0usize;
         let mut short_protein = 0usize;
         for (header, cds) in &records {
-            let protein = translate_cds(cds);
+            let Ok(mut protein) = gm2_tools::gene_annotation::translate_cds(cds) else {
+                invalid_translation += 1;
+                continue;
+            };
+            let alignment_cds = trim_terminal_stop(cds, &mut protein);
             if protein.contains('X') || protein.contains('*') {
                 invalid_translation += 1;
             } else if protein.len() < min_aa_length {
                 short_protein += 1;
             } else {
+                cds_by_header.insert(header.clone(), alignment_cds.to_owned());
                 aa_records.push((header.clone(), protein));
             }
         }
@@ -1154,10 +1965,6 @@ fn resolve_workflow(
             fs::copy(&fasta, unresolved.join(format!("{family}.fasta")))?;
             continue;
         }
-        let cds_by_header: BTreeMap<String, String> = records
-            .iter()
-            .map(|(h, q)| (h.clone(), q.clone()))
-            .collect();
         let aln = family_work.join("aligned.codon.fasta");
         let codon_alignment: Vec<(String, String)> = aligned_records
             .iter()
@@ -1309,6 +2116,14 @@ fn resolve_workflow(
             writeln!(manifest, "{family}\tunresolved\t\t\tremaining_candidates")?;
         }
     }
+    if let Some(eligible) = eligible_headers {
+        if let Some(missing) = eligible.difference(&seen_eligible_headers).next() {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                format!("eligible gene model has no CDS record: {missing}"),
+            ));
+        }
+    }
     Ok(())
 }
 
@@ -1393,6 +2208,11 @@ fn main() -> io::Result<()> {
                 .and_then(|v| v.first())
                 .cloned()
                 .unwrap_or_else(|| "1".into()),
+            option_positive_usize(&options, "--max-intron", 50_000),
+            option_fraction(&options, "--minimum-coverage", 0.20),
+            option_fraction(&options, "--complete-coverage", 0.80),
+            option_usize(&options, "--flank", 0),
+            option_usize(&options, "--fragment-padding", 100),
         ),
         _ => usage(),
     }
@@ -1401,6 +2221,14 @@ fn main() -> io::Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn temporary_test_directory(name: &str) -> PathBuf {
+        let nonce = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        std::env::temp_dir().join(format!("tipseek_{name}_{}_{nonce}", std::process::id()))
+    }
 
     #[test]
     fn canonical_collapses_reverse_complements() {
@@ -1474,5 +2302,213 @@ mod tests {
         };
         assert!(is_strict_path_prefix(&extension, &prefix));
         assert!(!is_strict_path_prefix(&internal_repeat, &prefix));
+    }
+
+    #[test]
+    fn codon_backtranslation_requires_exact_cds_consumption() {
+        assert_eq!(codon_backtranslate("M-", "ATG").as_deref(), Some("ATG---"));
+        assert!(codon_backtranslate("M", "ATGAAA").is_none());
+        assert!(codon_backtranslate("MM", "ATG").is_none());
+    }
+
+    #[test]
+    fn terminal_stop_is_removed_from_alignment_inputs_together() {
+        let cds = "ATGAAATTTTAA";
+        let mut protein = gm2_tools::gene_annotation::translate_cds(cds).unwrap();
+        let alignment_cds = trim_terminal_stop(cds, &mut protein);
+        assert_eq!(protein, "MKF");
+        assert_eq!(alignment_cds, "ATGAAATTT");
+        assert_eq!(
+            codon_backtranslate(&protein, alignment_cds).as_deref(),
+            Some("ATGAAATTT")
+        );
+    }
+
+    #[test]
+    fn fragment_report_requires_complementary_low_overlap_models() {
+        assert_eq!(
+            complementary_union_fraction(
+                Interval::new(0, 45).unwrap(),
+                Interval::new(50, 100).unwrap(),
+                100,
+            ),
+            Some(0.95)
+        );
+        assert_eq!(
+            complementary_union_fraction(
+                Interval::new(0, 60).unwrap(),
+                Interval::new(55, 100).unwrap(),
+                100,
+            ),
+            None
+        );
+        assert_eq!(
+            complementary_union_fraction(
+                Interval::new(0, 70).unwrap(),
+                Interval::new(75, 90).unwrap(),
+                100,
+            ),
+            None
+        );
+    }
+
+    #[test]
+    fn reads_resolve_eligibility_from_structured_manifest() {
+        let root = temporary_test_directory("eligible_manifest");
+        fs::create_dir_all(root.join("models")).unwrap();
+        fs::write(
+            root.join("models/gene_models.tsv"),
+            "sample\tfamily_id\tcandidate\tmodel\teligible_for_resolve\nA\tfam\tc1\tmodel_1\t1\nA\tfam\tc2\tmodel_1\t0\n",
+        )
+        .unwrap();
+        let eligible = resolve_eligible_headers(&root).unwrap().unwrap();
+        assert_eq!(eligible, BTreeSet::from(["A|fam|c1|model_1".to_owned()]));
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn annotation_writes_structured_coordinate_preserving_outputs() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let root = temporary_test_directory("annotation_integration");
+        let input = root.join("gene");
+        let proteins = root.join("proteins");
+        let output = root.join("annotation");
+        fs::create_dir_all(input.join("samples/sampleA/candidates")).unwrap();
+        fs::create_dir_all(&proteins).unwrap();
+        fs::write(
+            input.join("samples/sampleA/candidates/fam1.fasta"),
+            ">sampleA|fam1|candidate_1\nNATGAAAGTAGTTTCCC\n",
+        )
+        .unwrap();
+        fs::write(proteins.join("fam1.faa"), ">p1\nMKFP\n").unwrap();
+        let fake_miniprot = root.join("miniprot");
+        fs::write(
+            &fake_miniprot,
+            "#!/bin/sh\nif [ \"$1\" = \"--version\" ]; then printf '%s\\n' '0.18-r281'; exit 0; fi\nprintf '%s\\n' '##PAF\tp1\t4\t0\t4\t+\tTSK000001\t17\t1\t17\t12\t12\t60\tAS:i:100\tfs:i:0\tst:i:0\tcg:Z:2M4N2M' '##gff-version 3' 'TSK000001\tminiprot\tmRNA\t2\t17\t100\t+\t.\tID=MP1;Target=p1 1 4;Identity=1.0;Positive=1.0;Rank=0;Frameshift=0;StopCodon=0' 'TSK000001\tminiprot\tCDS\t2\t7\t100\t+\t0\tParent=MP1' 'TSK000001\tminiprot\tCDS\t12\t17\t100\t+\t0\tParent=MP1'\n",
+        )
+        .unwrap();
+        let mut permissions = fs::metadata(&fake_miniprot).unwrap().permissions();
+        permissions.set_mode(0o755);
+        fs::set_permissions(&fake_miniprot, permissions).unwrap();
+
+        annotate(
+            input,
+            proteins,
+            output.clone(),
+            fake_miniprot.to_string_lossy().to_string(),
+            "1".into(),
+            50_000,
+            0.20,
+            0.80,
+            0,
+            100,
+        )
+        .unwrap();
+
+        let cds = fs::read_to_string(output.join("cds/fam1.fasta")).unwrap();
+        let introns = fs::read_to_string(output.join("introns/fam1.fasta")).unwrap();
+        let models = fs::read_to_string(output.join("models/gene_models.tsv")).unwrap();
+        let raw =
+            fs::read_to_string(output.join("raw_miniprot/sampleA/fam1/TSK000001.gff3")).unwrap();
+        assert!(cds.contains("sampleA|fam1|candidate_1|model_1"));
+        assert!(cds.contains("ATGAAATTTCCC"));
+        assert!(introns.contains("GTAG"));
+        assert!(models.contains("\tcomplete\t"));
+        assert!(models.lines().nth(1).unwrap().ends_with("\t1\t1"));
+        assert!(raw.contains("##PAF"));
+        let id_map = fs::read_to_string(output.join("manifest/id_map.tsv")).unwrap();
+        assert!(id_map.contains("sampleA\tfam1\tTSK000001\tcandidate_1\t17"));
+        assert!(!output.join(".work").exists());
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn annotation_validates_a_unique_n_padded_fragment_join() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let root = temporary_test_directory("padded_fragment_join");
+        let input = root.join("gene");
+        let proteins = root.join("proteins");
+        let output = root.join("annotation");
+        fs::create_dir_all(input.join("samples/sampleA/candidates")).unwrap();
+        fs::create_dir_all(&proteins).unwrap();
+        fs::write(
+            input.join("samples/sampleA/candidates/fam1.fasta"),
+            ">left\nATGAAAGT\n>right\nAGTTTCCCTAA\n",
+        )
+        .unwrap();
+        fs::write(proteins.join("fam1.faa"), ">p1\nMKFP\n").unwrap();
+        let fake_miniprot = root.join("miniprot");
+        fs::write(
+            &fake_miniprot,
+            r##"#!/bin/sh
+if [ "$1" = "--version" ]; then printf '%s\n' '0.18-r281'; exit 0; fi
+target=''
+for argument in "$@"; do
+    case "$argument" in
+        *.targets.fasta) target="$argument" ;;
+    esac
+done
+if grep -q '^>TSK000001$' "$target"; then
+    printf '%s\n' '##PAF	p1	4	0	2	+	TSK000001	8	0	6	6	6	60	AS:i:100	fs:i:0	st:i:0	cg:Z:2M' '##gff-version 3' 'TSK000001	miniprot	mRNA	1	6	100	+	.	ID=L1;Target=p1 1 2;Identity=1.0;Positive=1.0;Rank=0' 'TSK000001	miniprot	CDS	1	6	100	+	0	Parent=L1'
+elif grep -q '^>TSK000002$' "$target"; then
+    printf '%s\n' '##PAF	p1	4	2	4	+	TSK000002	11	2	8	6	6	60	AS:i:100	fs:i:0	st:i:0	cg:Z:2M' '##gff-version 3' 'TSK000002	miniprot	mRNA	3	11	100	+	.	ID=R1;Target=p1 3 4;Identity=1.0;Positive=1.0;Rank=0' 'TSK000002	miniprot	CDS	3	11	100	+	0	Parent=R1'
+elif grep -q '^>TSKPAD001$' "$target"; then
+    printf '%s\n' '##PAF	p1	4	0	4	+	TSKPAD001	119	0	116	12	12	60	AS:i:200	fs:i:0	st:i:0	cg:Z:2M104N2M' '##gff-version 3' 'TSKPAD001	miniprot	mRNA	1	119	200	+	.	ID=P1;Target=p1 1 4;Identity=1.0;Positive=1.0;Rank=0' 'TSKPAD001	miniprot	CDS	1	6	100	+	0	Parent=P1' 'TSKPAD001	miniprot	CDS	111	119	100	+	0	Parent=P1'
+else
+    exit 1
+fi
+"##,
+        )
+        .unwrap();
+        let mut permissions = fs::metadata(&fake_miniprot).unwrap().permissions();
+        permissions.set_mode(0o755);
+        fs::set_permissions(&fake_miniprot, permissions).unwrap();
+
+        annotate(
+            input,
+            proteins,
+            output.clone(),
+            fake_miniprot.to_string_lossy().to_string(),
+            "1".into(),
+            50_000,
+            0.20,
+            0.80,
+            0,
+            100,
+        )
+        .unwrap();
+
+        let cds = read_fasta(&output.join("cds/fam1.fasta")).unwrap();
+        assert_eq!(cds.len(), 1);
+        assert!(cds[0].0.contains("padded_join_1"));
+        assert_eq!(cds[0].1, "ATGAAATTTCCCTAA");
+        let supercontigs = fs::read_to_string(output.join("supercontigs/fam1.fasta")).unwrap();
+        assert_eq!(supercontigs.matches('>').count(), 1);
+        assert_eq!(supercontigs.matches('N').count(), 100);
+        assert!(!output.join("genes/fam1.fasta").exists());
+        let fragments = fs::read_to_string(output.join("manifest/fragment_groups.tsv")).unwrap();
+        assert!(fragments.contains("\t100\tpadded_join_1\tpadded_validated\t"));
+        let models = fs::read_to_string(output.join("models/gene_models.tsv")).unwrap();
+        assert_eq!(models.lines().count(), 4);
+        assert!(models.contains("superseded_by_padded_join"));
+        assert!(models
+            .lines()
+            .find(|line| line.contains("\tpadded_join_1\t"))
+            .unwrap()
+            .ends_with("\t1\t1"));
+        assert!(output
+            .join("raw_miniprot/sampleA/fam1/TSK000001.gff3")
+            .is_file());
+        assert!(output
+            .join("raw_miniprot/sampleA/fam1/TSK000002.gff3")
+            .is_file());
+        assert!(output
+            .join("raw_miniprot/sampleA/fam1/TSKPAD001.gff3")
+            .is_file());
+        fs::remove_dir_all(root).unwrap();
     }
 }

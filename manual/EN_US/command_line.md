@@ -54,7 +54,7 @@ Run the same Cargo command again after updating the source.
 
 ## 2. Input files
 
-Most read-recovery commands require the following. `gene-annotate`, `gene-resolve`, and `gene-tree` instead use `--gene-input` and `-o`, without `-f/-r`:
+Most read-recovery commands require the following. `gene-resolve` and `gene-tree` instead use `--gene-input` and `-o`, without `-f/-r`:
 
 - `-f FILE`: tab-delimited sample table;
 - `-r DIR`: reference-sequence directory;
@@ -92,8 +92,6 @@ One or more subcommands can be listed in execution order:
 | `profiling` | Recruit marker reads once and estimate group-level marker signal without assembly |
 | `refilter` | Refine per-locus read assignment and filtering |
 | `assemble` | Assemble target sequences with the wDBG assembler |
-| `gene` | Recover candidate contigs for nuclear gene families |
-| `gene-annotate` | Run miniprot annotation from protein references |
 | `gene-resolve` | Align candidates, infer gene trees, and select strict one-to-one clades |
 | `gene-tree` | Infer a species tree from strict or multicopy gene trees |
 | `te` | Discover, curate, annotate, and quantify conservative repeatome units from short reads |
@@ -104,13 +102,14 @@ One or more subcommands can be listed in execution order:
 | `tree` | Infer coalescent or concatenated trees |
 | `stats` | Summarize UCE recovery and optionally generate heatmaps |
 
-When no subcommand is given:
+When no subcommand is given, `--assembly-mode` selects one complete recovery workflow:
 
-- `--assembly-mode original` (default) is for reference-guided recovery of exons, SCOs, and nuclear or mitochondrial markers; it runs `filter refilter assemble trim combine tree`;
+- `--assembly-mode gene` (default) recruits, refilters, and assembles nuclear gene-family candidates, then writes cohort summaries under `<output>/gene/`;
+- `--assembly-mode exon` runs the same candidate recovery and then uses matching protein references plus miniprot to write structurally validated output under `<output>/exon/`; it requires `--gene-protein-reference`;
 - `--assembly-mode uce` is for UCE recovery from genome skimming or target capture; it runs `filter assemble combine tree`. The fused UCEFilter already includes refilter semantics and omits `trim` so newly recovered UCE flanks are not cut back to the reference interval;
 - `profiling` runs one recruitment step followed by Themisto pseudoalignment and reference-level support reporting; it does not assemble or run downstream phylogenetic steps.
 
-Default original-mode example:
+Default gene-mode example:
 
 ```bash
 cli/tipseek \
@@ -149,13 +148,14 @@ Inputs, decoys, cache control, QC, and quantitative interpretation are in the [P
 
 ### 4.3 Gene-family recovery and resolution
 
-`gene` is a complete workflow: one bait FASTA defines one family and may contain multiple species. It fixes the backend to `original-rust`, retains candidate contigs, and does not directly claim single-copy status.
+The default invocation is the complete gene-candidate workflow: one bait FASTA defines one family and may contain multiple species. It retains candidate contigs and does not directly claim single-copy status. `--assembly-mode exon` adds protein-guided structural annotation; it is not a separate subcommand.
 
 ```bash
-cli/tipseek gene -f samples.tsv -r family_reference -o gene_output -p 8
-cli/tipseek gene-annotate --gene-input gene_output/gene \
-  --gene-protein-reference family_proteins -o gene_annotation -p 8
-cli/tipseek gene-resolve --gene-input gene_annotation -o gene_resolved -p 8
+cli/tipseek -f samples.tsv -r family_reference -o gene_output -p 8
+cli/tipseek --assembly-mode exon \
+  -f samples.tsv -r family_reference \
+  --gene-protein-reference family_proteins -o exon_output -p 8
+cli/tipseek gene-resolve --gene-input exon_output/exon -o gene_resolved -p 8
 ```
 
 `gene-resolve` requires MAFFT and IQ-TREE; `--gene-taper correction_multi.jl` enables optional masking. It applies pre-alignment QC by distinct-sample occupancy and `--gene-min-aa-length` (30 aa by default), then post-alignment QC by occupancy and `--gene-min-effective-codon-sites` (30 by default); see `occupancy_qc.tsv`. `--gene-ufboot` must be `0` (default) or `>=1000`. `family_qc.tsv` is alignment QC for post-QC families, while `tree_selection_qc.tsv` records selected strict clades and occupancy.
@@ -242,7 +242,7 @@ The tables below list the main public options and current defaults. Run `cli/tip
 | `-kf INT` | Filter k-mer size; default `23` in UCE mode and `31` otherwise |
 | `-s, --step-size INT` | Read-scanning step; default `4` |
 | `--max-reads INT` | Maximum million reads processed per file; `0` means unlimited |
-| `--reuse-reference-cache` | Reuse a fingerprinted reference k-mer index; with explicit `original-rust`, also enable its versioned, k-validated binary assembler cache |
+| `--reuse-reference-cache` | Reuse validated filter and gene-assembler reference k-mer caches |
 | `--reference-cache-dir DIR` | Reference-cache directory; default `output/.gm2_reference_cache`; requires the preceding option |
 | `--depth-low-water-mark INT` | Below this depth, attempt relaxed read recruitment; default `50` |
 | `--depth-limit INT` | Maximum depth processed during refiltering; default `768` |
@@ -258,11 +258,11 @@ The tables below list the main public options and current defaults. Run `cli/tip
 | `-sb, --soft-boundary VALUE` | Integer, `auto`, or `unlimited`; default `auto` |
 | `-i, --search-depth INT` | Search depth; default `4096` |
 | `--min-coverage INT` | Minimum contig read depth; default `0` |
-| `--assembler-implementation MODE` | `auto` (default) uses `original-rust` in original mode and `uce-rust` in UCE mode; `uce-rust` selects the UCE-oriented Rust assembler; `original` and `original-rust` use the deterministic Rust compatibility implementation; UCE never falls back to another implementation |
+| `--assembler-implementation MODE` | `auto` (default), `original-rust` for `gene`/`exon`, or `uce-rust` for UCE; an explicit backend must match the selected mode |
 | `--assembler-read-chunk-size INT` | Reads loaded per Rust assembler batch; default `8192` |
 | `--assembler-kmer-count-threads INT` | K-mer sorting/counting workers per locus; default `0` selects automatically |
 | `--assembler-graph-format MODE` | Optional graph output: `none` (default), `gfa`, `dot`, or `both` |
-| `--assembly-mode MODE` | `original` or `uce`; default `original` |
+| `--assembly-mode MODE` | `gene`, `exon`, or `uce`; default `gene` |
 | `--assembly-mode uce` | Defaults to k=23/step=4, automatic sensitive recruitment, one bounded rescue round, and fixed safe backbone/QC settings |
 | `--uce-recruit-mode fast\|auto` | Recruitment policy; default `auto` in UCE mode and `fast` otherwise |
 | `--uce-rescue-reads` | Explicitly enable fixed-k=21 bounded rescue; retained for compatibility because UCE mode enables it by default |

@@ -1,6 +1,6 @@
 # 输出文件
 
-本文档说明当前命令行版本会生成的输出文件。旧 GUI、细胞器组装和 Windows 辅助脚本相关输出已经不属于本 CLI fork 的支持范围。
+本文档说明 TipSeek 的主要输出路径；各工作流审计表的具体字段见对应工作流说明。
 
 ## 单样本目录
 
@@ -8,15 +8,15 @@
 
 **uce_filter_summary.tsv**：逐 locus 自动选择审计表。`selection_mode` 为 `pass-through`、`core`、`rescue` 或 `legacy-fallback`；同时报告合格/已选 fragment、64-bin breadth、核心目标以及左右端候选与保留数。
 
-**filtered**：默认融合 UCEFilter 直接写出的每-locus interleaved paired-end FASTQ。UCE 模式不再生成 `ucefilter_candidates`；**filtered_pe** 仅保留给 legacy MainFilter/GM2 回退路径。
+**filtered_pe**：`gene`、`exon` 与 `--legacy-uce-filter` 的宽松首次逐 locus 招募结果；refilter 成功后通常可清理。
 
-**filtered**：进一步过滤后保留的 reads。UCE 模式下，只要 paired-end 的任一端通过 locus 过滤，整对 reads 都会被保留。
+**filtered**：最终交给组装器的逐 locus reads。`gene` 与 `exon` 在 refilter 后写入；默认 UCE 由融合 UCEFilter 直接写入 interleaved paired-end FASTQ。paired mates 始终作为整体保留。
 
 **alignment_shadow.tsv**：仅在 `--uce-alignment-shadow` 下生成的逐 mate 内部比对证据，包括 identity、overlap、linked-mate、terminal 和参考坐标。**alignment_shadow_summary.tsv** 是对应的 per-locus 计数与 64-bin breadth 汇总。初始结果另存为 `alignment_shadow_initial*.tsv`；rescue 证据保存在对应 `uce_rescue_round_N/`。
 
 **large_files**：进一步过滤时超过深度限制或文件大小限制的 reads。只有产生这类文件时才会出现。
 
-**results**：主组装结果。每个 locus 的最佳 contig 写为 `<locus>.fasta`。
+**results**：逐样本主组装 contig。
 
 **contigs_all**：组装器评估过的候选 contigs。
 
@@ -48,6 +48,14 @@
 
 **marker_profile/marker_reference_metadata.tsv**：本次 profiling 所用的 reference ID、Themisto color 与可选 group 注释映射。
 
+## Gene 与 exon 输出
+
+**gene/**：默认流程的 cohort 候选结果，包括 `family_summary.tsv`、`family_count_matrix.tsv`、`pseudo_sco/` 与 `multiple_candidate_families/`。
+
+**exon/**：`--assembly-mode exon` 的结构结果，包括可进入 resolve 的 `cds/` 与 `proteins/`、保留坐标的 `exons/`、`introns/`、`genes/`、`supercontigs/`、`gff3/`、模型表、manifest 和未解析模型。
+
+`gene-resolve` 与 `gene-tree` 写入各自显式指定的 `-o` 目录。模型状态、补 N 验证和完整目录树见 [gene 工作流说明](../../docs/gene_ZH.md)。
+
 ## 合并输出
 
 **combined_results**：按 locus 合并不同样本恢复序列后的文件。
@@ -67,14 +75,6 @@
 **Coalescent.tree**：溯祖流程生成的物种树。
 
 **Concatenation.tree**：串联流程生成的系统树。
-
-## UCE 专用输出
-
-**uce_contigs**：UCE 组装模式生成的 phyluce 兼容 contig 输出。每个样本一个 `*.contigs.fasta` 文件。`sample_name_map.tsv` 记录 TipSeek 样本名（包括保留的兼容 GeneMiner2 旧标识）与 phyluce 安全样本名之间的映射关系。
-
-**uce_rescue_summary.csv**：跨样本合并后的首轮至最终 rescue 摘要。UCE 模式默认生成，使用 `--no-uce-rescue-reads` 时不生成。
-
-**uce_rescue_rounds.csv**：跨样本合并后的逐轮 rescue 审计表。
 
 ## Population 输出
 

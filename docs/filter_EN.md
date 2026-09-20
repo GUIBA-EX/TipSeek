@@ -18,13 +18,13 @@ FASTQ/FASTA + one reference FASTA per locus
        filtered/ → assembler
 ```
 
-In `original`, gene, and `--legacy-uce-filter` routes, a hit in either mate retains the complete paired fragment. A core-mapping mate can therefore retain informative flank sequence from its partner. Default UCE applies the paired-fragment rule inside one `ucefilter` scan. Profiling uses the first recruitment only and does not run `refilter`.
+In `gene`, `exon`, and `--legacy-uce-filter` routes, a hit in either mate retains the complete paired fragment. A core-mapping mate can therefore retain informative flank sequence from its partner. Default UCE applies the paired-fragment rule inside one `ucefilter` scan. Profiling uses the first recruitment only and does not run `refilter`.
 
 ## Inputs and references
 
 - The sample table is tab-separated: `sample<TAB>R1<TAB>R2`; omit R2 for single-end data. Each non-comment row must have exactly two or three columns, normalized sample names must be unique, and every listed read file must exist.
 - Input may be FASTA, FASTQ, or gzipped FASTQ. Formats must be consistent within one run.
-- `original` and `uce` use a reference directory with one `.fa`/`.fasta` per locus. The file stem is the unique locus name.
+- `gene`, `exon`, and `uce` use a reference directory with one `.fa`/`.fasta` per locus. The file stem is the unique locus name.
 - Profiling instead accepts one marker-library FASTA file.
 
 `-kf` is the shared reference/read k-mer length and `-s` is the sampling step along reads. The terminal window is always checked so that a read end is not skipped by the step. Windows containing N or another non-ACGTU character are not matched.

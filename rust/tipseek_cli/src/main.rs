@@ -33,7 +33,6 @@ const COMMANDS: &[&str] = &[
     "filter",
     "refilter",
     "assemble",
-    "gene",
     "stats",
     "te",
     "population",
@@ -41,7 +40,6 @@ const COMMANDS: &[&str] = &[
     "trim",
     "combine",
     "tree",
-    "gene-annotate",
     "gene-resolve",
     "gene-tree",
     "profiling",
@@ -181,6 +179,11 @@ const VALUE_OPTIONS: &[&str] = &[
     "--phylo-program",
     "--gene-protein-reference",
     "--gene-miniprot",
+    "--gene-max-intron",
+    "--gene-min-model-coverage",
+    "--gene-complete-coverage",
+    "--gene-flank",
+    "--gene-fragment-padding",
     "--gene-input",
     "--gene-mafft",
     "--gene-iqtree",
@@ -392,9 +395,76 @@ fn commands(args: &[String]) -> Result<Vec<String>, String> {
 
 fn parse(args: &[String]) -> Result<Options, String> {
     let mut commands = commands(args)?;
-    let assembly_mode = value(args, &["--assembly-mode"], "original")?;
-    if !matches!(assembly_mode.as_str(), "original" | "uce") {
-        return Err("--assembly-mode must be original or uce".into());
+    let assembly_mode = value(args, &["--assembly-mode"], "gene")?;
+    if !matches!(assembly_mode.as_str(), "gene" | "exon" | "uce") {
+        return Err("--assembly-mode must be gene, exon, or uce".into());
+    }
+    if assembly_mode == "uce"
+        && commands
+            .iter()
+            .any(|command| matches!(command.as_str(), "gene-resolve" | "gene-tree"))
+    {
+        return Err(
+            "gene-resolve and gene-tree cannot be combined with --assembly-mode uce".into(),
+        );
+    }
+    if assembly_mode == "exon" && !commands.is_empty() {
+        return Err("--assembly-mode exon runs the complete exon workflow and cannot be combined with stage commands".into());
+    }
+    let assembler_implementation = value(args, &["--assembler-implementation"], "auto")?;
+    let valid_implementation = match assembly_mode.as_str() {
+        "uce" => matches!(assembler_implementation.as_str(), "auto" | "uce-rust"),
+        "gene" | "exon" => {
+            matches!(assembler_implementation.as_str(), "auto" | "original-rust")
+        }
+        _ => unreachable!("assembly mode was validated above"),
+    };
+    if !valid_implementation {
+        return Err(format!(
+            "--assembler-implementation {} is incompatible with --assembly-mode {assembly_mode}",
+            assembler_implementation
+        ));
+    }
+    let supplied_uce_option = args.iter().find(|argument| {
+        let name = argument
+            .split_once('=')
+            .map_or(argument.as_str(), |(name, _)| name);
+        name.starts_with("--uce-")
+            || matches!(name, "--no-uce-rescue-reads" | "--legacy-uce-filter")
+    });
+    if assembly_mode != "uce" {
+        if let Some(name) = supplied_uce_option {
+            return Err(format!(
+                "{} is available only with --assembly-mode uce",
+                name.split_once('=').map_or(name.as_str(), |(name, _)| name)
+            ));
+        }
+    }
+    let exon_options = [
+        "--gene-protein-reference",
+        "--gene-miniprot",
+        "--gene-max-intron",
+        "--gene-min-model-coverage",
+        "--gene-complete-coverage",
+        "--gene-flank",
+        "--gene-fragment-padding",
+    ];
+    let supplied_exon_option = exon_options.iter().find(|name| {
+        args.iter().any(|argument| {
+            argument == **name
+                || argument
+                    .strip_prefix(**name)
+                    .is_some_and(|suffix| suffix.starts_with('='))
+        })
+    });
+    if assembly_mode != "exon" {
+        if let Some(name) = supplied_exon_option {
+            return Err(format!(
+                "{name} is available only with --assembly-mode exon"
+            ));
+        }
+    } else if value(args, &["--gene-protein-reference"], "")?.is_empty() {
+        return Err("--assembly-mode exon requires --gene-protein-reference".into());
     }
     let log_format = value(args, &["--log-format"], "text")?;
     if !matches!(log_format.as_str(), "text" | "json") {
@@ -466,14 +536,7 @@ fn parse(args: &[String]) -> Result<Options, String> {
     } else {
         rescue_requested || assembly_mode == "uce"
     };
-    if commands == ["gene"] {
-        commands = vec![
-            "filter".into(),
-            "refilter".into(),
-            "assemble".into(),
-            "gene".into(),
-        ];
-    } else if commands.is_empty() {
+    if commands.is_empty() {
         commands = if assembly_mode == "uce" {
             vec![
                 "filter".into(),
@@ -487,9 +550,7 @@ fn parse(args: &[String]) -> Result<Options, String> {
                 "filter".into(),
                 "refilter".into(),
                 "assemble".into(),
-                "trim".into(),
-                "combine".into(),
-                "tree".into(),
+                "gene".into(),
             ]
         };
     }
@@ -2760,16 +2821,7 @@ fn execute_gene(
         )?;
     }
     if opt.commands.iter().any(|c| c == "assemble") {
-        let implementation = value(&opt.raw, &["--assembler-implementation"], "auto")?;
-        let binary =
-            match implementation.as_str() {
-                "auto" | "original" | "original-rust" => "main_assembler-original-rust",
-                "uce-rust" => "main_assembler-rust",
-                _ => return Err(
-                    "--assembler-implementation must be auto, uce-rust, original, or original-rust"
-                        .into(),
-                ),
-            };
+        let binary = "main_assembler-original-rust";
         let mut args = vec![
             "-r".into(),
             opt.reference.clone(),
@@ -2792,22 +2844,12 @@ fn execute_gene(
             "-p".into(),
             "1".into(),
         ];
-        if implementation == "uce-rust" {
+        if let Some(cache) = assembler_cache_directory(opt)? {
+            fs::create_dir_all(&cache).map_err(|e| e.to_string())?;
             args.extend([
-                "--assembly-mode".into(),
-                "original".into(),
-                "--assembler-read-chunk-size".into(),
-                value(&opt.raw, &["--assembler-read-chunk-size"], "8192")?,
+                "--assembler-reference-cache-dir".into(),
+                cache.display().to_string(),
             ]);
-        }
-        if implementation != "original" {
-            if let Some(cache) = assembler_cache_directory(opt)? {
-                fs::create_dir_all(&cache).map_err(|e| e.to_string())?;
-                args.extend([
-                    "--assembler-reference-cache-dir".into(),
-                    cache.display().to_string(),
-                ]);
-            }
         }
         run_profiled(
             profile,
@@ -4170,13 +4212,8 @@ fn execute_rad(opt: &Options, bins: &Path) -> Result<(), String> {
         );
     }
     let implementation = value(&opt.raw, &["--assembler-implementation"], "auto")?;
-    if !matches!(
-        implementation.as_str(),
-        "auto" | "original" | "original-rust"
-    ) {
-        return Err(
-            "rad requires --assembler-implementation auto, original, or original-rust".into(),
-        );
+    if !matches!(implementation.as_str(), "auto" | "original-rust") {
+        return Err("rad requires --assembler-implementation auto or original-rust".into());
     }
     let min_arm_breadth = value(&opt.raw, &["--rad-min-arm-breadth"], "0.80")?;
     let breadth = min_arm_breadth
@@ -4216,7 +4253,7 @@ fn execute_rad(opt: &Options, bins: &Path) -> Result<(), String> {
     }
     stage.reference = reference.join("arms").display().to_string();
     stage.output = recovery.display().to_string();
-    stage.assembly_mode = "original".into();
+    stage.assembly_mode = "gene".into();
     stage.commands = vec!["filter".into(), "refilter".into(), "assemble".into()];
     let dictionary = recovery.join(format!("rad_kmer_dict_k{}.dict", stage.kf));
     run(
@@ -4699,15 +4736,24 @@ fn execute_profiling(opt: &Options, bins: &Path, samples: &[Sample]) -> Result<(
     }
 }
 
-fn execute_gene_annotate(opt: &Options, bins: &Path) -> Result<(), String> {
+fn execute_exon_annotation(
+    opt: &Options,
+    bins: &Path,
+    input: &Path,
+    output: &Path,
+) -> Result<(), String> {
     let raw = &opt.raw;
-    let input = value(raw, &["--gene-input"], "")?;
     let proteins = value(raw, &["--gene-protein-reference"], "")?;
-    if !Path::new(&input).is_dir() {
-        return Err("--gene-input must be a gene output directory".into());
+    if !input.is_dir() {
+        return Err(format!(
+            "exon mode requires recovered gene candidates at {}",
+            input.display()
+        ));
     }
     if !Path::new(&proteins).is_dir() {
-        return Err("gene-annotate requires --gene-protein-reference".into());
+        return Err(
+            "--assembly-mode exon requires --gene-protein-reference to name a directory".into(),
+        );
     }
     run(
         bins,
@@ -4715,15 +4761,25 @@ fn execute_gene_annotate(opt: &Options, bins: &Path) -> Result<(), String> {
         &[
             "annotate".into(),
             "--input".into(),
-            input,
+            input.display().to_string(),
             "--protein-reference".into(),
             proteins,
             "--out".into(),
-            opt.output.clone(),
+            output.display().to_string(),
             "--miniprot".into(),
             value(raw, &["--gene-miniprot"], "miniprot")?,
             "--threads".into(),
             opt.workers.to_string(),
+            "--max-intron".into(),
+            value(raw, &["--gene-max-intron"], "50000")?,
+            "--minimum-coverage".into(),
+            value(raw, &["--gene-min-model-coverage"], "0.20")?,
+            "--complete-coverage".into(),
+            value(raw, &["--gene-complete-coverage"], "0.80")?,
+            "--flank".into(),
+            value(raw, &["--gene-flank"], "0")?,
+            "--fragment-padding".into(),
+            value(raw, &["--gene-fragment-padding"], "100")?,
         ],
     )
 }
@@ -6409,10 +6465,17 @@ fn execute_native(mut opt: Options) -> Result<(), String> {
     eprintln!("CPU budget: {} ({})", opt.workers, opt.worker_source);
     validate_cleanup_options(&opt)?;
     validate_parallelism(&opt)?;
+    if opt.assembly_mode == "exon" {
+        let proteins = value(&opt.raw, &["--gene-protein-reference"], "")?;
+        if !Path::new(&proteins).is_dir() {
+            return Err(
+                "--assembly-mode exon requires --gene-protein-reference to name a directory".into(),
+            );
+        }
+    }
     let bins = components()?;
     let standalone = [
         "te",
-        "gene-annotate",
         "gene-resolve",
         "gene-tree",
         "profiling",
@@ -6428,9 +6491,6 @@ fn execute_native(mut opt: Options) -> Result<(), String> {
             .any(|command| standalone.contains(&command.as_str()))
     {
         return Err("this Rust migration route currently requires the selected post-processing command to run alone".into());
-    }
-    if opt.commands == ["gene-annotate"] {
-        return execute_gene_annotate(&opt, &bins);
     }
     if opt.commands == ["gene-resolve"] {
         return execute_gene_resolve(&opt, &bins);
@@ -6672,6 +6732,18 @@ fn execute_native(mut opt: Options) -> Result<(), String> {
             || run(&bins, "gene_workflow", &cohort),
         ));
     }
+    if shared.assembly_mode == "exon" {
+        let gene_input = Path::new(&shared.output).join("gene");
+        let exon_output = Path::new(&shared.output).join("exon");
+        profile_try!(run_profiled_action(
+            profiler.as_ref(),
+            "__cohort__",
+            "exon-annotate",
+            &gene_input,
+            &exon_output,
+            || execute_exon_annotation(&shared, &bins, &gene_input, &exon_output),
+        ));
+    }
     if shared.commands.iter().any(|command| command == "consensus") {
         profile_try!(run_profiled_action(
             profiler.as_ref(),
@@ -6771,6 +6843,11 @@ fn print_help() {
     println!(
         "TipSeek CLI\n\nNative Rust command dispatcher; no Python runtime is required.\n\n\
 Usage: tipseek [COMMAND ...] -f SAMPLES -r REFERENCES -o OUTPUT [-p INT|auto]\n\n\
+Assembly modes:\n  \
+--assembly-mode gene|exon|uce\n               \
+Default: gene. Gene mode recovers and summarizes family candidates. Exon mode\n               \
+adds protein-guided structural annotation and requires\n               \
+--gene-protein-reference. UCE mode uses its independent UCE workflow.\n\n\
 Parallelism:\n  \
 -p INT|auto  Shared CPU budget. The default is auto, which counts physical\n               \
 cores allowed by affinity/cpuset and caps them by cgroup or scheduler limits.\n               \
@@ -6778,7 +6855,7 @@ Use an integer to override automatic detection.\n\n\
 UCE recruitment:\n  \
 --uce-recruit-mode fast|auto\n               \
 Use the default automatic two-pass recruitment, or select fast to keep only\n               \
-the initial pass. UCE defaults to k=23, step=4, and auto; original assembly\n               \
+the initial pass. UCE defaults to k=23, step=4, and auto; gene/exon assembly\n               \
 keeps k=31, step=4, and fast unless the user explicitly overrides them.\n  \
 --uce-fallback-kmer-size INT  Sensitive-pass recruitment k (default: 21).\n  \
 --uce-fallback-step INT       Sensitive-pass read-scan step (default: 1).\n  \
@@ -6999,8 +7076,8 @@ mod tests {
     }
 
     #[test]
-    fn original_defaults_are_unchanged_and_uce_defaults_can_be_overridden() {
-        let original = parse(&[
+    fn gene_defaults_are_stable_and_uce_defaults_can_be_overridden() {
+        let gene = parse(&[
             "filter".into(),
             "-f".into(),
             "samples.tsv".into(),
@@ -7010,10 +7087,10 @@ mod tests {
             "out".into(),
         ])
         .unwrap();
-        assert_eq!(original.kf, "31");
-        assert_eq!(original.step, "4");
-        assert_eq!(original.uce_recruit_mode, "fast");
-        assert!(!original.rescue);
+        assert_eq!(gene.kf, "31");
+        assert_eq!(gene.step, "4");
+        assert_eq!(gene.uce_recruit_mode, "fast");
+        assert!(!gene.rescue);
 
         let uce_override = parse(&[
             "filter".into(),
@@ -7743,9 +7820,8 @@ mod tests {
     }
 
     #[test]
-    fn gene_expands_to_recovery_stages() {
+    fn gene_recovery_is_the_default_workflow() {
         let parsed = parse(&[
-            "gene".into(),
             "-f".into(),
             "a".into(),
             "-r".into(),
@@ -7755,6 +7831,26 @@ mod tests {
         ])
         .unwrap();
         assert_eq!(parsed.commands, ["filter", "refilter", "assemble", "gene"]);
+        assert_eq!(parsed.assembly_mode, "gene");
+    }
+
+    #[test]
+    fn exon_mode_extends_the_default_gene_workflow() {
+        let parsed = parse(&[
+            "--assembly-mode".into(),
+            "exon".into(),
+            "--gene-protein-reference".into(),
+            "proteins".into(),
+            "-f".into(),
+            "a".into(),
+            "-r".into(),
+            "r".into(),
+            "-o".into(),
+            "o".into(),
+        ])
+        .unwrap();
+        assert_eq!(parsed.commands, ["filter", "refilter", "assemble", "gene"]);
+        assert_eq!(parsed.assembly_mode, "exon");
     }
     #[test]
     fn uce_default_stages_are_complete() {
@@ -7783,17 +7879,17 @@ mod tests {
     fn commands_can_follow_options() {
         let parsed = parse(&[
             "--assembly-mode".into(),
-            "original".into(),
+            "gene".into(),
             "-f".into(),
             "reads.tsv".into(),
             "-r".into(),
             "references".into(),
             "-o".into(),
             "out".into(),
-            "gene".into(),
+            "filter".into(),
         ])
         .unwrap();
-        assert_eq!(parsed.commands, ["filter", "refilter", "assemble", "gene"]);
+        assert_eq!(parsed.commands, ["filter"]);
     }
 
     #[test]
@@ -7824,7 +7920,6 @@ mod tests {
     #[test]
     fn invalid_assembly_mode_is_rejected() {
         let error = parse(&[
-            "gene".into(),
             "--assembly-mode".into(),
             "typo".into(),
             "-f".into(),
@@ -7835,7 +7930,51 @@ mod tests {
             "out".into(),
         ])
         .unwrap_err();
-        assert!(error.contains("--assembly-mode must be original or uce"));
+        assert!(error.contains("--assembly-mode must be gene, exon, or uce"));
+
+        let removed = parse(&[
+            "--assembly-mode".into(),
+            "original".into(),
+            "-f".into(),
+            "reads.tsv".into(),
+            "-r".into(),
+            "references".into(),
+            "-o".into(),
+            "out".into(),
+        ])
+        .unwrap_err();
+        assert!(removed.contains("--assembly-mode must be gene, exon, or uce"));
+    }
+
+    #[test]
+    fn assembler_backend_must_match_the_public_mode() {
+        let removed_alias = parse(&[
+            "--assembler-implementation".into(),
+            "original".into(),
+            "-f".into(),
+            "reads.tsv".into(),
+            "-r".into(),
+            "references".into(),
+            "-o".into(),
+            "out".into(),
+        ])
+        .unwrap_err();
+        assert!(removed_alias.contains("incompatible with --assembly-mode gene"));
+
+        let crossed_backend = parse(&[
+            "--assembly-mode".into(),
+            "uce".into(),
+            "--assembler-implementation".into(),
+            "original-rust".into(),
+            "-f".into(),
+            "reads.tsv".into(),
+            "-r".into(),
+            "references".into(),
+            "-o".into(),
+            "out".into(),
+        ])
+        .unwrap_err();
+        assert!(crossed_backend.contains("incompatible with --assembly-mode uce"));
     }
 
     #[test]
@@ -7873,10 +8012,87 @@ mod tests {
     }
 
     #[test]
-    fn incomplete_gene_stage_set_is_rejected() {
-        let error = parse(&[
-            "gene".into(),
+    fn removed_gene_commands_are_rejected() {
+        for command in ["gene", "gene-annotate"] {
+            let error = parse(&[
+                command.into(),
+                "-f".into(),
+                "reads.tsv".into(),
+                "-r".into(),
+                "references".into(),
+                "-o".into(),
+                "out".into(),
+            ])
+            .unwrap_err();
+            assert!(error.contains(&format!("does not support command '{command}'")));
+        }
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn exon_annotation_uses_gene_and_exon_project_subdirectories() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let unique = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let root = std::env::temp_dir().join(format!(
+            "tipseek_exon_dispatch_{}_{}",
+            std::process::id(),
+            unique
+        ));
+        let components = root.join("components");
+        let input = root.join("project/gene");
+        let output = root.join("project/exon");
+        let proteins = root.join("proteins");
+        let capture = root.join("call.txt");
+        fs::create_dir_all(&components).unwrap();
+        fs::create_dir_all(&input).unwrap();
+        fs::create_dir_all(&proteins).unwrap();
+        let component = components.join("gene_workflow");
+        fs::write(
+            &component,
+            format!(
+                "#!/bin/sh\nprintf '%s\\n' \"$*\" > '{}'\n",
+                capture.display()
+            ),
+        )
+        .unwrap();
+        let mut permissions = fs::metadata(&component).unwrap().permissions();
+        permissions.set_mode(0o755);
+        fs::set_permissions(&component, permissions).unwrap();
+        let opt = parse(&[
+            "--assembly-mode".into(),
+            "exon".into(),
+            "--gene-protein-reference".into(),
+            proteins.display().to_string(),
+            "-f".into(),
+            "samples.tsv".into(),
+            "-r".into(),
+            "references".into(),
+            "-o".into(),
+            root.join("project").display().to_string(),
+        ])
+        .unwrap();
+
+        execute_exon_annotation(&opt, &components, &input, &output).unwrap();
+
+        let call = fs::read_to_string(&capture).unwrap();
+        assert!(call.contains(&format!("annotate --input {}", input.display())));
+        assert!(call.contains(&format!("--out {}", output.display())));
+        assert!(call.contains("--fragment-padding 100"));
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn exon_mode_rejects_stage_commands_and_gene_mode_rejects_exon_options() {
+        let mixed = parse(&[
             "filter".into(),
+            "--assembly-mode".into(),
+            "exon".into(),
+            "--gene-protein-reference".into(),
+            "proteins".into(),
             "-f".into(),
             "reads.tsv".into(),
             "-r".into(),
@@ -7885,7 +8101,67 @@ mod tests {
             "out".into(),
         ])
         .unwrap_err();
-        assert!(error.contains("gene requires filter, refilter, and assemble"));
+        assert!(mixed.contains("cannot be combined with stage commands"));
+
+        let misplaced = parse(&[
+            "--assembly-mode".into(),
+            "gene".into(),
+            "--gene-fragment-padding".into(),
+            "100".into(),
+            "-f".into(),
+            "reads.tsv".into(),
+            "-r".into(),
+            "references".into(),
+            "-o".into(),
+            "out".into(),
+        ])
+        .unwrap_err();
+        assert!(misplaced.contains("available only with --assembly-mode exon"));
+
+        let missing_proteins = parse(&[
+            "--assembly-mode".into(),
+            "exon".into(),
+            "-f".into(),
+            "reads.tsv".into(),
+            "-r".into(),
+            "references".into(),
+            "-o".into(),
+            "out".into(),
+        ])
+        .unwrap_err();
+        assert!(missing_proteins.contains("requires --gene-protein-reference"));
+
+        let misplaced_uce = parse(&[
+            "--assembly-mode".into(),
+            "exon".into(),
+            "--gene-protein-reference".into(),
+            "proteins".into(),
+            "--uce-rescue-rounds".into(),
+            "1".into(),
+            "-f".into(),
+            "reads.tsv".into(),
+            "-r".into(),
+            "references".into(),
+            "-o".into(),
+            "out".into(),
+        ])
+        .unwrap_err();
+        assert!(misplaced_uce.contains("available only with --assembly-mode uce"));
+
+        let misplaced_exon = parse(&[
+            "--assembly-mode".into(),
+            "uce".into(),
+            "--gene-fragment-padding".into(),
+            "100".into(),
+            "-f".into(),
+            "reads.tsv".into(),
+            "-r".into(),
+            "references".into(),
+            "-o".into(),
+            "out".into(),
+        ])
+        .unwrap_err();
+        assert!(misplaced_exon.contains("available only with --assembly-mode exon"));
     }
 
     #[test]

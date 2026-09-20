@@ -1,6 +1,7 @@
 pub mod alignment;
 pub mod fasta;
 pub mod fastx;
+pub mod gene_annotation;
 pub mod merge;
 pub mod mito_merge;
 pub mod mito_reads;

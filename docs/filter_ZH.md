@@ -18,13 +18,13 @@ FASTQ/FASTA + 每 locus 一个参考 FASTA
           filtered/ → assembler
 ```
 
-在 `original`、gene 与 `--legacy-uce-filter` 路径中，只要一对 reads 中任一 mate 命中，该 paired fragment 的两端都会保留。核心区命中可因此携带另一端的侧翼变异信息。默认 UCE 的 paired-fragment 规则由 `ucefilter` 在同一次扫描中执行。profiling 只使用首次招募，不运行 `refilter`。
+在 `gene`、`exon` 与 `--legacy-uce-filter` 路径中，只要一对 reads 中任一 mate 命中，该 paired fragment 的两端都会保留。核心区命中可因此携带另一端的侧翼变异信息。默认 UCE 的 paired-fragment 规则由 `ucefilter` 在同一次扫描中执行。profiling 只使用首次招募，不运行 `refilter`。
 
 ## 输入与参考
 
 - 样本表是 tab 分隔的 `sample<TAB>R1<TAB>R2`；单端样本可省略 R2。每个非注释行必须恰为两列或三列，规范化后的样本名必须唯一，且列出的 reads 文件必须存在。
 - 输入可为 FASTA、FASTQ 或 gzip 压缩 FASTQ；同一次运行的输入格式必须一致。
-- `original` 和 `uce` 使用参考目录：每个 locus 一个 `.fa`/`.fasta`，文件主名就是 locus 名，不能重复。
+- `gene`、`exon` 和 `uce` 使用参考目录：每个 locus 一个 `.fa`/`.fasta`，文件主名就是 locus 名，不能重复。
 - profiling 使用单个 marker FASTA 库，而不是 locus 目录。
 
 `-kf` 是参考与 reads 共享的 k-mer 长度；`-s` 是 read 上的采样步长。每个 read 的末端窗口始终额外检查，避免尾端因步长被遗漏。含 N 或其他非 A/C/G/T/U 字符的窗口不会参与匹配。

@@ -54,7 +54,7 @@ cli/tipseek -h
 
 ## 2. 输入文件
 
-多数 reads 恢复命令需要以下三个参数；`gene-annotate`、`gene-resolve` 和 `gene-tree` 改用 `--gene-input` 与 `-o`，不需要 `-f/-r`：
+多数 reads 恢复命令需要以下三个参数；`gene-resolve` 和 `gene-tree` 改用 `--gene-input` 与 `-o`，不需要 `-f/-r`：
 
 - `-f FILE`：tab 分隔的样本表；
 - `-r DIR`：参考序列目录；
@@ -92,8 +92,6 @@ references/
 | `profiling` | 一次招募 marker reads，免组装估计 group-level marker 信号 |
 | `refilter` | 进一步分配和过滤每个 locus 的 reads |
 | `assemble` | 使用 wDBG 组装目标序列 |
-| `gene` | 恢复核基因家族候选 contig |
-| `gene-annotate` | 使用蛋白参考进行 miniprot 注释 |
 | `gene-resolve` | 比对、建基因树并解析严格一对一子树 |
 | `gene-tree` | 从 strict 或 multicopy gene trees 推断物种树 |
 | `te` | 从短读长数据发现、整理、注释并定量保守 repeatome 单元 |
@@ -104,13 +102,14 @@ references/
 | `tree` | 构建溯祖树或串联树 |
 | `stats` | 汇总 UCE 恢复统计并可选生成热图 |
 
-不显式指定子命令时：
+不显式指定子命令时，由 `--assembly-mode` 选择一条完整恢复流程：
 
-- `--assembly-mode original`（默认）用于 exon、SCO 及核/线粒体 marker 的参考引导恢复，运行 `filter refilter assemble trim combine tree`；
+- `--assembly-mode gene`（默认）完成核基因家族候选的招募、refilter 与组装，并在 `<output>/gene/` 写出 cohort 汇总；
+- `--assembly-mode exon` 先完成相同的候选恢复，再用同名蛋白参考与 miniprot 在 `<output>/exon/` 写出经结构验证的结果；必须提供 `--gene-protein-reference`；
 - `--assembly-mode uce` 用于从 genome skimming 或 target capture 恢复 UCE，运行 `filter assemble combine tree`；融合 UCEFilter 已包含 refilter 语义，并跳过 `trim`，避免新恢复的 UCE 侧翼再次被裁回参考范围；
 - `profiling` 先做一次招募，再由 Themisto 伪比对并输出参考序列级支持；不组装，也不运行下游系统发育步骤。
 
-默认 original 模式示例：
+默认 gene 模式示例：
 
 ```bash
 cli/tipseek \
@@ -149,13 +148,14 @@ cli/tipseek profiling \
 
 ### 4.3 Gene 家族恢复与解析
 
-`gene` 是独立完整流程：每个 bait FASTA 为一个 family，可含多个物种。它固定使用 `original-rust`，输出候选而不直接宣称单拷贝。
+默认调用就是完整的 gene 候选恢复流程：每个 bait FASTA 为一个 family，可含多个物种。它输出候选而不直接宣称单拷贝。`--assembly-mode exon` 在此基础上增加蛋白引导的结构注释，不再使用单独子命令。
 
 ```bash
-cli/tipseek gene -f samples.tsv -r family_reference -o gene_output -p 8
-cli/tipseek gene-annotate --gene-input gene_output/gene \
-  --gene-protein-reference family_proteins -o gene_annotation -p 8
-cli/tipseek gene-resolve --gene-input gene_annotation -o gene_resolved -p 8
+cli/tipseek -f samples.tsv -r family_reference -o gene_output -p 8
+cli/tipseek --assembly-mode exon \
+  -f samples.tsv -r family_reference \
+  --gene-protein-reference family_proteins -o exon_output -p 8
+cli/tipseek gene-resolve --gene-input exon_output/exon -o gene_resolved -p 8
 ```
 
 `gene-resolve` 需要 MAFFT 与 IQ-TREE；可用 `--gene-taper correction_multi.jl` 做 masking。它先按不同样本数和 `--gene-min-aa-length`（默认 30 aa）做 pre-alignment QC，再以 `--gene-min-effective-codon-sites`（默认 30）和占有率做 post-alignment QC；详情见 `occupancy_qc.tsv`。`--gene-ufboot` 只能为 `0`（默认）或 `≥1000`。`family_qc.tsv` 是通过 post-alignment QC 的对齐统计，`tree_selection_qc.tsv` 记录 strict 子树和占有率。
@@ -242,7 +242,7 @@ cli/tipseek stats \
 | `-kf INT` | 过滤 k-mer 大小；UCE 模式默认 `23`，其他模式默认 `31` |
 | `-s, --step-size INT` | reads 扫描步长，默认 `4` |
 | `--max-reads INT` | 每个文件最多处理的 reads 数，单位为百万；`0` 表示不限 |
-| `--reuse-reference-cache` | 复用带输入指纹的 reference k-mer index；显式使用 `original-rust` 时也启用带版本和 k 校验的 assembler 二进制 cache |
+| `--reuse-reference-cache` | 复用经过校验的 filter 与 gene assembler 参考 k-mer cache |
 | `--reference-cache-dir DIR` | reference cache 目录；默认 `output/.gm2_reference_cache`，且必须与上一参数同时使用 |
 | `--depth-low-water-mark INT` | 低于该深度时尝试放宽条件招募更多 reads，默认 `50` |
 | `--depth-limit INT` | re-filtering 处理的最高深度，默认 `768` |
@@ -258,11 +258,11 @@ cli/tipseek stats \
 | `-sb, --soft-boundary VALUE` | 软边界：整数、`auto` 或 `unlimited`；默认 `auto` |
 | `-i, --search-depth INT` | 搜索深度，默认 `4096` |
 | `--min-coverage INT` | contig 最低 read depth，默认 `0` |
-| `--assembler-implementation MODE` | `auto`（默认）在 original 模式使用 `original-rust`，在 uce 模式使用 `uce-rust`；`original` 与 `original-rust` 均使用单线程、确定性的 Rust 原版兼容实现；uce 不会回退至其他实现 |
+| `--assembler-implementation MODE` | `auto`（默认）、用于 `gene`/`exon` 的 `original-rust`，或用于 UCE 的 `uce-rust`；显式后端必须与所选模式一致 |
 | `--assembler-read-chunk-size INT` | Rust assembler 每批读取的 reads 数，默认 `8192` |
 | `--assembler-kmer-count-threads INT` | 每个 locus 的 k-mer 排序和计数线程；默认 `0`，表示自动分配 |
 | `--assembler-graph-format MODE` | 可选组装图输出：`none`（默认）、`gfa`、`dot` 或 `both` |
-| `--assembly-mode MODE` | `original` 或 `uce`；默认 `original` |
+| `--assembly-mode MODE` | `gene`、`exon` 或 `uce`；默认 `gene` |
 | `--assembly-mode uce` | 默认使用 k=23/step=4、自动敏感招募、一轮受控 rescue，以及固定的 backbone/QC 安全设置 |
 | `--uce-recruit-mode fast\|auto` | 招募策略；UCE 模式默认 `auto`，其他模式默认 `fast` |
 | `--uce-rescue-reads` | 显式启用固定 k=21 的受控 rescue；为兼容旧命令而保留，UCE 模式已默认启用 |

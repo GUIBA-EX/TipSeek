@@ -4,27 +4,17 @@
 
 Assembler 将招募后的逐 locus reads 组装为 contig。应按生物学目标选择流程，而不是按测序平台或文库名称选择。
 
-| 工作流 | 适用目标 | 默认后端 | 结果 |
-|---|---|---|---|
-| `--assembly-mode original` | exon、SCO、核 marker、线粒体 marker | `original-rust` | 参考引导 contig，默认按参考裁切 |
-| `--assembly-mode uce` | genome skimming 或 target capture 中的 UCE | `uce-rust` | UCE core 及有 read 支持的 flank |
-
-## 后端
-
-`original-rust` 是 `original` 的确定性 Rust 兼容后端；为兼容旧命令，`original` 仍是其别名。`uce-rust` 是 `uce` 的唯一后端。
+| 模式 | 适用目标 | 结果 |
+|---|---|---|
+| `gene`（默认） | 核基因家族及其他参考引导 marker | 逐样本候选 contig 与 cohort family 汇总 |
+| `exon` | 需要 exon/intron 结构的基因家族 | 基因候选，以及经验证的 CDS、exon、intron 与 supercontig |
+| `uce` | genome skimming 或 target capture 中的 UCE | UCE core 及有 read 支持的 flank |
 
 所有后端均使用参考位置明确的 seed、read k-mer 支持、双向延伸和 read-slice 验证。
 
-## Original 工作流
+## Gene 组装
 
-原版算法优先延伸权重最高的边，将其他分支压栈以便回溯。每侧最多保留三条候选，再组合和评分。该行为适用于 exon 与细胞器 marker 等较短的参考引导目标。
-
-```bash
-cli/tipseek -f samples.tsv -r references -o output -p 8 \
-  --assembly-mode original
-```
-
-`original-rust` 可用 `--reuse-reference-cache` 复用带版本的二进制参考 k-mer cache。
+gene assembler 优先延伸权重最高的边，并保留其他分支用于有限回溯。每侧最多保留三条候选，再组合和评分。`gene` 据此生成 family 汇总；`exon` 再增加蛋白引导的 miniprot 注释与结构验证。`--reuse-reference-cache` 可复用经过校验的参考 k-mer cache。命令、exon 模型 QC 与补 N 验证见 [gene 工作流说明](gene_ZH.md)。
 
 ## UCE reads 路径：`ucefilter` 与 main + re
 
