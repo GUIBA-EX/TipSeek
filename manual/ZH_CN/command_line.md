@@ -141,7 +141,8 @@ Profiling 执行一次招募、Themisto 伪比对并输出参考序列级支持�
 
 ```bash
 cli/tipseek profiling \
-  -f samples.tsv -r marker_reference.fasta \ -o output -p 8
+  -f samples.tsv -r marker_reference.fasta \
+  -o output -p 8
 ```
 
 输入、decoy、cache、QC 与定量解释见[Profiling 章节](../../docs/profiling_ZH.md)。
@@ -157,6 +158,8 @@ cli/tipseek --assembly-mode exon \
   --gene-protein-reference family_proteins -o exon_output -p 8
 cli/tipseek gene-resolve --gene-input exon_output/exon -o gene_resolved -p 8
 ```
+
+蛋白参考命名、模型 QC、经验证的补 N 与输出字段见 [exon 注释说明](../../docs/exon_ZH.md)。
 
 `gene-resolve` 需要 MAFFT 与 IQ-TREE；可用 `--gene-taper correction_multi.jl` 做 masking。它先按不同样本数和 `--gene-min-aa-length`（默认 30 aa）做 pre-alignment QC，再以 `--gene-min-effective-codon-sites`（默认 30）和占有率做 post-alignment QC；详情见 `occupancy_qc.tsv`。`--gene-ufboot` 只能为 `0`（默认）或 `≥1000`。`family_qc.tsv` 是通过 post-alignment QC 的对齐统计，`tree_selection_qc.tsv` 记录 strict 子树和占有率。
 

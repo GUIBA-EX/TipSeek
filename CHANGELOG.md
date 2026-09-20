@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+## v1.6.3 — Integrated exon annotation
+
+- Added `--assembly-mode exon` as the complete protein-guided extension of the default gene-family recovery workflow, with matching per-family `.faa` references and miniprot 0.18 or later.
+- Added deterministic exon-model selection and structural QC for coverage, CDS phase, translation, frameshifts, internal stops, splice classes, and competing models, with coordinate-preserving GFF3 and structured audit tables.
+- Added conservative two-fragment joining: complementary terminal partial models are N-padded and reannotated, and a join is accepted only when the unique complete model places the entire synthetic interval inside an intron and outside every exon.
+- Simplified the public interface so `tipseek` is the default gene workflow, `--assembly-mode exon` adds structural annotation, and `--assembly-mode uce` remains independent.
+- Added dedicated Chinese and English exon guides and separated candidate recovery, exon annotation, and phylogenetic resolution into focused documentation.
+
 ## v1.6.2 — TipSeek identity and evidence-bounded UCE recovery
 
 - Renamed the public project to TipSeek and changed the main command from `geneminer2` to `tipseek`; documentation and release links now use the TipSeek identity.

@@ -54,7 +54,7 @@ Each sample listed in the input table gets a folder under the output directory.
 
 **exon/**: Structural output from `--assembly-mode exon`, including resolve-eligible `cds/` and `proteins/`, coordinate-preserving `exons/`, `introns/`, `genes/`, `supercontigs/`, `gff3/`, model tables, manifests, and unresolved models.
 
-`gene-resolve` and `gene-tree` write to their explicit `-o` directories. See the [gene workflow guide](../../docs/gene_EN.md) for model states, N-padding validation, and the complete output tree.
+`gene-resolve` and `gene-tree` write to their explicit `-o` directories. See the [exon annotation guide](../../docs/exon_EN.md) for model states, N-padding validation, and the complete exon output tree.
 
 ## Combined outputs
 

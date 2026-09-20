@@ -141,7 +141,8 @@ Profiling performs one recruitment followed by Themisto pseudoalignment and refe
 
 ```bash
 cli/tipseek profiling \
-  -f samples.tsv -r marker_reference.fasta \ -o output -p 8
+  -f samples.tsv -r marker_reference.fasta \
+  -o output -p 8
 ```
 
 Inputs, decoys, cache control, QC, and quantitative interpretation are in the [Profiling chapter](../../docs/profiling_EN.md).
@@ -157,6 +158,8 @@ cli/tipseek --assembly-mode exon \
   --gene-protein-reference family_proteins -o exon_output -p 8
 cli/tipseek gene-resolve --gene-input exon_output/exon -o gene_resolved -p 8
 ```
+
+See the [exon annotation guide](../../docs/exon_EN.md) for protein-reference naming, model QC, validated N-padding, and output fields.
 
 `gene-resolve` requires MAFFT and IQ-TREE; `--gene-taper correction_multi.jl` enables optional masking. It applies pre-alignment QC by distinct-sample occupancy and `--gene-min-aa-length` (30 aa by default), then post-alignment QC by occupancy and `--gene-min-effective-codon-sites` (30 by default); see `occupancy_qc.tsv`. `--gene-ufboot` must be `0` (default) or `>=1000`. `family_qc.tsv` is alignment QC for post-QC families, while `tree_selection_qc.tsv` records selected strict clades and occupancy.
 

@@ -14,7 +14,7 @@ All backends use reference-positioned seeds, read-k-mer support, bidirectional e
 
 ## Gene assembly
 
-The gene assembler extends the highest-weight edge first and keeps alternatives for bounded backtracking. It retains up to three candidates per side before combining and scoring them. `gene` builds family summaries from those candidates; `exon` adds protein-guided miniprot annotation and structural validation. Use `--reuse-reference-cache` to reuse the validated reference k-mer cache. Commands, exon-model QC, and N-padding validation are documented in the [gene workflow guide](gene_EN.md).
+The gene assembler extends the highest-weight edge first and keeps alternatives for bounded backtracking. It retains up to three candidates per side before combining and scoring them. `gene` builds family summaries from those candidates; `exon` adds protein-guided miniprot annotation and structural validation. Use `--reuse-reference-cache` to reuse the validated reference k-mer cache. Candidate resolution is documented in the [gene workflow guide](gene_EN.md); exon-model QC and N-padding are documented in the [exon annotation guide](exon_EN.md).
 
 ## UCE read routes: `ucefilter` and main + re
 

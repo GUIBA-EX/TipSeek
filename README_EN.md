@@ -109,7 +109,7 @@ Inspect these UCE outputs first:
 | Filtering and caches | [Filter](docs/filter_EN.md) | [Filter](docs/filter_ZH.md) |
 | Gene, exon, and UCE assembly | [Assembler](docs/assembler_EN.md) | [Assembler](docs/assembler_ZH.md) |
 | Mitochondria | [Mito](docs/mitochondria_EN.md) | [Mito](docs/mitochondria_CN.md) |
-| Gene, RAD, and TE | [Gene](docs/gene_EN.md) · [RAD](docs/rad_EN.md) · [TE](docs/te_EN.md) | [Gene](docs/gene_ZH.md) · [RAD](docs/rad_CN.md) · [TE](docs/te_ZH.md) |
+| Gene, exon, RAD, and TE | [Gene](docs/gene_EN.md) · [Exon](docs/exon_EN.md) · [RAD](docs/rad_EN.md) · [TE](docs/te_EN.md) | [Gene](docs/gene_ZH.md) · [Exon](docs/exon_ZH.md) · [RAD](docs/rad_CN.md) · [TE](docs/te_ZH.md) |
 | Population and profiling | [Population](docs/population_EN.md) · [Profiling](docs/profiling_EN.md) | [Population](docs/population_ZH.md) · [Profiling](docs/profiling_ZH.md) |
 
 ## Citation and licence
@@ -121,7 +121,7 @@ Cite the current software release as:
   author    = {XIA, Fei and TANG, Zizhen and XU, Yan},
   title     = {TipSeek: Reference-Guided Short-Read Recovery and Analysis},
   year      = {2026},
-  version   = {1.6.2},
+  version   = {1.6.3},
   url       = {https://github.com/GUIBA-EX/TipSeek},
   publisher = {GitHub}
 }

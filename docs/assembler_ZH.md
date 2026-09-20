@@ -14,7 +14,7 @@ Assembler 将招募后的逐 locus reads 组装为 contig。应按生物学目�
 
 ## Gene 组装
 
-gene assembler 优先延伸权重最高的边，并保留其他分支用于有限回溯。每侧最多保留三条候选，再组合和评分。`gene` 据此生成 family 汇总；`exon` 再增加蛋白引导的 miniprot 注释与结构验证。`--reuse-reference-cache` 可复用经过校验的参考 k-mer cache。命令、exon 模型 QC 与补 N 验证见 [gene 工作流说明](gene_ZH.md)。
+gene assembler 优先延伸权重最高的边，并保留其他分支用于有限回溯。每侧最多保留三条候选，再组合和评分。`gene` 据此生成 family 汇总；`exon` 再增加蛋白引导的 miniprot 注释与结构验证。`--reuse-reference-cache` 可复用经过校验的参考 k-mer cache。候选解析见 [gene 工作流说明](gene_ZH.md)，exon 模型 QC 与补 N 见 [exon 注释说明](exon_ZH.md)。
 
 ## UCE reads 路径：`ucefilter` 与 main + re
 

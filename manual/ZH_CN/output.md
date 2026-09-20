@@ -54,7 +54,7 @@
 
 **exon/**：`--assembly-mode exon` 的结构结果，包括可进入 resolve 的 `cds/` 与 `proteins/`、保留坐标的 `exons/`、`introns/`、`genes/`、`supercontigs/`、`gff3/`、模型表、manifest 和未解析模型。
 
-`gene-resolve` 与 `gene-tree` 写入各自显式指定的 `-o` 目录。模型状态、补 N 验证和完整目录树见 [gene 工作流说明](../../docs/gene_ZH.md)。
+`gene-resolve` 与 `gene-tree` 写入各自显式指定的 `-o` 目录。模型状态、补 N 验证和完整 exon 目录树见 [exon 注释说明](../../docs/exon_ZH.md)。
 
 ## 合并输出
 
