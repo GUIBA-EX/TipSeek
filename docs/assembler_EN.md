@@ -1,8 +1,10 @@
 # 2. Assembler
 
-[中文版本](assembler_ZH.md)
+[中文版本](assembler_ZH.md) · [project overview](../README_EN.md) · [command-line guide](../manual/EN_US/command_line.md)
 
 Assembly turns recruited locus reads into contigs. Choose the workflow by biological target, not by sequencer or library label.
+
+See the [integrated schematic](assets/tipseek-vs-geneminer2-innovations.png) for the relationship to GeneMiner2 and the exon, UCE, and mito/population additions. This chapter covers the assembly boundary for gene, exon, and UCE; mitochondrial and population workflows have dedicated guides.
 
 | Mode | Appropriate target | Result |
 |---|---|---|
@@ -10,7 +12,7 @@ Assembly turns recruited locus reads into contigs. Choose the workflow by biolog
 | `exon` | Gene families requiring exon/intron structure | Gene candidates plus validated CDS, exons, introns, and supercontigs |
 | `uce` | UCEs from genome-skimming or target-capture data | UCE cores plus read-supported flanks |
 
-All backends use reference-positioned seeds, read-k-mer support, bidirectional extension, and read-slice validation.
+The three modes share an evidence-first principle, but they are not presets of one algorithm. `gene` and `exon` use the GeneMiner2-derived candidate-assembly core, with structural annotation added only in `exon`; default `uce` uses dedicated fused recruitment, UCE graph assembly, and reversible rescue.
 
 ## Gene assembly
 

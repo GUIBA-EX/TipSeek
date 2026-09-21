@@ -1,5 +1,7 @@
 # RAD：用 WGS 补充已有 ipyrad loci
 
+[English](rad_EN.md) · [项目总览](../README.md) · [命令行指南](../manual/ZH_CN/command_line.md) · [输出说明](../manual/ZH_CN/output.md)
+
 `rad` 用 WGS reads 补充 ipyrad `.loci` 中缺失的新样本；它不从缺失的 RAD reads 伪造等位基因。
 
 | 起点 | 产物 | 边界 |

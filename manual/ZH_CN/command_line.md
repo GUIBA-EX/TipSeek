@@ -1,6 +1,8 @@
 # TipSeek 命令行指南
 
-TipSeek 是面向 UCE 和其他系统发育标记的命令行流程。本仓库不包含 GUI、内置演示数据或旧版图形界面文档。
+[English](../EN_US/command_line.md) · [项目总览](../../README.md) · [输出说明](output.md)
+
+TipSeek 是 Rust 原生的参考引导 gene 与 UCE 恢复、exon/intron 注释、动物线粒体组装、RAD 补充、marker profiling、群体分析和保守 repeatome 分析工具。本仓库不包含 GUI 或内置演示数据。[综合示意图](../../docs/assets/tipseek-vs-geneminer2-innovations.png)概括了相对于 GeneMiner2 衍生 gene-recovery 核心的扩展。
 
 ## 1. 从源码构建
 
@@ -84,7 +86,7 @@ references/
 
 ## 3. 子命令与默认流程
 
-可在同一条命令中按执行顺序列出一个或多个子命令：
+阶段子命令可按执行顺序列出；`mito`、`rad`、`population` 和 `te` 等独立流程会选择自己的固定计划：
 
 | 子命令 | 功能 |
 | --- | --- |
@@ -94,6 +96,8 @@ references/
 | `assemble` | 使用 wDBG 组装目标序列 |
 | `gene-resolve` | 比对、建基因树并解析严格一对一子树 |
 | `gene-tree` | 从 strict 或 multicopy gene trees 推断物种树 |
+| `mito` | 恢复并验证常规单环动物线粒体基因组 |
+| `rad-probe` / `rad` / `rad-validate` | 构建双 arm probe、恢复 WGS arm 并写出经验证的 RAD 矩阵 |
 | `te` | 从短读长数据发现、整理、注释并定量保守 repeatome 单元 |
 | `population` | 构建公共 UCE 参考并生成群体 SNP、PCA 和 ADMIXTURE 结果 |
 | `consensus` | 在杂合位点生成一致性序列 |
@@ -119,7 +123,7 @@ cli/tipseek \
   -p 8
 ```
 
-## 4. UCE 组装与 marker profiling
+## 4. 恢复与 marker 分析流程
 
 ### 4.1 UCE
 
@@ -181,6 +185,32 @@ cli/tipseek te -f te_samples.tsv -o te_output -p 32
 
 `--te-library` 可选地提供 `name#Class/Subclass` 格式的已分类 TE FASTA；注释不会合并 EQ 或替代完整 TE 注释。输出解释、阈值与重跑规则见 [TE / repeatome 章节](../../docs/te_ZH.md)。
 
+### 4.5 动物线粒体
+
+`mito` 是面向常规单环动物线粒体基因组的独立流程。它组合 bait 与已接受 contig seed，自适应提高 reads 预算，并且只有 overlap 或 unique read-graph bridge 加 junction reads 支持全部连接时才报告闭环。它不会用参考序列或 `N` 填补缺口。
+
+```bash
+cli/tipseek mito \
+  -f samples.tsv -o mito_output -p auto \
+  --mito-genbank mitochondrial_reference.gb
+```
+
+适用范围、闭环判据、自适应停止和输出见[线粒体说明](../../docs/mitochondria_CN.md)。
+
+### 4.6 RAD 补充
+
+RAD 路线始终独立处理 R1 与 R2 限制性位点 arm。`rad` 不推断未测序的 insert；只有 `rad-validate` 会将两侧分别通过 breadth、identity 和 own-locus specificity 检查的样本提升到严格矩阵。
+
+```bash
+cli/tipseek rad-probe --ipyrad-loci assembly.loci -o rad_probe
+cli/tipseek rad --rad-probe rad_probe/rad_reference \
+  -f wgs_samples.tsv -o rad_out -p auto
+cli/tipseek rad-validate --rad-probe rad_probe/rad_reference \
+  --rad-recovery rad_out/rad_recovery -o rad_validate_out
+```
+
+probe 构建、fallback 招募、验证与解释见 [RAD 说明](../../docs/rad_CN.md)。
+
 ## 5. Population 群体遗传分析
 
 ### 5.1 适用范围与示例
@@ -191,7 +221,7 @@ cli/tipseek te -f te_samples.tsv -o te_output -p 32
 cli/tipseek population \
   -f /home/user/project/samples.tsv \
   -r /home/user/project/references -o output -p 8 \
-  --assembly-mode uce \
+  --assembly-mode uce --engine panrefv2 \
   --population-admixture-k-min 2 --population-admixture-k-max 6
 ```
 
@@ -273,7 +303,21 @@ cli/tipseek stats \
 | `--uce-rescue-inverted-repeat-min-bp INT` | 若本轮 rescue 新引入至少该长度的精确倒置重复，则逐 locus 回退；默认 `150`，`0` 关闭 |
 | `--uce-rescue-reverse-reuse-reference-scale FLOAT` | 实验性：缩放与任一组装臂已走路径互为反向互补节点的 reference bonus；范围 `0`--`1`，默认 `1.0`（关闭缩放），不改变 reads depth |
 
-### 7.4 Population
+### 7.4 Exon 注释参数
+
+| 参数 | 说明 |
+| --- | --- |
+| `--gene-protein-reference DIR` | 可选的逐 family `.faa` 覆盖；同名 stem 替换自动翻译，其余 family 仍自动推导 |
+| `--gene-miniprot PATH` | miniprot 可执行文件；默认 `miniprot`，要求 0.18 或更高版本 |
+| `--gene-max-intron INT` | miniprot 接受的最大 intron；默认 `50000` |
+| `--gene-min-model-coverage FLOAT` | 常规 partial model 最低蛋白覆盖度；默认 `0.20`。仅补 N 尝试允许 1-aa 离散容差 |
+| `--gene-complete-coverage FLOAT` | complete model 最低覆盖度；默认 `0.80`，并且仍要求到达蛋白两端 |
+| `--gene-fragment-padding INT` | 仅为唯一互补片段重注释插入的 N 数；默认 `100`，`0` 关闭尝试 |
+| `--gene-flank INT` | `genes_flanked/` 两侧加入的实测碱基数；默认 `0`，不会加入 N |
+
+候选只有在重注释得到唯一完整模型、全部人工区间位于 intron 且不接触 exon 时才离开 unresolved。详见 [exon 注释说明](../../docs/exon_ZH.md)。
+
+### 7.5 Population
 
 | 参数 | 说明 |
 | --- | --- |
@@ -301,7 +345,7 @@ cli/tipseek stats \
 | `--population-plink PATH` | PLINK 1.9 可执行文件，默认 `plink` |
 | `--population-admixture PATH` | ADMIXTURE 可执行文件，默认 `admixture` |
 
-### 7.5 Consensus、裁切与合并
+### 7.6 Consensus、裁切与合并
 
 | 参数 | 说明 |
 | --- | --- |
@@ -321,7 +365,7 @@ cli/tipseek stats \
 | `--no-alignment` | 跳过多序列比对 |
 | `--no-trimal` | 已弃用；等同于 `--alignment-filter none` |
 
-### 7.6 建树与统计
+### 7.7 建树与统计
 
 | 参数 | 说明 |
 | --- | --- |

@@ -1,5 +1,7 @@
 # TE / repeatome
 
+[English](te_EN.md) · [项目总览](../README.md) · [命令行指南](../manual/ZH_CN/command_line.md) · [输出说明](../manual/ZH_CN/output.md)
+
 `tipseek te` 面向 genome-skimming 与 WGS 短读长，输出可复现的重复证据与相对丰度。它不宣称完成 TE 注释、插入位点检测，也不能从 capture 数据推断全基因组拷贝数。
 
 ## 从这里开始

@@ -1,5 +1,7 @@
 # 线粒体工作流：常规环形动物线粒体
 
+[English](mitochondria_EN.md) · [项目总览](../README.md) · [命令行指南](../manual/ZH_CN/command_line.md) · [输出说明](../manual/ZH_CN/output.md)
+
 `mito` 使用现有 MainFilter、refilter 与 Rust UCE assembler，从带注释的 GenBank 参考招募 reads，并只在样本 reads 支持时报告闭环。
 
 | 从什么开始 | 得到什么 | 主要边界 |

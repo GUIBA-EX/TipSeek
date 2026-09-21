@@ -1,5 +1,7 @@
 # Mitochondrial workflow: ordinary circular animal mitochondria
 
+[中文](mitochondria_CN.md) · [project overview](../README_EN.md) · [command-line guide](../manual/EN_US/command_line.md) · [output guide](../manual/EN_US/output.md)
+
 `mito` uses the existing MainFilter, refilter, and Rust UCE assembler to recruit reads from an annotated GenBank reference. It reports a circular sequence only when the sample reads support it.
 
 | Start with | Get | Main boundary |

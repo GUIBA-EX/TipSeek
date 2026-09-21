@@ -1,6 +1,14 @@
 # 输出文件
 
-本文档说明 TipSeek 的主要输出路径；各工作流审计表的具体字段见对应工作流说明。
+[English](../EN_US/output.md) · [项目总览](../../README.md) · [命令行指南](command_line.md)
+
+本文档说明 TipSeek 的主要输出路径；各工作流审计表的具体字段与生物学接纳边界见对应工作流说明。[综合示意图](../../docs/assets/tipseek-vs-geneminer2-innovations.png)展示了主要路线之间的关系。
+
+## 运行级 provenance
+
+**workflow_manifest.tsv** 记录 schema/tool 版本、命令、assembly mode、CPU 选择、参考与样本表 SHA-256、原始参数和输入 reads 身份。**workflow_status.tsv** 原子写入 `succeeded` 或 `failed` 及错误类别；`--resume` 要求 manifest 完全匹配且此前状态为成功。
+
+**workflow_profile.tsv** 仅在启用 `--workflow-profile` 时生成，用于记录时间与 I/O，不改变分析。**cleanup_manifest.tsv** 记录可清理和已完成的清理动作；可先用 `--cleanup-dry-run` 检查计划。
 
 ## 单样本目录
 
@@ -55,6 +63,35 @@
 **exon/**：`--assembly-mode exon` 的结构结果，包括可进入 resolve 的 `cds/` 与 `proteins/`、保留坐标的 `exons/`、`introns/`、`genes/`、`supercontigs/`、`gff3/`、模型表、manifest 和未解析模型。自动参考翻译记录在 `manifest/reference_translation.tsv`，选中的派生蛋白保留在 `manifest/derived_proteins/`。
 
 `gene-resolve` 与 `gene-tree` 写入各自显式指定的 `-o` 目录。模型状态、补 N 验证和完整 exon 目录树见 [exon 注释说明](../../docs/exon_ZH.md)。
+
+## 线粒体输出
+
+- `<sample>/mito/mitochondrial_assembly.fasta`：经审计的闭环序列或保留的 partial component；绝不使用参考补洞。
+- `<sample>/mito/mitochondrial_standardized.fasta`：仅包含验证闭环结果，按可复现方式旋转和定向，不增加碱基。
+- `<sample>/mito/mitochondrial_assembly_summary.tsv`：结构状态、`resolution_reason`、连接、junction 支持和歧义碱基数。
+- `<sample>/mito/mitochondrial_evidence.json`：机器可读的 graph、mate-link、junction 和结构证据。
+- `<sample>/mito/mitochondrial_feature_evidence.tsv` 与 `mitochondrial_mate_links.tsv`：feature-anchor 和已接受连接证据。
+
+详见[线粒体说明](../../docs/mitochondria_CN.md)。保留的 linear 或 ambiguous 结果是证据，不是已验证闭环。
+
+## RAD 输出
+
+- `rad_reference/arms/`：每个 locus 的多等位 R1/R2 bait FASTA。
+- `rad_recovery/`：逐 WGS 样本的招募、refilter 与组装证据。
+- `rad_matrix/rad_sample_locus.tsv`：逐 sample × locus 的独立 arm 与联合恢复状态。
+- `rad_matrix/recovered_arms/` 与 `paired_arms/`：严格验证前的未比对证据集。
+- `rad_validated/rad_validation.tsv` 与 `strict_arms/`：逐 arm 验证结果和仅保留双 arm 均通过样本的矩阵。
+
+详见 [RAD 说明](../../docs/rad_CN.md)。这些输出不会桥接 R1/R2 之间未测序的 insert。
+
+## TE / repeatome 输出
+
+- `03_annotate/annotation_evidence.tsv` 与 `repeat_families.tsv`：结构/分类证据和保守相似性 group。
+- `03_interspersed/clusters.tsv` 与 `consensus.fasta`：overlap component 和供外部注释的 consensus candidate。
+- `04_quantify/repeat_signal.tsv` 与 `repeat_landscape.tsv`：逐样本 signal 和 divergence proxy。
+- `05_compare/repeat_superfamilies.tsv`：shared、taxon-shared 与 sample-specific 证据 group。
+
+详见 [TE / repeatome 说明](../../docs/te_ZH.md)。稳定的 `unknown` 与 repeat signal 不是完整插入位点或全基因组拷贝数注释。
 
 ## 合并输出
 

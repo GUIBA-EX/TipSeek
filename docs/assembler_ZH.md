@@ -1,8 +1,10 @@
 # 2. Assembler
 
-[English version](assembler_EN.md)
+[English version](assembler_EN.md) · [项目总览](../README.md) · [命令行指南](../manual/ZH_CN/command_line.md)
 
 Assembler 将招募后的逐 locus reads 组装为 contig。应按生物学目标选择流程，而不是按测序平台或文库名称选择。
+
+[综合示意图](assets/tipseek-vs-geneminer2-innovations.png)展示了 TipSeek 与 GeneMiner2 的关系，以及 exon、UCE、线粒体和群体分析方面的扩展。本章说明 gene、exon 和 UCE 的组装边界；线粒体与群体分析另有专题说明。
 
 | 模式 | 适用目标 | 结果 |
 |---|---|---|
@@ -10,7 +12,7 @@ Assembler 将招募后的逐 locus reads 组装为 contig。应按生物学目�
 | `exon` | 需要 exon/intron 结构的基因家族 | 基因候选，以及经验证的 CDS、exon、intron 与 supercontig |
 | `uce` | genome skimming 或 target capture 中的 UCE | UCE core 及有 read 支持的 flank |
 
-所有后端均使用参考位置明确的 seed、read k-mer 支持、双向延伸和 read-slice 验证。
+三种模式都遵循证据优先原则，但并不是同一算法的不同预设。`gene` 与 `exon` 使用源自 GeneMiner2 的 candidate assembly 核心，且仅 `exon` 增加结构注释；默认 `uce` 使用专用的融合招募、UCE 图组装与可逆 rescue。
 
 ## Gene 组装
 

@@ -1,5 +1,7 @@
 # Rust CLI full-migration matrix
 
+> This is a development coverage matrix, not the user-facing feature list. Current commands, defaults, and outputs are defined by the [command-line guide](../../manual/EN_US/command_line.md) and [output guide](../../manual/EN_US/output.md). “Partial” below describes remaining fixture coverage, not a Python runtime fallback.
+
 The release CLI runs through the Rust dispatcher without Python or Biopython at
 runtime. The former Python implementation has been removed; release execution has no Python dependency.
 
@@ -10,7 +12,7 @@ runtime. The former Python implementation has been removed; release execution ha
 | UCE rescue | UCE recovery backends | partial (whole-contig + terminal-only rounds with per-end read-evidence reconciliation) | broader biological fixtures and end-to-end parity fixtures remain |
 | `mito` | `mito_workflow`, UCE tools | partial (native full skeleton) | bait collapse, text refilter, seed rescue and circular adaptive-stop fixture; biological circular/linear fixtures pending |
 | `rad`, `rad-probe`, `rad-validate` | `rad_workflow`, optional ipyrad, MainFilter, refilter, original-rust | native route | synthetic `.loci`, inferred ipyrad output, strict/phylogeny arm matrix, partial-arm and CLI-dispatch fixtures |
-| `--assembly-mode exon` | `gene_workflow`, original-rust tools, miniprot | partial | integrated annotation dispatch and structural/N-padding fixtures |
+| `--assembly-mode exon` | `gene_workflow`, original-rust tools, miniprot | native integrated route | unit fixtures plus 56-real-gene intact/fragmented validation; broader cross-taxon fixtures remain |
 | `gene-resolve` / `gene-tree` | `gene_workflow` + external tools | partial (standalone routes) | ASTER/provenance fixtures; resolve fixture pending |
 | `profiling` | `marker_profile` | partial (native complete route) | single-marker recruitment/quantification fixture; cache and decoy fixtures pending |
 | `population` | `main_population` + external tools | partial (standalone route) | default/panref option forwarding fixtures; staged-output fixture pending |

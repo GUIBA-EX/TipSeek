@@ -64,7 +64,7 @@ cli/tipseek --assembly-mode exon \
 
 ## 经验证的补 N
 
-只有在恰好存在一对已选中的 `terminal_partial` 模型、二者互补覆盖同一蛋白两端，且该蛋白没有已选完整模型时，才尝试补 N。候选对还必须满足：重叠不超过较短模型的 10%，合并后新增覆盖不少于蛋白长度的 20%，总覆盖达到 `--gene-complete-coverage`，并在蛋白两端各 2%（至少 3 aa）的容差内到达首尾。
+只有在存在唯一明确的一对已选、结构可靠模型，二者互补覆盖同一蛋白两端，且该蛋白没有已选完整模型时，才尝试补 N。来源通常为 `terminal_partial`；`low_coverage` 模型只有在到达蛋白一端且距离 `--gene-min-model-coverage` 不超过 1 aa 时，才可参与这项验证，但它单独仍不能进入 resolve。较短一侧还必须在另一模型之外提供达到相同门槛的独有覆盖，补 N 尝试允许同样的 1-aa 离散容差。两者并集必须达到 `--gene-complete-coverage`，并在蛋白两端各 2%（至少 3 aa）的容差内到达首尾。query 坐标重叠本身不再作为否决条件，因为 fragment-edge alignment 可能略有重叠；若被另一模型包含而没有足够独有覆盖，仍会被拒绝。
 
 TipSeek 按模型方向排列两条来源 contig，在中间插入 `--gene-fragment-padding` 个 N（默认 100），再对派生序列重新运行 miniprot。仅当重注释得到唯一、完整、可进入 resolve 的正向模型，而且整段补 N 区完全位于预测 intron 内且不与任何 exon 重叠时，才接受拼接。
 
@@ -78,7 +78,7 @@ TipSeek 按模型方向排列两条来源 contig，在中间插入 `--gene-fragm
 - 有多种组合或重注释失败时不拼接；
 - 补 N 只验证结构桥接，不估计真实 intron 长度。
 
-在真实海星 *Patiria pectinifera* 基因测试中，3 个含真实 2000-nt intron 的完整候选均在不提供 `.faa` 时恢复了正确 CDS、方向、exon/intron 边界与 phase。保留断点两侧各 120 nt 真实 intronic flank 的互补片段中，满足上述门槛的一对通过 100-N 重注释并得到与真实 CDS 完全一致的结果；另外两组分别因蛋白区间重叠过多和末端片段低于覆盖门槛而保持未拼接。该测试验证的是保守接纳逻辑，而不是保证 reads 组装一定能恢复一对互补末端片段。
+在 56 个真实多 exon 海星 *Patiria pectinifera* 基因的分层测试中，目标 intron 长度为 2,000–19,956 nt，正反链各 28 个基因。候选容差只新增了两个经验证的拼接：一个受 fragment-edge query overlap 影响，另一个仅比 20% 门槛少 1 aa；两者都产生了正确 CDS。29 个获接受的 padded CDS 均与对应完整候选的 TipSeek 结果完全一致，每段 100-N 区间都位于预测 intron 内，其他 54 个基因的判定不变。该测试验证的是相对于完整候选的补 N 一致性，而不是保证 reads 组装一定能恢复一对互补末端片段。
 
 使用 `--gene-fragment-padding 0` 可关闭此步骤。
 
@@ -89,7 +89,7 @@ TipSeek 按模型方向排列两条来源 contig，在中间插入 `--gene-fragm
 | `--gene-protein-reference` | 自动推导 | 可选 `.faa` 目录；同名 family 覆盖自动翻译 |
 | `--gene-miniprot` | `miniprot` | miniprot 可执行文件 |
 | `--gene-max-intron` | `50000` | miniprot 接受的最大 intron 长度 |
-| `--gene-min-model-coverage` | `0.20` | partial model 最低蛋白覆盖度 |
+| `--gene-min-model-coverage` | `0.20` | 常规 partial model 的最低蛋白覆盖度；仅补 N 尝试允许 1-aa 离散容差 |
 | `--gene-complete-coverage` | `0.80` | complete model 最低覆盖度；仍要求覆盖蛋白两端 |
 | `--gene-fragment-padding` | `100` | 唯一双片段验证插入的 N 数；`0` 关闭拼接 |
 | `--gene-flank` | `0` | `genes_flanked/` 两侧加入的实测碱基数；不会补 N |

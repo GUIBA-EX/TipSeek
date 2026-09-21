@@ -1,6 +1,6 @@
 # 4. Population
 
-前置章节：[Filter](filter_ZH.md)、[Assembler](assembler_ZH.md)。参数与完整文件清单见[命令行指南](../manual/ZH_CN/command_line.md)和[输出说明](../manual/ZH_CN/output.md)。
+[English](population_EN.md) · [项目总览](../README.md) · 前置章节：[Filter](filter_ZH.md)、[Assembler](assembler_ZH.md) · [命令行指南](../manual/ZH_CN/command_line.md) · [输出说明](../manual/ZH_CN/output.md)
 
 `population` 将多个已完成的二倍体 UCE 样本统一到一套参考坐标，输出联合 SNP、PCA 和可选 ADMIXTURE。它产生未定相基因型，不替代单倍型或单 locus 基因树分析。
 

@@ -1,5 +1,7 @@
 # TE / repeatome
 
+[中文](te_ZH.md) · [project overview](../README_EN.md) · [command-line guide](../manual/EN_US/command_line.md) · [output guide](../manual/EN_US/output.md)
+
 `tipseek te` is a short-read repeatome workflow for genome-skimming and WGS data. It reports reproducible repeat evidence and abundance. It does not claim complete TE annotation, insertion sites, or genome-wide copy number from capture data.
 
 ## Start here

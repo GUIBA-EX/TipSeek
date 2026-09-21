@@ -22,19 +22,29 @@ use gm2_tools::gene_annotation::{
 
 const FASTA_EXTENSIONS: &[&str] = &["fa", "fas", "fasta"];
 
+// Protein intervals are discrete; allow a one-residue rounding margin only
+// when deciding whether a padded reannotation is worth attempting.
+fn meets_padding_minimum(residue_count: usize, protein_len: usize, minimum_coverage: f64) -> bool {
+    if protein_len == 0 {
+        return false;
+    }
+    let minimum_residue_count = (protein_len as f64 * minimum_coverage).ceil() as usize;
+    residue_count.saturating_add(1) >= minimum_residue_count
+}
+
 fn complementary_union_fraction(
     left: Interval,
     right: Interval,
     protein_len: usize,
+    minimum_coverage: f64,
 ) -> Option<f64> {
     if protein_len == 0 {
         return None;
     }
     let overlap = left.overlap(right);
-    let shorter = left.len().min(right.len());
     let covered_union = left.len() + right.len() - overlap;
     let improvement = covered_union.saturating_sub(left.len().max(right.len()));
-    (overlap * 10 <= shorter && improvement * 5 >= protein_len)
+    meets_padding_minimum(improvement, protein_len, minimum_coverage)
         .then_some(covered_union as f64 / protein_len as f64)
 }
 
@@ -42,9 +52,10 @@ fn complete_fragment_union_fraction(
     left: Interval,
     right: Interval,
     protein_len: usize,
+    minimum_coverage: f64,
     complete_coverage: f64,
 ) -> Option<f64> {
-    let fraction = complementary_union_fraction(left, right, protein_len)?;
+    let fraction = complementary_union_fraction(left, right, protein_len, minimum_coverage)?;
     let terminal_tolerance = 3usize.max((protein_len as f64 * 0.02).ceil() as usize);
     let start = left.start.min(right.start);
     let end = left.end.max(right.end);
@@ -52,6 +63,36 @@ fn complete_fragment_union_fraction(
         && start <= terminal_tolerance
         && protein_len.saturating_sub(end) <= terminal_tolerance)
         .then_some(fraction)
+}
+
+fn padding_source_eligible(model: &GeneModel, minimum_coverage: f64) -> bool {
+    if model.state == ModelState::TerminalPartial {
+        return model.eligible_for_resolve;
+    }
+    if model.state != ModelState::LowCoverage
+        || !meets_padding_minimum(
+            model.query_interval_aa.len(),
+            model.protein_len_aa,
+            minimum_coverage,
+        )
+    {
+        return false;
+    }
+    let terminal_tolerance = 3usize.max((model.protein_len_aa as f64 * 0.02).ceil() as usize);
+    let reaches_a_terminus = model.query_interval_aa.start <= terminal_tolerance
+        || model
+            .protein_len_aa
+            .saturating_sub(model.query_interval_aa.end)
+            <= terminal_tolerance;
+    reaches_a_terminus
+        && model
+            .protein
+            .as_ref()
+            .is_some_and(|protein| !protein.contains('X'))
+        && !model
+            .qc_flags
+            .iter()
+            .any(|flag| flag == "missing_paf" || flag == "noncanonical_splice")
 }
 
 fn oriented_candidate(sequence: &str, strand: Strand) -> String {
@@ -1603,10 +1644,8 @@ fn annotate(
                     let b = &built_models[right];
                     if !a.selected
                         || !b.selected
-                        || !a.eligible_for_resolve
-                        || !b.eligible_for_resolve
-                        || a.state != ModelState::TerminalPartial
-                        || b.state != ModelState::TerminalPartial
+                        || !padding_source_eligible(a, minimum_coverage)
+                        || !padding_source_eligible(b, minimum_coverage)
                         || a.candidate_id == b.candidate_id
                         || a.protein_id != b.protein_id
                         || a.protein_len_aa != b.protein_len_aa
@@ -1618,6 +1657,7 @@ fn annotate(
                         a.query_interval_aa,
                         b.query_interval_aa,
                         a.protein_len_aa,
+                        minimum_coverage,
                         complete_coverage,
                     ) {
                         let pair = if a.query_interval_aa.start <= b.query_interval_aa.start {
@@ -2661,20 +2701,42 @@ mod tests {
     }
 
     #[test]
-    fn fragment_report_requires_complementary_low_overlap_models() {
+    fn fragment_pairs_require_unique_coverage_with_one_residue_tolerance() {
         assert_eq!(
             complementary_union_fraction(
                 Interval::new(0, 45).unwrap(),
                 Interval::new(50, 100).unwrap(),
                 100,
+                0.20,
             ),
             Some(0.95)
         );
+        // Query-coordinate overlap can be a fragment-edge alignment artifact.
         assert_eq!(
             complementary_union_fraction(
-                Interval::new(0, 60).unwrap(),
-                Interval::new(55, 100).unwrap(),
-                100,
+                Interval::new(0, 37).unwrap(),
+                Interval::new(25, 108).unwrap(),
+                108,
+                0.20,
+            ),
+            Some(1.0)
+        );
+        // 67/339 is one residue below ceil(20% * 339), so it is trial-eligible.
+        assert_eq!(
+            complementary_union_fraction(
+                Interval::new(0, 272).unwrap(),
+                Interval::new(272, 339).unwrap(),
+                339,
+                0.20,
+            ),
+            Some(1.0)
+        );
+        assert_eq!(
+            complementary_union_fraction(
+                Interval::new(0, 272).unwrap(),
+                Interval::new(272, 339).unwrap(),
+                339,
+                0.21,
             ),
             None
         );
@@ -2683,6 +2745,7 @@ mod tests {
                 Interval::new(0, 70).unwrap(),
                 Interval::new(75, 90).unwrap(),
                 100,
+                0.20,
             ),
             None
         );

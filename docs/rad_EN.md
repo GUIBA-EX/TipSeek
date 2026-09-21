@@ -1,5 +1,7 @@
 # RAD: supplement an existing ipyrad loci matrix with WGS
 
+[中文](rad_CN.md) · [project overview](../README_EN.md) · [command-line guide](../manual/EN_US/command_line.md) · [output guide](../manual/EN_US/output.md)
+
 `rad` supplements new WGS samples missing from an ipyrad `.loci` matrix. It does not invent RAD alleles from absent RAD reads.
 
 | Start with | Get | Boundary |

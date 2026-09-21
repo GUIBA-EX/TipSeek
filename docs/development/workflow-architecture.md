@@ -1,5 +1,9 @@
 # 工作流调度架构（渐进式）
 
+[English](workflow-architecture_EN.md)
+
+> 本页记录调度层的设计与实现边界，供开发使用；用户可依赖的命令、默认值和输出以[命令行指南](../../manual/ZH_CN/command_line.md)与[输出说明](../../manual/ZH_CN/output.md)为准。下文已区分当前实现与仍属设计目标的部分。
+
 ## 目标
 
 保持现有命令、结果目录和筛选/组装语义不变，将 CLI 从“拼接命令行”收敛为一个可验证的工作流规划器。算法仍由 Rust 原生组件完成；外部程序仅作为明确的可选适配器。
@@ -58,10 +62,10 @@ gene（默认）/ exon
   exon only: -> miniprot annotation/structural validation
 
 UCE（默认）
-  ucefilter -> uce-rust -> 显式启用时 rescue
+  ucefilter -> uce-rust -> rescue（默认一轮；可关闭或请求第二轮）
 
 UCE（兼容模式）
-  MainFilter -> refilter -> uce-rust -> 显式启用时 rescue
+  MainFilter -> refilter -> uce-rust -> rescue（默认一轮；可关闭或请求第二轮）
 
 mito
   mito reference -> MainFilter -> collapse-baits -> text refilter -> uce-rust
@@ -108,25 +112,18 @@ tipseek-cli
 
 ## 结果状态
 
-Runner 只使用三种终态：`succeeded`、`scientifically_incomplete`、`failed`。
-
-- `succeeded`：组件和产物校验均通过，可供下游消费。
-- `scientifically_incomplete`：程序正确完成并保存证据，但未达到工作流声明的科学判据；例如 mito 没有唯一闭环。它使 CLI 返回非零，阻止 cohort 与清理，但保留最终 linear contig、结构歧义和闭环验证报告。
-- `failed`：输入、组件、I/O 或产物校验失败；下游不得消费其输出。
-
-因此“没有闭环”永远不会被伪装成成功，也不会与 panic、磁盘写满或错误参考混为一谈。
+当前 Runner 在 `workflow_status.tsv` 中只写两个运行终态：`succeeded` 或 `failed`，后者另带 `error_kind`。科学上的不完整状态由各领域结果表表达，例如 mito 的 linear/ambiguous、exon 的 unresolved 和 UCE 的 review/revert；这些证据不会因顶层命令失败而删除。未来若增加独立的 `scientifically_incomplete` 调度状态，必须版本化 manifest schema，不能静默改变现有批处理语义。
 
 ## 产物与恢复
 
-每个 sample 根目录写一个原子更新的 `workflow_manifest.json`；若有 cohort 阶段，则在输出根目录写一个同格式 manifest：
+当前 CLI 在输出根目录原子写入 `workflow_manifest.tsv` 与 `workflow_status.tsv`。manifest 记录 schema/tool 版本、命令、assembly mode、CPU 来源、参考与样本表 SHA-256、原始参数，以及每个 reads 文件的绝对路径、大小和修改时间；status 记录成功/失败与错误类别。
 
 ```text
-schema_version, command, normalized_options,
-reference_digest, input_digest,
-stages[{id, component, state, inputs, outputs, elapsed_ms}]
+workflow_manifest.tsv: field, value
+workflow_status.tsv: schema_version, state, error_kind, commands, error
 ```
 
-恢复规则简单且保守：只有当 CLI schema、组件版本、规范化的语义参数、输入身份和全部声明产物一致时，阶段才跳过；否则从该阶段重跑。不能只因目标目录存在而跳过。参考与小型 bait 使用完整 SHA-256；原始 reads 默认使用绝对路径、大小和修改时间，避免为 resume 再扫描 TB 级输入。需要最强审计时以 `--strict-resume` 改用完整 SHA-256。
+当前 `--resume` 只复用整个已成功流程：重新计算的 manifest 必须逐字节一致，且既有 status 必须为 `succeeded`；否则拒绝复用。它不是任意阶段 checkpoint，也不会只因目标目录存在而跳过。阶段级 typed manifest 仍属于后续设计目标。
 
 缓存只用于纯函数阶段：MainFilter 字典、mito bait/reference、assembler reference cache。键必须包含内容 SHA-256、关键参数、组件版本和格式版本。样本 reads 过滤结果不跨样本复用。缓存写入使用临时目录后原子改名；失败或中断留下的条目永不视为命中。
 

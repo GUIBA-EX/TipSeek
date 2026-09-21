@@ -1,6 +1,8 @@
 # TipSeek Command-Line Guide
 
-TipSeek is a command-line workflow for UCEs and other phylogenetic markers. This repository does not include a GUI, bundled demonstration data, or legacy graphical documentation.
+[中文](../ZH_CN/command_line.md) · [project overview](../../README_EN.md) · [output guide](output.md)
+
+TipSeek is a Rust-native command-line toolkit for reference-guided gene and UCE recovery, exon/intron annotation, animal mitochondrial assembly, RAD augmentation, marker profiling, population analysis, and conservative repeatome analysis. This repository does not include a GUI or bundled demonstration data. The [integrated schematic](../../docs/assets/tipseek-vs-geneminer2-innovations.png) summarizes the additions beyond the GeneMiner2-derived gene-recovery core.
 
 ## 1. Building from source
 
@@ -84,7 +86,7 @@ references/
 
 ## 3. Subcommands and default workflows
 
-One or more subcommands can be listed in execution order:
+Stage subcommands can be listed in execution order. Standalone workflows such as `mito`, `rad`, `population`, and `te` select their own fixed plans:
 
 | Subcommand | Function |
 | --- | --- |
@@ -94,6 +96,8 @@ One or more subcommands can be listed in execution order:
 | `assemble` | Assemble target sequences with the wDBG assembler |
 | `gene-resolve` | Align candidates, infer gene trees, and select strict one-to-one clades |
 | `gene-tree` | Infer a species tree from strict or multicopy gene trees |
+| `mito` | Recover and validate an ordinary circular animal mitochondrial genome |
+| `rad-probe` / `rad` / `rad-validate` | Build paired-arm probes, recover WGS arms, and write a validated RAD matrix |
 | `te` | Discover, curate, annotate, and quantify conservative repeatome units from short reads |
 | `population` | Build a cohort UCE reference and generate SNP, PCA, and ADMIXTURE results |
 | `consensus` | Generate consensus sequences at heterozygous sites |
@@ -119,7 +123,7 @@ cli/tipseek \
   -p 8
 ```
 
-## 4. UCE assembly and marker profiling
+## 4. Recovery and marker-analysis workflows
 
 ### 4.1 UCE
 
@@ -180,6 +184,32 @@ cli/tipseek te -f te_samples.tsv -o te_output -p 32
 ```
 
 `--te-library` optionally supplies a classified `name#Class/Subclass` FASTA. Annotation never merges EQs and does not replace complete-TE annotation. See the [TE / repeatome chapter](../../docs/te_EN.md) for thresholds, rerun rules, and output interpretation.
+
+### 4.5 Animal mitochondria
+
+`mito` is a standalone workflow for ordinary single-circular animal mitochondrial genomes. It combines bait and accepted-contig seeds, increases the read budget adaptively, and reports a circle only when overlaps or unique read-graph bridges plus junction reads support every join. It never fills a gap from the reference or with `N`.
+
+```bash
+cli/tipseek mito \
+  -f samples.tsv -o mito_output -p auto \
+  --mito-genbank mitochondrial_reference.gb
+```
+
+See the [mitochondrial guide](../../docs/mitochondria_EN.md) for scope, circularity criteria, adaptive stopping, and outputs.
+
+### 4.6 RAD augmentation
+
+The RAD route keeps R1 and R2 restriction-site arms independent. `rad` never infers the unsequenced insert, and only `rad-validate` promotes samples whose two arms independently pass breadth, identity, and own-locus specificity checks.
+
+```bash
+cli/tipseek rad-probe --ipyrad-loci assembly.loci -o rad_probe
+cli/tipseek rad --rad-probe rad_probe/rad_reference \
+  -f wgs_samples.tsv -o rad_out -p auto
+cli/tipseek rad-validate --rad-probe rad_probe/rad_reference \
+  --rad-recovery rad_out/rad_recovery -o rad_validate_out
+```
+
+See the [RAD guide](../../docs/rad_EN.md) for probe construction, fallback recruitment, validation, and interpretation.
 
 ## 5. Population-genetic analysis
 
@@ -273,7 +303,21 @@ The tables below list the main public options and current defaults. Run `cli/tip
 | `--uce-rescue-inverted-repeat-min-bp INT` | Revert a locus when the current rescue round newly introduces an exact inverted repeat of at least this length; default `150`, `0` disables |
 | `--uce-rescue-reverse-reuse-reference-scale FLOAT` | Experimental: scale the reference bonus for a node whose reverse complement is already present in either assembly arm; range `0`--`1`, default `1.0` (disabled), with read depth unchanged |
 
-### 7.4 Population options
+### 7.4 Exon annotation options
+
+| Option | Description |
+| --- | --- |
+| `--gene-protein-reference DIR` | Optional per-family `.faa` overrides; matching stems replace automatic translation while other families remain auto-derived |
+| `--gene-miniprot PATH` | miniprot executable; default `miniprot`, version 0.18 or later required |
+| `--gene-max-intron INT` | Maximum intron accepted by miniprot; default `50000` |
+| `--gene-min-model-coverage FLOAT` | Minimum protein coverage for a normal partial model; default `0.20`. Padding trials alone allow a one-residue discretization margin. |
+| `--gene-complete-coverage FLOAT` | Minimum complete-model coverage; default `0.80`, with both protein termini also required |
+| `--gene-fragment-padding INT` | Ns inserted only for unique complementary-fragment reannotation; default `100`, `0` disables the attempt |
+| `--gene-flank INT` | Observed bases added on each side in `genes_flanked/`; default `0`, never adds Ns |
+
+Padding candidates remain unresolved unless reannotation yields one unique complete model with the entire synthetic interval inside an intron and outside every exon. See the [exon guide](../../docs/exon_EN.md).
+
+### 7.5 Population options
 
 | Option | Description |
 | --- | --- |
@@ -301,7 +345,7 @@ The tables below list the main public options and current defaults. Run `cli/tip
 | `--population-plink PATH` | PLINK 1.9 executable; default `plink` |
 | `--population-admixture PATH` | ADMIXTURE executable; default `admixture` |
 
-### 7.5 Consensus, trimming, and combining
+### 7.6 Consensus, trimming, and combining
 
 | Option | Description |
 | --- | --- |
@@ -321,7 +365,7 @@ The tables below list the main public options and current defaults. Run `cli/tip
 | `--no-alignment` | Skip multiple-sequence alignment |
 | `--no-trimal` | Deprecated alias for `--alignment-filter none` |
 
-### 7.6 Tree inference and statistics
+### 7.7 Tree inference and statistics
 
 | Option | Description |
 | --- | --- |

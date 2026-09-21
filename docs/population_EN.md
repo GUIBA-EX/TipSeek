@@ -1,6 +1,6 @@
 # 4. Population
 
-[中文版本](population_ZH.md)
+[中文版本](population_ZH.md) · [project overview](../README_EN.md) · [command-line guide](../manual/EN_US/command_line.md) · [output guide](../manual/EN_US/output.md)
 
 `population` creates one cohort coordinate system for multiple diploid UCE samples, then produces a joint SNP set, PCA, and optional ADMIXTURE results. It reports unphased genotypes; it is not a phasing or per-locus gene-tree workflow.
 

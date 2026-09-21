@@ -14,6 +14,12 @@
 
 TipSeek is a Rust-native toolkit for short-read recovery and analysis. Through one entry point, it performs reference-guided read recruitment, target assembly, evidence reporting, and cohort analysis for genome skimming, target capture, nuclear gene families, UCEs, animal mitochondria, RAD augmentation, and reference-free repeatomes. Release builds require no Python runtime.
 
+## Beyond GeneMiner2
+
+TipSeek retains the reference-guided gene-candidate core derived from GeneMiner2 and adds three independent capability groups under one entry point. Exon mode provides automatic protein references, structural annotation, and N-padding accepted only inside an intron. UCE mode provides fragment-aware fused recruitment, an automatic sensitive fallback, panel-wide unique-locus validation, and read rescue that can roll back per locus. Other native workflows cover mitochondrial circularity validation, PanRefV2/population analysis, RAD augmentation, profiling, and repeatomes. The routes share resource scheduling, manifests, and evidence tables without crossing their biological acceptance boundaries.
+
+![TipSeek innovations beyond GeneMiner2](docs/assets/tipseek-vs-geneminer2-innovations.png)
+
 ## Workflows
 
 In the table below, `tipseek` refers to the built `cli/tipseek` executable.
@@ -120,7 +126,7 @@ Cite the current software release as:
   author    = {XIA, Fei and TANG, Zizhen and XU, Yan},
   title     = {TipSeek: Reference-Guided Short-Read Recovery and Analysis},
   year      = {2026},
-  version   = {1.6.3},
+  version   = {1.6.4},
   url       = {https://github.com/GUIBA-EX/TipSeek},
   publisher = {GitHub}
 }

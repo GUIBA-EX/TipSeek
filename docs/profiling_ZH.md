@@ -1,6 +1,6 @@
 # 3. Profiling
 
-[English version](profiling_EN.md)
+[English version](profiling_EN.md) · [项目总览](../README.md) · [命令行指南](../manual/ZH_CN/command_line.md) · [输出说明](../manual/ZH_CN/output.md)
 
 Profiling 是从 WGS 或 metagenome reads 中免组装恢复任意扩增子 marker 的参考序列级证据流程。它报告与参考序列的相容证据，不生成 contig，也不是生物量比例。
 

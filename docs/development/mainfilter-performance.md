@@ -1,5 +1,7 @@
 # MainFilter 性能优化与兼容性说明
 
+[English](mainfilter-performance_EN.md)
+
 本文记录当前 Rust `MainFilterNew` 与上游历史 Haxe/C++ 基线的真实 UCE 对比、性能设计与兼容性边界。它只讨论 reads 招募的工程性能；不将运行时间等同于 UCE recovery、组装准确性或群体遗传推断质量。
 
 ## 结论：真实 Haxe/C++ 对比

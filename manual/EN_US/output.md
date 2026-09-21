@@ -1,6 +1,14 @@
 # Output Files
 
-This document describes the main TipSeek output paths. Workflow-specific audit columns are documented in the corresponding workflow guide.
+[中文](../ZH_CN/output.md) · [project overview](../../README_EN.md) · [command-line guide](command_line.md)
+
+This document describes the main TipSeek output paths. Workflow-specific audit columns and biological acceptance boundaries are documented in the linked workflow guides. The [integrated schematic](../../docs/assets/tipseek-vs-geneminer2-innovations.png) shows how the major routes relate.
+
+## Run-level provenance
+
+**workflow_manifest.tsv** records schema/tool version, commands, assembly mode, CPU selection, reference and sample-table SHA-256 values, raw arguments, and input-read identities. **workflow_status.tsv** is atomically written with `succeeded` or `failed` plus the error category. `--resume` requires an exact manifest match and a prior successful status.
+
+**workflow_profile.tsv** appears only with `--workflow-profile` and records timing and I/O without changing analysis. **cleanup_manifest.tsv** records eligible and completed cleanup actions; use `--cleanup-dry-run` to inspect the plan first.
 
 ## Per-sample directories
 
@@ -55,6 +63,35 @@ Each sample listed in the input table gets a folder under the output directory.
 **exon/**: Structural output from `--assembly-mode exon`, including resolve-eligible `cds/` and `proteins/`, coordinate-preserving `exons/`, `introns/`, `genes/`, `supercontigs/`, `gff3/`, model tables, manifests, and unresolved models. Automatic reference translation is recorded in `manifest/reference_translation.tsv`; the selected derived proteins are retained under `manifest/derived_proteins/`.
 
 `gene-resolve` and `gene-tree` write to their explicit `-o` directories. See the [exon annotation guide](../../docs/exon_EN.md) for model states, N-padding validation, and the complete exon output tree.
+
+## Mitochondrial outputs
+
+- `<sample>/mito/mitochondrial_assembly.fasta`: audited circular sequence or retained partial components; never reference-filled.
+- `<sample>/mito/mitochondrial_standardized.fasta`: verified circles only, rotated and oriented reproducibly without adding bases.
+- `<sample>/mito/mitochondrial_assembly_summary.tsv`: structural status, `resolution_reason`, joins, junction support, and ambiguous-base counts.
+- `<sample>/mito/mitochondrial_evidence.json`: machine-readable graph, mate-link, junction, and structural evidence.
+- `<sample>/mito/mitochondrial_feature_evidence.tsv` and `mitochondrial_mate_links.tsv`: feature-anchor and accepted-link evidence.
+
+See the [mitochondrial guide](../../docs/mitochondria_EN.md). A retained linear or ambiguous result is evidence, not a verified circle.
+
+## RAD outputs
+
+- `rad_reference/arms/`: multi-allelic R1/R2 bait FASTA for each locus.
+- `rad_recovery/`: per-WGS-sample recruitment, refiltering, and assembly evidence.
+- `rad_matrix/rad_sample_locus.tsv`: independent-arm and joint recovery status per sample × locus.
+- `rad_matrix/recovered_arms/` and `paired_arms/`: unaligned evidence sets before strict validation.
+- `rad_validated/rad_validation.tsv` and `strict_arms/`: per-arm validation and the matrix containing only samples whose two arms pass.
+
+See the [RAD guide](../../docs/rad_EN.md). These outputs never bridge the unsequenced R1/R2 insert.
+
+## TE / repeatome outputs
+
+- `03_annotate/annotation_evidence.tsv` and `repeat_families.tsv`: structural/class evidence and conservative similarity groups.
+- `03_interspersed/clusters.tsv` and `consensus.fasta`: overlap components and consensus candidates for external annotation.
+- `04_quantify/repeat_signal.tsv` and `repeat_landscape.tsv`: per-sample signal and divergence proxies.
+- `05_compare/repeat_superfamilies.tsv`: shared, taxon-shared, and sample-specific evidence groups.
+
+See the [TE / repeatome guide](../../docs/te_EN.md). Stable `unknown` calls and repeat signal are not complete insertion-site or genome-copy-number annotations.
 
 ## Combined outputs
 

@@ -1,6 +1,6 @@
 # 3. Profiling
 
-[中文版本](profiling_ZH.md)
+[中文版本](profiling_ZH.md) · [project overview](../README_EN.md) · [command-line guide](../manual/EN_US/command_line.md) · [output guide](../manual/EN_US/output.md)
 
 Profiling is an assembly-free workflow for recovering reference-level evidence for any amplicon marker from WGS or metagenomic reads. It reports compatibility with reference sequences, not contigs or organismal abundance.
 

@@ -64,7 +64,7 @@ A single terminal stop codon is retained in the annotated CDS. It and the corres
 
 ## Validated N-padding
 
-N-padding is attempted only when there is one unambiguous pair of selected `terminal_partial` models that covers complementary ends of the same protein and no complete selected model already represents that protein. A candidate pair must also overlap by no more than 10% of the shorter model, add coverage equal to at least 20% of the protein length, reach `--gene-complete-coverage` in total, and reach both protein termini within a 2% (minimum 3-aa) tolerance.
+N-padding is attempted only when there is one unambiguous pair of selected, structurally sound models that covers complementary ends of the same protein and no complete selected model already represents that protein. Sources are normally `terminal_partial`; a `low_coverage` model may participate in this validation only when it reaches one protein terminus and falls no more than one residue below `--gene-min-model-coverage`. It remains ineligible for resolve on its own. The shorter side must also add unique coverage beyond the other model that reaches the same threshold, with the same one-residue discretization tolerance. The union must reach `--gene-complete-coverage` and both protein termini within a 2% (minimum 3-aa) tolerance. Query-coordinate overlap alone is not a veto because fragment-edge alignments can overlap slightly; containment without enough unique coverage is still rejected.
 
 TipSeek orients the two source contigs, inserts `--gene-fragment-padding` Ns (100 by default), and reruns miniprot on the derived sequence. The join is accepted only when reannotation produces one complete, resolve-eligible forward model and the entire padded interval lies inside a predicted intron without overlapping any exon.
 
@@ -78,7 +78,7 @@ Consequently:
 - ambiguous pairs and failed reannotations are not joined;
 - padding validates a structural bridge but does not estimate the true intron length.
 
-In a test using real *Patiria pectinifera* genes, all three intact candidates containing a genuine 2,000-nt intron recovered the correct CDS, strand, exon/intron boundaries, and phase without `.faa` input. Among complementary fragments retaining 120 nt of genuine intronic flank on each side, the pair that met the gates above passed reannotation with 100 Ns and reproduced the true CDS exactly; two other pairs remained unjoined because one overlapped excessively in protein coordinates and the other had a terminal fragment below the coverage gate. This validates conservative acceptance, not guaranteed recovery of complementary terminal fragments from read assembly.
+In a stratified test of 56 real multi-exon *Patiria pectinifera* genes, target introns ranged from 2,000 to 19,956 nt and each strand contributed 28 genes. The candidate tolerance added only two validated joins: one affected by fragment-edge query overlap and one only one residue below the 20% threshold; both produced the correct CDS. All 29 padded CDS results were identical to TipSeek results from their unbroken candidates, every 100-N interval lay inside a predicted intron, and decisions for the other 54 genes were unchanged. This validates padding consistency relative to an intact candidate, not guaranteed recovery of complementary terminal fragments from read assembly.
 
 Set `--gene-fragment-padding 0` to disable this step.
 
@@ -89,7 +89,7 @@ Set `--gene-fragment-padding 0` to disable this step.
 | `--gene-protein-reference` | auto-derived | Optional `.faa` directory; matching families override automatic translation |
 | `--gene-miniprot` | `miniprot` | miniprot executable |
 | `--gene-max-intron` | `50000` | Maximum intron length accepted by miniprot |
-| `--gene-min-model-coverage` | `0.20` | Minimum protein coverage for a partial model |
+| `--gene-min-model-coverage` | `0.20` | Minimum protein coverage for a normal partial model; padding trials alone allow a 1-aa discretization margin |
 | `--gene-complete-coverage` | `0.80` | Minimum coverage for a complete model; both protein ends are also required |
 | `--gene-fragment-padding` | `100` | Ns inserted for unique two-fragment validation; `0` disables joining |
 | `--gene-flank` | `0` | Observed bases added on each side in `genes_flanked/`; never N-padded |
