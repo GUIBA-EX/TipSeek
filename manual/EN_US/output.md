@@ -52,7 +52,7 @@ Each sample listed in the input table gets a folder under the output directory.
 
 **gene/**: Cohort candidate output from the default workflow, including `family_summary.tsv`, `family_count_matrix.tsv`, `pseudo_sco/`, and `multiple_candidate_families/`.
 
-**exon/**: Structural output from `--assembly-mode exon`, including resolve-eligible `cds/` and `proteins/`, coordinate-preserving `exons/`, `introns/`, `genes/`, `supercontigs/`, `gff3/`, model tables, manifests, and unresolved models.
+**exon/**: Structural output from `--assembly-mode exon`, including resolve-eligible `cds/` and `proteins/`, coordinate-preserving `exons/`, `introns/`, `genes/`, `supercontigs/`, `gff3/`, model tables, manifests, and unresolved models. Automatic reference translation is recorded in `manifest/reference_translation.tsv`; the selected derived proteins are retained under `manifest/derived_proteins/`.
 
 `gene-resolve` and `gene-tree` write to their explicit `-o` directories. See the [exon annotation guide](../../docs/exon_EN.md) for model states, N-padding validation, and the complete exon output tree.
 

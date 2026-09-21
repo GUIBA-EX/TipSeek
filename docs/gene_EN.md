@@ -25,7 +25,7 @@ For protein-guided CDS, exon, intron, and supercontig output, run `--assembly-mo
 | Invocation | Input | Role | Main output |
 | --- | --- | --- | --- |
 | `tipseek` | reads + nucleotide family baits | Candidate recovery and cohort summary | `<output>/gene/` |
-| `tipseek --assembly-mode exon` | reads + nucleotide and protein references | Candidate recovery plus structural annotation | `<output>/{gene,exon}/` |
+| `tipseek --assembly-mode exon` | reads + coding nucleotide family baits; proteins optional | Candidate recovery plus structural annotation | `<output>/{gene,exon}/` |
 | `tipseek gene-resolve` | `<exon-output>/exon/` | MSA, codon backtranslation, gene trees, and one-to-one clade selection | `gene_resolved/` |
 | `tipseek gene-tree` | `gene_resolved/` | Strict or multicopy ASTER2 species tree | tree and provenance |
 

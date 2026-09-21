@@ -52,7 +52,7 @@
 
 **gene/**：默认流程的 cohort 候选结果，包括 `family_summary.tsv`、`family_count_matrix.tsv`、`pseudo_sco/` 与 `multiple_candidate_families/`。
 
-**exon/**：`--assembly-mode exon` 的结构结果，包括可进入 resolve 的 `cds/` 与 `proteins/`、保留坐标的 `exons/`、`introns/`、`genes/`、`supercontigs/`、`gff3/`、模型表、manifest 和未解析模型。
+**exon/**：`--assembly-mode exon` 的结构结果，包括可进入 resolve 的 `cds/` 与 `proteins/`、保留坐标的 `exons/`、`introns/`、`genes/`、`supercontigs/`、`gff3/`、模型表、manifest 和未解析模型。自动参考翻译记录在 `manifest/reference_translation.tsv`，选中的派生蛋白保留在 `manifest/derived_proteins/`。
 
 `gene-resolve` 与 `gene-tree` 写入各自显式指定的 `-o` 目录。模型状态、补 N 验证和完整 exon 目录树见 [exon 注释说明](../../docs/exon_ZH.md)。
 

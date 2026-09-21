@@ -59,10 +59,9 @@ Each FASTA file in the reference directory defines one gene family or UCE locus.
 # Default: recover nuclear gene-family candidates
 cli/tipseek -f samples.tsv -r family_references -o gene_out -p auto
 
-# Add protein-guided exon/intron annotation to the same recovery workflow
+# Derive protein references from nucleotide baits, then annotate exon/intron structure
 cli/tipseek --assembly-mode exon \
   -f samples.tsv -r family_references \
-  --gene-protein-reference family_proteins \
   -o exon_out -p auto
 ```
 

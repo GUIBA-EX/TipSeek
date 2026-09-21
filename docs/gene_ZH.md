@@ -25,7 +25,7 @@ TipSeek 对每个样本和 family 完成 reads 招募、refilter 与候选组装
 | 调用 | 输入 | 作用 | 主要输出 |
 | --- | --- | --- | --- |
 | `tipseek` | reads + 核酸 family bait | 候选恢复与跨样本汇总 | `<output>/gene/` |
-| `tipseek --assembly-mode exon` | reads + 核酸及蛋白参考 | 候选恢复与结构注释 | `<output>/{gene,exon}/` |
+| `tipseek --assembly-mode exon` | reads + coding 核酸 family bait；蛋白参考可选 | 候选恢复与结构注释 | `<output>/{gene,exon}/` |
 | `tipseek gene-resolve` | `<exon-output>/exon/` | MSA、密码子回译、gene tree 与一对一子树选择 | `gene_resolved/` |
 | `tipseek gene-tree` | `gene_resolved/` | strict 或 multicopy ASTER2 物种树 | 物种树与 provenance |
 

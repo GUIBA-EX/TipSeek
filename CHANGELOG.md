@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Made external `.faa` files optional in `--assembly-mode exon`. The default route now derives auditable protein references from each coding nucleotide family, treats all six frames equally, rejects internal-stop translations, and resolves ambiguous frames only against a trustworthy within-family anchor; `--gene-protein-reference` remains a per-family override.
+- Added `manifest/reference_translation.tsv` and retained derived protein FASTA files under `manifest/derived_proteins/` so every automatic frame and strand decision is reproducible.
+- Validated intact and fragmented exon annotation with real *Patiria pectinifera* gene structures containing 2-kb introns, and documented that padded joins require complementary terminal models plus retained intronic splice-flank evidence and never reconstruct missing coding sequence.
+
 ## v1.6.3 — Integrated exon annotation
 
 - Added `--assembly-mode exon` as the complete protein-guided extension of the default gene-family recovery workflow, with matching per-family `.faa` references and miniprot 0.18 or later.

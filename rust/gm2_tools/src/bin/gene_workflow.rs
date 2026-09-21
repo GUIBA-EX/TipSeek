@@ -7,6 +7,7 @@
 #[path = "../resolve.rs"]
 mod resolve;
 
+use std::cmp::Reverse;
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::env;
 use std::fs::{self, File};
@@ -16,7 +17,7 @@ use std::process::{Command, Output};
 
 use gm2_tools::gene_annotation::{
     build_gene_model, read_dna_fasta, reverse_complement as reverse_complement_iupac,
-    select_competing_models, GeneModel, Interval, ModelConfig, ModelState, Strand,
+    select_competing_models, translate_cds, GeneModel, Interval, ModelConfig, ModelState, Strand,
 };
 
 const FASTA_EXTENSIONS: &[&str] = &["fa", "fas", "fasta"];
@@ -122,7 +123,7 @@ struct Call {
 
 fn usage() -> ! {
     eprintln!(
-        "Usage:\n  gene_workflow classify --reference DIR --contigs DIR --sample NAME --out DIR\n  gene_workflow cohort --reference DIR --out DIR --sample NAME [--sample NAME ...]\n  gene_workflow annotate --input DIR --protein-reference DIR --out DIR --miniprot FILE [--threads N] [--max-intron N] [--minimum-coverage F] [--complete-coverage F] [--flank N] [--fragment-padding N]\n  gene_workflow resolve --input DIR --out DIR --mafft FILE --iqtree FILE --min-taxa N [--threads N] [--outgroup FILE] [--ufboot N] [--min-aa-length N] [--min-effective-codon-sites N] [--taper-script FILE --julia FILE]"
+        "Usage:\n  gene_workflow classify --reference DIR --contigs DIR --sample NAME --out DIR\n  gene_workflow cohort --reference DIR --out DIR --sample NAME [--sample NAME ...]\n  gene_workflow annotate --input DIR --nucleotide-reference DIR [--protein-reference DIR] --out DIR --miniprot FILE [--threads N] [--max-intron N] [--minimum-coverage F] [--complete-coverage F] [--flank N] [--fragment-padding N]\n  gene_workflow resolve --input DIR --out DIR --mafft FILE --iqtree FILE --min-taxa N [--threads N] [--outgroup FILE] [--ufboot N] [--min-aa-length N] [--min-effective-codon-sites N] [--taper-script FILE --julia FILE]"
     );
     std::process::exit(2);
 }
@@ -160,6 +161,14 @@ fn option_path(options: &HashMap<String, Vec<String>>, name: &str) -> PathBuf {
             eprintln!("Missing required option {name}");
             usage();
         })
+}
+
+fn optional_path(options: &HashMap<String, Vec<String>>, name: &str) -> Option<PathBuf> {
+    options
+        .get(name)
+        .and_then(|values| values.first())
+        .filter(|value| !value.is_empty())
+        .map(PathBuf::from)
 }
 
 fn option_string(options: &HashMap<String, Vec<String>>, name: &str) -> String {
@@ -317,6 +326,316 @@ fn read_raw_fasta(path: &Path) -> io::Result<Vec<(String, String)>> {
     }
     Ok(records)
 }
+
+#[derive(Clone, Debug)]
+struct ReferenceTranslation {
+    reverse: bool,
+    frame: usize,
+    nucleotide_len: usize,
+    protein: String,
+    internal_stops: usize,
+    ambiguous_amino_acids: usize,
+    starts_with_methionine: bool,
+    terminal_stop: bool,
+    selection_score: i64,
+}
+
+#[derive(Clone, Debug)]
+struct ReferenceTranslationDecision {
+    candidates: Vec<ReferenceTranslation>,
+    selected_index: Option<usize>,
+    status: String,
+}
+
+fn normalized_reference_dna(sequence: &str) -> Result<String, String> {
+    let mut normalized = String::with_capacity(sequence.len());
+    for symbol in sequence.bytes() {
+        let base = symbol.to_ascii_uppercase();
+        match base {
+            b'A' | b'C' | b'G' | b'T' | b'R' | b'Y' | b'S' | b'W' | b'K' | b'M' | b'B' | b'D'
+            | b'H' | b'V' | b'N' => normalized.push(base as char),
+            b'U' => normalized.push('T'),
+            b'-' | b'.' => {}
+            value if value.is_ascii_whitespace() => {}
+            _ => return Err(format!("invalid nucleotide symbol '{}'", symbol as char)),
+        }
+    }
+    if normalized.len() < 3 {
+        return Err("reference sequence is shorter than one codon".to_owned());
+    }
+    Ok(normalized)
+}
+
+fn translated_frames(sequence: &str) -> Vec<ReferenceTranslation> {
+    let mut candidates = Vec::new();
+    for (reverse, oriented) in [
+        (false, sequence.to_owned()),
+        (true, reverse_complement_iupac(sequence)),
+    ] {
+        for frame in 0..3 {
+            let available = oriented.len().saturating_sub(frame);
+            let nucleotide_len = available / 3 * 3;
+            if nucleotide_len < 3 {
+                continue;
+            }
+            let coding = &oriented[frame..frame + nucleotide_len];
+            let Ok(mut protein) = translate_cds(coding) else {
+                continue;
+            };
+            let terminal_stop = protein.ends_with('*');
+            if terminal_stop {
+                protein.pop();
+            }
+            let internal_stops = protein.bytes().filter(|residue| *residue == b'*').count();
+            protein = protein.replace('*', "X");
+            let ambiguous_amino_acids = protein.bytes().filter(|residue| *residue == b'X').count();
+            let starts_with_methionine = protein.starts_with('M');
+            if !protein.is_empty() {
+                candidates.push(ReferenceTranslation {
+                    reverse,
+                    frame,
+                    nucleotide_len,
+                    protein,
+                    internal_stops,
+                    ambiguous_amino_acids,
+                    starts_with_methionine,
+                    terminal_stop,
+                    selection_score: 0,
+                });
+            }
+        }
+    }
+    candidates
+}
+
+fn candidate_translation_pool(candidates: &[ReferenceTranslation]) -> Vec<usize> {
+    candidates
+        .iter()
+        .enumerate()
+        .filter_map(|(index, candidate)| (candidate.internal_stops == 0).then_some(index))
+        .collect()
+}
+
+fn protein_kmer_similarity(left: &str, right: &str) -> i64 {
+    let kmers = |protein: &str| {
+        protein
+            .as_bytes()
+            .windows(3)
+            .filter(|kmer| !kmer.contains(&b'X'))
+            .map(|kmer| [kmer[0], kmer[1], kmer[2]])
+            .collect::<HashSet<_>>()
+    };
+    let left_kmers = kmers(left);
+    let right_kmers = kmers(right);
+    let total = left_kmers.len() + right_kmers.len();
+    if total == 0 {
+        return i64::from(left == right) * 1_000_000;
+    }
+    let shared = left_kmers.intersection(&right_kmers).count();
+    (2 * shared * 1_000_000 / total) as i64
+}
+
+fn select_reference_translations(
+    records: &[(String, String)],
+) -> Vec<ReferenceTranslationDecision> {
+    let mut decisions = Vec::with_capacity(records.len());
+    for (_, sequence) in records {
+        match normalized_reference_dna(sequence) {
+            Ok(sequence) => {
+                let candidates = translated_frames(&sequence);
+                let pool = candidate_translation_pool(&candidates);
+                let (selected_index, status) = if pool.is_empty() {
+                    (None, "all_frames_contain_internal_stops")
+                } else if pool.len() == 1 {
+                    (Some(pool[0]), "selected_unique_open_reading_frame")
+                } else {
+                    let maximum_signal = pool
+                        .iter()
+                        .map(|&index| {
+                            usize::from(candidates[index].starts_with_methionine)
+                                + usize::from(candidates[index].terminal_stop)
+                        })
+                        .max()
+                        .unwrap_or(0);
+                    let signalled: Vec<_> = pool
+                        .iter()
+                        .copied()
+                        .filter(|&index| {
+                            maximum_signal > 0
+                                && usize::from(candidates[index].starts_with_methionine)
+                                    + usize::from(candidates[index].terminal_stop)
+                                    == maximum_signal
+                        })
+                        .collect();
+                    if signalled.len() == 1 {
+                        (Some(signalled[0]), "selected_cds_signal")
+                    } else {
+                        (None, "ambiguous_reading_frame")
+                    }
+                };
+                decisions.push(ReferenceTranslationDecision {
+                    candidates,
+                    selected_index,
+                    status: status.to_owned(),
+                });
+            }
+            Err(error) => decisions.push(ReferenceTranslationDecision {
+                candidates: Vec::new(),
+                selected_index: None,
+                status: error,
+            }),
+        }
+    }
+
+    let anchor = decisions
+        .iter()
+        .enumerate()
+        .filter_map(|(record_index, decision)| {
+            let selected_index = decision.selected_index?;
+            let candidate = &decision.candidates[selected_index];
+            (candidate.protein.len() >= 3).then_some((
+                record_index,
+                selected_index,
+                candidate.protein.len(),
+            ))
+        })
+        .max_by_key(|(record_index, _, protein_len)| (*protein_len, Reverse(*record_index)));
+
+    if let Some((anchor_record, anchor_candidate, _)) = anchor {
+        let anchor_protein = decisions[anchor_record].candidates[anchor_candidate]
+            .protein
+            .clone();
+        for decision in &mut decisions {
+            if decision.selected_index.is_some() || decision.candidates.is_empty() {
+                continue;
+            }
+            let pool = candidate_translation_pool(&decision.candidates);
+            if pool.is_empty() {
+                continue;
+            }
+            for &candidate_index in &pool {
+                decision.candidates[candidate_index].selection_score = protein_kmer_similarity(
+                    &decision.candidates[candidate_index].protein,
+                    &anchor_protein,
+                );
+            }
+            let maximum_score = pool
+                .iter()
+                .map(|&index| decision.candidates[index].selection_score)
+                .max()
+                .unwrap_or(0);
+            let best: Vec<_> = pool
+                .iter()
+                .copied()
+                .filter(|&index| decision.candidates[index].selection_score == maximum_score)
+                .collect();
+            if maximum_score > 0 && best.len() == 1 {
+                decision.selected_index = Some(best[0]);
+                decision.status = "selected_anchor_similarity".to_owned();
+            }
+        }
+    }
+    decisions
+}
+
+fn prepare_annotation_references(
+    nucleotide_references: &Path,
+    external_proteins: Option<&Path>,
+    derived_dir: &Path,
+    manifest: &mut impl Write,
+) -> io::Result<BTreeMap<String, PathBuf>> {
+    fs::create_dir_all(derived_dir)?;
+    writeln!(manifest, "family_id\treference_sequence\tprotein_id\tsource\tstrand\tframe\tnucleotide_length\tamino_acid_length\tinternal_stops\tambiguous_amino_acids\tstarts_with_methionine\tterminal_stop\tselection_score\tselected\tstatus")?;
+    let mut family_proteins = BTreeMap::new();
+    for nucleotide_path in sorted_directory_paths(nucleotide_references)? {
+        let Some(family) = family_id(&nucleotide_path) else {
+            continue;
+        };
+        let external_path =
+            external_proteins.map(|directory| directory.join(format!("{family}.faa")));
+        if let Some(path) = external_path.filter(|path| path.is_file()) {
+            let records = read_raw_fasta(&path)?;
+            if records.is_empty() || records.iter().any(|(_, sequence)| sequence.is_empty()) {
+                return Err(io::Error::new(
+                    io::ErrorKind::InvalidData,
+                    format!("external protein reference is empty: {}", path.display()),
+                ));
+            }
+            for (header, sequence) in &records {
+                let protein_id = header.split_whitespace().next().unwrap_or(header);
+                writeln!(
+                    manifest,
+                    "{family}\t.\t{protein_id}\texternal_faa\t.\t.\t.\t{}\t{}\t{}\t.\t.\t.\t1\tselected",
+                    sequence.trim_end_matches('*').len(),
+                    sequence
+                        .matches('*')
+                        .count()
+                        .saturating_sub(usize::from(sequence.ends_with('*'))),
+                    sequence.matches('X').count()
+                )?;
+            }
+            family_proteins.insert(family, path);
+            continue;
+        }
+
+        let records = read_raw_fasta(&nucleotide_path)?;
+        let translations = select_reference_translations(&records);
+        let derived_path = derived_dir.join(format!("{family}.faa"));
+        let mut writer = BufWriter::new(File::create(&derived_path)?);
+        let mut written = 0usize;
+        for (record_index, ((header, sequence), decision)) in
+            records.iter().zip(translations).enumerate()
+        {
+            let reference_id = header.split_whitespace().next().unwrap_or(header);
+            let protein_id = format!(
+                "{}__auto{}",
+                safe_identifier(reference_id),
+                record_index + 1
+            );
+            if decision.candidates.is_empty() {
+                writeln!(manifest, "{family}\t{reference_id}\t{protein_id}\tderived_nucleotide\t.\t.\t{}\t.\t.\t.\t.\t.\t.\t0\t{}", sequence.len(), decision.status.replace(['\t', '\n'], " "))?;
+                continue;
+            }
+            for (candidate_index, candidate) in decision.candidates.iter().enumerate() {
+                let is_selected = decision.selected_index == Some(candidate_index);
+                let is_emitted = is_selected && candidate.protein.len() >= 3;
+                let status = if is_emitted {
+                    decision.status.as_str()
+                } else if is_selected {
+                    "translation_shorter_than_3aa"
+                } else if decision.selected_index.is_none() {
+                    decision.status.as_str()
+                } else if candidate.internal_stops > 0 {
+                    "excluded_internal_stop"
+                } else {
+                    "not_selected"
+                };
+                writeln!(manifest, "{family}\t{reference_id}\t{protein_id}\tderived_nucleotide\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{status}", if candidate.reverse { "reverse" } else { "forward" }, candidate.frame + 1, candidate.nucleotide_len, candidate.protein.len(), candidate.internal_stops, candidate.ambiguous_amino_acids, usize::from(candidate.starts_with_methionine), usize::from(candidate.terminal_stop), candidate.selection_score, usize::from(is_emitted))?;
+            }
+            if let Some(selected_index) = decision.selected_index {
+                let chosen = &decision.candidates[selected_index];
+                if chosen.protein.len() >= 3 {
+                    writeln!(
+                        writer,
+                        ">{protein_id} source={reference_id} strand={} frame={}\n{}",
+                        if chosen.reverse { "reverse" } else { "forward" },
+                        chosen.frame + 1,
+                        chosen.protein
+                    )?;
+                    written += 1;
+                }
+            }
+        }
+        writer.flush()?;
+        if written > 0 {
+            family_proteins.insert(family, derived_path);
+        } else {
+            fs::remove_file(derived_path)?;
+        }
+    }
+    Ok(family_proteins)
+}
+
 fn codon_backtranslate(aligned: &str, cds: &str) -> Option<String> {
     let mut offset = 0usize;
     let mut out = String::new();
@@ -965,7 +1284,8 @@ fn validated_miniprot_version(executable: &str) -> io::Result<String> {
 #[allow(clippy::too_many_arguments)]
 fn annotate(
     input: PathBuf,
-    proteins: PathBuf,
+    nucleotide_references: PathBuf,
+    external_proteins: Option<PathBuf>,
     out: PathBuf,
     miniprot: String,
     threads: String,
@@ -975,7 +1295,11 @@ fn annotate(
     flank: usize,
     fragment_padding: usize,
 ) -> io::Result<()> {
-    ensure_nonoverlapping_paths(&[input.as_path(), proteins.as_path()], &out)?;
+    let mut inputs = vec![input.as_path(), nucleotide_references.as_path()];
+    if let Some(proteins) = external_proteins.as_deref() {
+        inputs.push(proteins);
+    }
+    ensure_nonoverlapping_paths(&inputs, &out)?;
     if !(0.0..=1.0).contains(&minimum_coverage)
         || !(0.0..=1.0).contains(&complete_coverage)
         || minimum_coverage > complete_coverage
@@ -1002,6 +1326,7 @@ fn annotate(
     let super_dir = out.join("supercontigs");
     let unresolved_dir = out.join("unresolved");
     let work_dir = out.join(".work");
+    let derived_reference_dir = manifest_dir.join("derived_proteins");
     for directory in [
         &manifest_dir,
         &models_dir,
@@ -1016,6 +1341,7 @@ fn annotate(
         &super_dir,
         &unresolved_dir,
         &work_dir,
+        &derived_reference_dir,
     ] {
         fs::create_dir_all(directory)?;
     }
@@ -1027,6 +1353,16 @@ fn annotate(
     let mut warnings = BufWriter::new(File::create(manifest_dir.join("annotation_warnings.tsv"))?);
     let mut fragments = BufWriter::new(File::create(manifest_dir.join("fragment_groups.tsv"))?);
     let mut provenance = BufWriter::new(File::create(manifest_dir.join("command_provenance.tsv"))?);
+    let mut reference_translations = BufWriter::new(File::create(
+        manifest_dir.join("reference_translation.tsv"),
+    )?);
+    let family_proteins = prepare_annotation_references(
+        &nucleotide_references,
+        external_proteins.as_deref(),
+        &derived_reference_dir,
+        &mut reference_translations,
+    )?;
+    reference_translations.flush()?;
     writeln!(candidate_manifest, "{}", manifest_header())?;
     writeln!(gene_models, "{}", manifest_header())?;
     writeln!(gene_segments, "sample\tfamily_id\tcandidate\tmodel\tsegment_index\tkind\ttarget_start\ttarget_end\tstrand\tphase\tlength\tdonor\tacceptor\tsplice_class\tobserved")?;
@@ -1064,8 +1400,7 @@ fn annotate(
                 continue;
             };
             let records = read_dna_fasta(&fasta)?;
-            let protein_path = proteins.join(format!("{family}.faa"));
-            if !protein_path.is_file() {
+            let Some(protein_path) = family_proteins.get(&family).cloned() else {
                 for record in &records {
                     let candidate = record.id.split('|').next_back().unwrap_or(&record.id);
                     write_status_row(
@@ -1073,19 +1408,19 @@ fn annotate(
                         &sample,
                         &family,
                         candidate,
-                        "missing_protein_reference",
-                        "missing_protein_reference",
+                        "missing_annotation_reference",
+                        "no_usable_external_or_derived_protein",
                     )?;
                     write_unresolved_sequence(
                         &unresolved_dir,
                         &family,
-                        "missing_protein_reference",
+                        "missing_annotation_reference",
                         &format!("{sample}|{family}|{candidate}"),
                         &record.sequence,
                     )?;
                 }
                 continue;
-            }
+            };
             let protein_lengths: BTreeMap<String, usize> = read_raw_fasta(&protein_path)?
                 .into_iter()
                 .map(|(header, sequence)| {
@@ -2200,7 +2535,8 @@ fn main() -> io::Result<()> {
         ),
         "annotate" => annotate(
             option_path(&options, "--input"),
-            option_path(&options, "--protein-reference"),
+            option_path(&options, "--nucleotide-reference"),
+            optional_path(&options, "--protein-reference"),
             option_path(&options, "--out"),
             option_string(&options, "--miniprot"),
             options
@@ -2353,6 +2689,112 @@ mod tests {
     }
 
     #[test]
+    fn automatic_reference_translation_uses_family_similarity_to_choose_frame() {
+        let records = vec![
+            ("ref1".to_owned(), "ATGAAATTTCCCTAA".to_owned()),
+            ("ref2".to_owned(), "AAAATTTCCC".to_owned()),
+        ];
+        let selected = select_reference_translations(&records);
+        let first_index = selected[0].selected_index.unwrap();
+        let second_index = selected[1].selected_index.unwrap();
+        assert_eq!(selected[0].candidates[first_index].frame, 0);
+        assert_eq!(selected[0].candidates[first_index].protein, "MKFP");
+        assert_eq!(selected[1].candidates[second_index].frame, 1);
+        assert_eq!(selected[1].candidates[second_index].protein, "KFP");
+        assert!(selected[1].candidates[second_index].selection_score > 0);
+        assert_eq!(selected[1].status, "selected_anchor_similarity");
+    }
+
+    #[test]
+    fn automatic_reference_translation_uses_cds_signals_for_a_single_reference() {
+        let records = vec![("partial".to_owned(), "AATGAAATTTCCC".to_owned())];
+        let selected = select_reference_translations(&records);
+        let selected_index = selected[0].selected_index.unwrap();
+        assert_eq!(selected[0].candidates[selected_index].frame, 1);
+        assert_eq!(selected[0].candidates[selected_index].protein, "MKFP");
+        assert!(selected[0].candidates[selected_index].starts_with_methionine);
+        assert_eq!(selected[0].status, "selected_cds_signal");
+    }
+
+    #[test]
+    fn automatic_reference_translation_considers_reverse_frames_equally() {
+        let records = vec![("reverse".to_owned(), "TTAGGGAAATTTCAT".to_owned())];
+        let selected = select_reference_translations(&records);
+        let selected_index = selected[0].selected_index.unwrap();
+        let candidate = &selected[0].candidates[selected_index];
+        assert!(candidate.reverse);
+        assert_eq!(candidate.frame, 0);
+        assert_eq!(candidate.protein, "MKFP");
+        assert_eq!(selected[0].status, "selected_cds_signal");
+    }
+
+    #[test]
+    fn automatic_reference_translation_does_not_guess_without_evidence() {
+        let records = vec![("partial".to_owned(), "AAAATTTCCC".to_owned())];
+        let selected = select_reference_translations(&records);
+        assert_eq!(selected[0].selected_index, None);
+        assert_eq!(selected[0].status, "ambiguous_reading_frame");
+    }
+
+    #[test]
+    fn automatic_reference_translation_rejects_internal_stops_in_every_frame() {
+        let records = vec![(
+            "stopped".to_owned(),
+            "CAGATTTTCATATTATGCAGAAAATCTACTTCGCCTGATACGAGTCGGTTATCTTCGGATACTGTATAGTCCCACCTGGTGATCCTATGCTTGTGAGTACCCAGAAAATAGCGACGGACCGCGGTGTTAAGTGTCGAGCTACATCACTTCTCATGTAGCCAGAAGGCTGCAACTCATCGACTCTATGTAGTGACCGCGTCGATGTCAAACCCCGGGGGGAGCTCAGATATCCGATACAGG".to_owned(),
+        )];
+        let selected = select_reference_translations(&records);
+        assert_eq!(selected[0].selected_index, None);
+        assert_eq!(selected[0].status, "all_frames_contain_internal_stops");
+    }
+
+    #[test]
+    fn external_proteins_override_only_matching_families() {
+        let root = temporary_test_directory("mixed_reference_sources");
+        let references = root.join("references");
+        let proteins = root.join("proteins");
+        let derived = root.join("derived");
+        fs::create_dir_all(&references).unwrap();
+        fs::create_dir_all(&proteins).unwrap();
+        fs::write(references.join("fam1.fasta"), ">r1\nATGAAATTTCCC\n").unwrap();
+        fs::write(references.join("fam2.fasta"), ">r2\nATGAAATTTCCC\n").unwrap();
+        fs::write(proteins.join("fam1.faa"), ">external\nMKFP\n").unwrap();
+        let mut manifest = Vec::new();
+
+        let selected =
+            prepare_annotation_references(&references, Some(&proteins), &derived, &mut manifest)
+                .unwrap();
+
+        assert_eq!(selected["fam1"], proteins.join("fam1.faa"));
+        assert_eq!(selected["fam2"], derived.join("fam2.faa"));
+        assert!(!derived.join("fam1.faa").exists());
+        assert!(derived.join("fam2.faa").is_file());
+        let manifest = String::from_utf8(manifest).unwrap();
+        assert!(manifest.contains("fam1\t.\texternal\texternal_faa"));
+        assert!(manifest.contains("fam2\tr2\tr2__auto1\tderived_nucleotide"));
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn ambiguous_reference_translation_is_audited_but_not_emitted() {
+        let root = temporary_test_directory("ambiguous_reference_translation");
+        let references = root.join("references");
+        let derived = root.join("derived");
+        fs::create_dir_all(&references).unwrap();
+        fs::write(references.join("fam1.fasta"), ">partial\nAAAATTTCCC\n").unwrap();
+        let mut manifest = Vec::new();
+
+        let selected =
+            prepare_annotation_references(&references, None, &derived, &mut manifest).unwrap();
+
+        assert!(!selected.contains_key("fam1"));
+        assert!(!derived.join("fam1.faa").exists());
+        let manifest = String::from_utf8(manifest).unwrap();
+        assert!(manifest.contains("\tambiguous_reading_frame"));
+        assert!(!manifest.lines().any(|line| line.contains("\t1\tselected_")));
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
     fn reads_resolve_eligibility_from_structured_manifest() {
         let root = temporary_test_directory("eligible_manifest");
         fs::create_dir_all(root.join("models")).unwrap();
@@ -2373,15 +2815,18 @@ mod tests {
 
         let root = temporary_test_directory("annotation_integration");
         let input = root.join("gene");
+        let references = root.join("references");
         let proteins = root.join("proteins");
         let output = root.join("annotation");
         fs::create_dir_all(input.join("samples/sampleA/candidates")).unwrap();
+        fs::create_dir_all(&references).unwrap();
         fs::create_dir_all(&proteins).unwrap();
         fs::write(
             input.join("samples/sampleA/candidates/fam1.fasta"),
             ">sampleA|fam1|candidate_1\nNATGAAAGTAGTTTCCC\n",
         )
         .unwrap();
+        fs::write(references.join("fam1.fasta"), ">ref1\nATGAAATTTCCC\n").unwrap();
         fs::write(proteins.join("fam1.faa"), ">p1\nMKFP\n").unwrap();
         let fake_miniprot = root.join("miniprot");
         fs::write(
@@ -2395,7 +2840,8 @@ mod tests {
 
         annotate(
             input,
-            proteins,
+            references,
+            Some(proteins),
             output.clone(),
             fake_miniprot.to_string_lossy().to_string(),
             "1".into(),
@@ -2420,7 +2866,66 @@ mod tests {
         assert!(raw.contains("##PAF"));
         let id_map = fs::read_to_string(output.join("manifest/id_map.tsv")).unwrap();
         assert!(id_map.contains("sampleA\tfam1\tTSK000001\tcandidate_1\t17"));
+        let translations =
+            fs::read_to_string(output.join("manifest/reference_translation.tsv")).unwrap();
+        assert!(translations.contains("fam1\t.\tp1\texternal_faa"));
         assert!(!output.join(".work").exists());
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn annotation_derives_proteins_from_nucleotide_references_by_default() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let root = temporary_test_directory("annotation_derived_reference");
+        let input = root.join("gene");
+        let references = root.join("references");
+        let output = root.join("annotation");
+        fs::create_dir_all(input.join("samples/sampleA/candidates")).unwrap();
+        fs::create_dir_all(&references).unwrap();
+        fs::write(
+            input.join("samples/sampleA/candidates/fam1.fasta"),
+            ">candidate_1\nATGAAATTTCCC\n",
+        )
+        .unwrap();
+        fs::write(references.join("fam1.fasta"), ">ref1\nATGAAATTTCCC\n").unwrap();
+        let fake_miniprot = root.join("miniprot");
+        fs::write(
+            &fake_miniprot,
+            "#!/bin/sh\nif [ \"$1\" = \"--version\" ]; then printf '%s\\n' '0.18-r281'; exit 0; fi\nprintf '%s\\n' '##PAF\tref1__auto1\t4\t0\t4\t+\tTSK000001\t12\t0\t12\t12\t12\t60\tAS:i:100\tfs:i:0\tst:i:0\tcg:Z:4M' '##gff-version 3' 'TSK000001\tminiprot\tmRNA\t1\t12\t100\t+\t.\tID=MP1;Target=ref1__auto1 1 4;Identity=1.0;Positive=1.0;Rank=0;Frameshift=0;StopCodon=0' 'TSK000001\tminiprot\tCDS\t1\t12\t100\t+\t0\tParent=MP1'\n",
+        )
+        .unwrap();
+        let mut permissions = fs::metadata(&fake_miniprot).unwrap().permissions();
+        permissions.set_mode(0o755);
+        fs::set_permissions(&fake_miniprot, permissions).unwrap();
+
+        annotate(
+            input,
+            references,
+            None,
+            output.clone(),
+            fake_miniprot.to_string_lossy().to_string(),
+            "1".into(),
+            50_000,
+            0.20,
+            0.80,
+            0,
+            100,
+        )
+        .unwrap();
+
+        assert_eq!(
+            fs::read_to_string(output.join("manifest/derived_proteins/fam1.faa")).unwrap(),
+            ">ref1__auto1 source=ref1 strand=forward frame=1\nMKFP\n"
+        );
+        let translations =
+            fs::read_to_string(output.join("manifest/reference_translation.tsv")).unwrap();
+        assert!(translations.contains(
+            "fam1\tref1\tref1__auto1\tderived_nucleotide\tforward\t1\t12\t4\t0\t0\t1\t0\t0\t1\tselected_cds_signal"
+        ));
+        let cds = fs::read_to_string(output.join("cds/fam1.fasta")).unwrap();
+        assert!(cds.contains("ATGAAATTTCCC"));
         fs::remove_dir_all(root).unwrap();
     }
 
@@ -2431,15 +2936,18 @@ mod tests {
 
         let root = temporary_test_directory("padded_fragment_join");
         let input = root.join("gene");
+        let references = root.join("references");
         let proteins = root.join("proteins");
         let output = root.join("annotation");
         fs::create_dir_all(input.join("samples/sampleA/candidates")).unwrap();
+        fs::create_dir_all(&references).unwrap();
         fs::create_dir_all(&proteins).unwrap();
         fs::write(
             input.join("samples/sampleA/candidates/fam1.fasta"),
             ">left\nATGAAAGT\n>right\nAGTTTCCCTAA\n",
         )
         .unwrap();
+        fs::write(references.join("fam1.fasta"), ">ref1\nATGAAATTTCCC\n").unwrap();
         fs::write(proteins.join("fam1.faa"), ">p1\nMKFP\n").unwrap();
         let fake_miniprot = root.join("miniprot");
         fs::write(
@@ -2470,7 +2978,8 @@ fi
 
         annotate(
             input,
-            proteins,
+            references,
+            Some(proteins),
             output.clone(),
             fake_miniprot.to_string_lossy().to_string(),
             "1".into(),

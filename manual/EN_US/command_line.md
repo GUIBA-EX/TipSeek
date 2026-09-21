@@ -105,7 +105,7 @@ One or more subcommands can be listed in execution order:
 When no subcommand is given, `--assembly-mode` selects one complete recovery workflow:
 
 - `--assembly-mode gene` (default) recruits, refilters, and assembles nuclear gene-family candidates, then writes cohort summaries under `<output>/gene/`;
-- `--assembly-mode exon` runs the same candidate recovery and then uses matching protein references plus miniprot to write structurally validated output under `<output>/exon/`; it requires `--gene-protein-reference`;
+- `--assembly-mode exon` runs the same candidate recovery, derives reference proteins from coding nucleotide family baits by default, and uses miniprot to write structurally validated output under `<output>/exon/`; `--gene-protein-reference` is an optional per-family override and is needed only when no reading frame can be established reliably;
 - `--assembly-mode uce` is for UCE recovery from genome skimming or target capture; it runs `filter assemble combine tree`. The fused UCEFilter already includes refilter semantics and omits `trim` so newly recovered UCE flanks are not cut back to the reference interval;
 - `profiling` runs one recruitment step followed by Themisto pseudoalignment and reference-level support reporting; it does not assemble or run downstream phylogenetic steps.
 
@@ -154,12 +154,11 @@ The default invocation is the complete gene-candidate workflow: one bait FASTA d
 ```bash
 cli/tipseek -f samples.tsv -r family_reference -o gene_output -p 8
 cli/tipseek --assembly-mode exon \
-  -f samples.tsv -r family_reference \
-  --gene-protein-reference family_proteins -o exon_output -p 8
+  -f samples.tsv -r family_reference -o exon_output -p 8
 cli/tipseek gene-resolve --gene-input exon_output/exon -o gene_resolved -p 8
 ```
 
-See the [exon annotation guide](../../docs/exon_EN.md) for protein-reference naming, model QC, validated N-padding, and output fields.
+See the [exon annotation guide](../../docs/exon_EN.md) for automatic translation, optional protein overrides, model QC, validated N-padding, and output fields.
 
 `gene-resolve` requires MAFFT and IQ-TREE; `--gene-taper correction_multi.jl` enables optional masking. It applies pre-alignment QC by distinct-sample occupancy and `--gene-min-aa-length` (30 aa by default), then post-alignment QC by occupancy and `--gene-min-effective-codon-sites` (30 by default); see `occupancy_qc.tsv`. `--gene-ufboot` must be `0` (default) or `>=1000`. `family_qc.tsv` is alignment QC for post-QC families, while `tree_selection_qc.tsv` records selected strict clades and occupancy.
 

@@ -463,8 +463,6 @@ fn parse(args: &[String]) -> Result<Options, String> {
                 "{name} is available only with --assembly-mode exon"
             ));
         }
-    } else if value(args, &["--gene-protein-reference"], "")?.is_empty() {
-        return Err("--assembly-mode exon requires --gene-protein-reference".into());
     }
     let log_format = value(args, &["--log-format"], "text")?;
     if !matches!(log_format.as_str(), "text" | "json") {
@@ -4750,38 +4748,36 @@ fn execute_exon_annotation(
             input.display()
         ));
     }
-    if !Path::new(&proteins).is_dir() {
-        return Err(
-            "--assembly-mode exon requires --gene-protein-reference to name a directory".into(),
-        );
+    if !proteins.is_empty() && !Path::new(&proteins).is_dir() {
+        return Err("--gene-protein-reference must name a directory when provided".into());
     }
-    run(
-        bins,
-        "gene_workflow",
-        &[
-            "annotate".into(),
-            "--input".into(),
-            input.display().to_string(),
-            "--protein-reference".into(),
-            proteins,
-            "--out".into(),
-            output.display().to_string(),
-            "--miniprot".into(),
-            value(raw, &["--gene-miniprot"], "miniprot")?,
-            "--threads".into(),
-            opt.workers.to_string(),
-            "--max-intron".into(),
-            value(raw, &["--gene-max-intron"], "50000")?,
-            "--minimum-coverage".into(),
-            value(raw, &["--gene-min-model-coverage"], "0.20")?,
-            "--complete-coverage".into(),
-            value(raw, &["--gene-complete-coverage"], "0.80")?,
-            "--flank".into(),
-            value(raw, &["--gene-flank"], "0")?,
-            "--fragment-padding".into(),
-            value(raw, &["--gene-fragment-padding"], "100")?,
-        ],
-    )
+    let mut args = vec![
+        "annotate".into(),
+        "--input".into(),
+        input.display().to_string(),
+        "--nucleotide-reference".into(),
+        opt.reference.clone(),
+        "--out".into(),
+        output.display().to_string(),
+        "--miniprot".into(),
+        value(raw, &["--gene-miniprot"], "miniprot")?,
+        "--threads".into(),
+        opt.workers.to_string(),
+        "--max-intron".into(),
+        value(raw, &["--gene-max-intron"], "50000")?,
+        "--minimum-coverage".into(),
+        value(raw, &["--gene-min-model-coverage"], "0.20")?,
+        "--complete-coverage".into(),
+        value(raw, &["--gene-complete-coverage"], "0.80")?,
+        "--flank".into(),
+        value(raw, &["--gene-flank"], "0")?,
+        "--fragment-padding".into(),
+        value(raw, &["--gene-fragment-padding"], "100")?,
+    ];
+    if !proteins.is_empty() {
+        args.extend(["--protein-reference".into(), proteins]);
+    }
+    run(bins, "gene_workflow", &args)
 }
 
 fn execute_gene_resolve(opt: &Options, bins: &Path) -> Result<(), String> {
@@ -6467,10 +6463,8 @@ fn execute_native(mut opt: Options) -> Result<(), String> {
     validate_parallelism(&opt)?;
     if opt.assembly_mode == "exon" {
         let proteins = value(&opt.raw, &["--gene-protein-reference"], "")?;
-        if !Path::new(&proteins).is_dir() {
-            return Err(
-                "--assembly-mode exon requires --gene-protein-reference to name a directory".into(),
-            );
+        if !proteins.is_empty() && !Path::new(&proteins).is_dir() {
+            return Err("--gene-protein-reference must name a directory when provided".into());
         }
     }
     let bins = components()?;
@@ -6846,8 +6840,9 @@ Usage: tipseek [COMMAND ...] -f SAMPLES -r REFERENCES -o OUTPUT [-p INT|auto]\n\
 Assembly modes:\n  \
 --assembly-mode gene|exon|uce\n               \
 Default: gene. Gene mode recovers and summarizes family candidates. Exon mode\n               \
-adds protein-guided structural annotation and requires\n               \
---gene-protein-reference. UCE mode uses its independent UCE workflow.\n\n\
+derives proteins from nucleotide family references by default, then adds\n               \
+protein-guided structural annotation. --gene-protein-reference optionally\n               \
+overrides matching families with .faa files. UCE mode uses its independent workflow.\n\n\
 Parallelism:\n  \
 -p INT|auto  Shared CPU budget. The default is auto, which counts physical\n               \
 cores allowed by affinity/cpuset and caps them by cgroup or scheduler limits.\n               \
@@ -7839,8 +7834,6 @@ mod tests {
         let parsed = parse(&[
             "--assembly-mode".into(),
             "exon".into(),
-            "--gene-protein-reference".into(),
-            "proteins".into(),
             "-f".into(),
             "a".into(),
             "-r".into(),
@@ -8045,11 +8038,9 @@ mod tests {
         let components = root.join("components");
         let input = root.join("project/gene");
         let output = root.join("project/exon");
-        let proteins = root.join("proteins");
         let capture = root.join("call.txt");
         fs::create_dir_all(&components).unwrap();
         fs::create_dir_all(&input).unwrap();
-        fs::create_dir_all(&proteins).unwrap();
         let component = components.join("gene_workflow");
         fs::write(
             &component,
@@ -8065,8 +8056,6 @@ mod tests {
         let opt = parse(&[
             "--assembly-mode".into(),
             "exon".into(),
-            "--gene-protein-reference".into(),
-            proteins.display().to_string(),
             "-f".into(),
             "samples.tsv".into(),
             "-r".into(),
@@ -8080,6 +8069,8 @@ mod tests {
 
         let call = fs::read_to_string(&capture).unwrap();
         assert!(call.contains(&format!("annotate --input {}", input.display())));
+        assert!(call.contains("--nucleotide-reference references"));
+        assert!(!call.contains("--protein-reference"));
         assert!(call.contains(&format!("--out {}", output.display())));
         assert!(call.contains("--fragment-padding 100"));
         fs::remove_dir_all(root).unwrap();
@@ -8118,7 +8109,7 @@ mod tests {
         .unwrap_err();
         assert!(misplaced.contains("available only with --assembly-mode exon"));
 
-        let missing_proteins = parse(&[
+        let derived_reference_default = parse(&[
             "--assembly-mode".into(),
             "exon".into(),
             "-f".into(),
@@ -8128,8 +8119,8 @@ mod tests {
             "-o".into(),
             "out".into(),
         ])
-        .unwrap_err();
-        assert!(missing_proteins.contains("requires --gene-protein-reference"));
+        .unwrap();
+        assert_eq!(derived_reference_default.assembly_mode, "exon");
 
         let misplaced_uce = parse(&[
             "--assembly-mode".into(),

@@ -59,10 +59,9 @@ sample_2<TAB>/data/sample_2_R1.fastq.gz<TAB>/data/sample_2_R2.fastq.gz
 # 默认：恢复核基因家族候选
 cli/tipseek -f samples.tsv -r family_references -o gene_out -p auto
 
-# 在相同恢复流程后增加蛋白引导的 exon/intron 注释
+# 默认从核酸 bait 自动翻译参考，再进行 exon/intron 注释
 cli/tipseek --assembly-mode exon \
   -f samples.tsv -r family_references \
-  --gene-protein-reference family_proteins \
   -o exon_out -p auto
 ```
 

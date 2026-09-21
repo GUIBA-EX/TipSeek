@@ -105,7 +105,7 @@ references/
 不显式指定子命令时，由 `--assembly-mode` 选择一条完整恢复流程：
 
 - `--assembly-mode gene`（默认）完成核基因家族候选的招募、refilter 与组装，并在 `<output>/gene/` 写出 cohort 汇总；
-- `--assembly-mode exon` 先完成相同的候选恢复，再用同名蛋白参考与 miniprot 在 `<output>/exon/` 写出经结构验证的结果；必须提供 `--gene-protein-reference`；
+- `--assembly-mode exon` 先完成相同的候选恢复，默认从 coding 核酸 family bait 自动翻译参考蛋白，再由 miniprot 在 `<output>/exon/` 写出经结构验证的结果；`--gene-protein-reference` 是可选的逐 family 覆盖，仅在 reading frame 无法可靠确定时需要；
 - `--assembly-mode uce` 用于从 genome skimming 或 target capture 恢复 UCE，运行 `filter assemble combine tree`；融合 UCEFilter 已包含 refilter 语义，并跳过 `trim`，避免新恢复的 UCE 侧翼再次被裁回参考范围；
 - `profiling` 先做一次招募，再由 Themisto 伪比对并输出参考序列级支持；不组装，也不运行下游系统发育步骤。
 
@@ -154,12 +154,11 @@ cli/tipseek profiling \
 ```bash
 cli/tipseek -f samples.tsv -r family_reference -o gene_output -p 8
 cli/tipseek --assembly-mode exon \
-  -f samples.tsv -r family_reference \
-  --gene-protein-reference family_proteins -o exon_output -p 8
+  -f samples.tsv -r family_reference -o exon_output -p 8
 cli/tipseek gene-resolve --gene-input exon_output/exon -o gene_resolved -p 8
 ```
 
-蛋白参考命名、模型 QC、经验证的补 N 与输出字段见 [exon 注释说明](../../docs/exon_ZH.md)。
+自动翻译、可选蛋白覆盖、模型 QC、经验证的补 N 与输出字段见 [exon 注释说明](../../docs/exon_ZH.md)。
 
 `gene-resolve` 需要 MAFFT 与 IQ-TREE；可用 `--gene-taper correction_multi.jl` 做 masking。它先按不同样本数和 `--gene-min-aa-length`（默认 30 aa）做 pre-alignment QC，再以 `--gene-min-effective-codon-sites`（默认 30）和占有率做 post-alignment QC；详情见 `occupancy_qc.tsv`。`--gene-ufboot` 只能为 `0`（默认）或 `≥1000`。`family_qc.tsv` 是通过 post-alignment QC 的对齐统计，`tree_selection_qc.tsv` 记录 strict 子树和占有率。
 
