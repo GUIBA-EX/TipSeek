@@ -119,18 +119,6 @@ Inspect these UCE outputs first:
 
 ## Citation and licence
 
-Cite the current software release as:
-
-```bibtex
-@software{TipSeek,
-  title     = {TipSeek: Reference-Guided Short-Read Recovery and Analysis},
-  year      = {2026},
-  version   = {1.6.4},
-  url       = {https://github.com/GUIBA-EX/TipSeek},
-  publisher = {GitHub}
-}
-```
-
 When using the GeneMiner2-derived gene assembler, also cite: Yu XY, Tang ZZ, Zhang Z, Song YX, He H, Shi Y, Hou JQ, Yu Y. 2026. **GeneMiner2**: Accurate and automated recovery of genes from genome-skimming data. *Molecular Ecology Resources* 26:e70111. [doi:10.1111/1755-0998.70111](https://doi.org/10.1111/1755-0998.70111)
 
 TipSeek is released under [GPL-3.0-or-later](LICENSE). See [NOTICE](NOTICE) for the provenance of third-party and ported code.

@@ -119,18 +119,6 @@ UCE 结果应首先检查：
 
 ## 引用与许可
 
-引用当前软件版本：
-
-```bibtex
-@software{TipSeek,
-  title     = {TipSeek: Reference-Guided Short-Read Recovery and Analysis},
-  year      = {2026},
-  version   = {1.6.4},
-  url       = {https://github.com/GUIBA-EX/TipSeek},
-  publisher = {GitHub}
-}
-```
-
 使用 GeneMiner2 衍生的 gene assembler 时，还请引用：Yu XY, Tang ZZ, Zhang Z, Song YX, He H, Shi Y, Hou JQ, Yu Y. 2026. **GeneMiner2**: Accurate and automated recovery of genes from genome-skimming data. *Molecular Ecology Resources* 26:e70111. [doi:10.1111/1755-0998.70111](https://doi.org/10.1111/1755-0998.70111)
 
 TipSeek 以 [GPL-3.0-or-later](LICENSE) 发布；第三方与移植代码的来源见 [NOTICE](NOTICE)。
