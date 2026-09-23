@@ -123,7 +123,6 @@ Cite the current software release as:
 
 ```bibtex
 @software{TipSeek,
-  author    = {XIA, Fei and TANG, Zizhen and XU, Yan},
   title     = {TipSeek: Reference-Guided Short-Read Recovery and Analysis},
   year      = {2026},
   version   = {1.6.4},
