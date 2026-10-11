@@ -349,14 +349,18 @@ fn run(mut args: Args) -> io::Result<()> {
             let log_lock = Arc::clone(&log_lock);
             let args = &args;
             let profile = profile.as_ref().map(Arc::clone);
-            scope.spawn(move || loop {
-                let index = next_task.fetch_add(1, Ordering::Relaxed);
-                let Some(task) = tasks.get(index) else {
-                    break;
-                };
-                let result = process_locus(args, task, &completed, &log_lock, profile.as_deref());
-                if sender.send(result).is_err() {
-                    break;
+            scope.spawn(move || {
+                gm2_tools::platform::prefer_performance_cores();
+                loop {
+                    let index = next_task.fetch_add(1, Ordering::Relaxed);
+                    let Some(task) = tasks.get(index) else {
+                        break;
+                    };
+                    let result =
+                        process_locus(args, task, &completed, &log_lock, profile.as_deref());
+                    if sender.send(result).is_err() {
+                        break;
+                    }
                 }
             });
         }

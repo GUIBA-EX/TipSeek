@@ -8,6 +8,7 @@ use crate::seq::{
     reverse_complement_kmer, valid_runs,
 };
 use std::cmp::Ordering;
+use std::sync::atomic::{AtomicUsize, Ordering as AtomicOrdering};
 
 pub fn add_read_slices(reads: &mut HashMap<Vec<u8>, u64>, sequences: &[Vec<u8>], slice_len: usize) {
     // 从 read 中间掐一段当身份证，正反两面都备着，后面核验 contig 用。
@@ -179,58 +180,107 @@ fn counts_from_observations<K: CountKey>(
     counts
 }
 
-fn count_part<K: CountKey>(
-    part: &[Vec<u8>],
+/// Fragments (or unpaired reads) a k-mer worker claims at a time. Workers
+/// claim blocks until the chunk is exhausted, so faster cores take a larger
+/// share on hybrid processors instead of waiting for a fixed slice on the
+/// slowest core. Counts are merged by k-mer, so the split never changes them.
+const COUNT_BLOCK_UNITS: usize = 64;
+
+/// Per-worker k-mer observations, reused across claimed blocks.
+struct CountBuffers<K> {
+    observations: Vec<K>,
+    fragments: Vec<K>,
+    physical: Vec<K>,
+    first_mate: Vec<K>,
+    second_mate: Vec<K>,
+}
+
+impl<K: CountKey> CountBuffers<K> {
+    fn with_capacity(observations: usize) -> Self {
+        Self {
+            observations: Vec::with_capacity(observations),
+            fragments: Vec::with_capacity(observations / 4),
+            physical: Vec::new(),
+            first_mate: Vec::new(),
+            second_mate: Vec::new(),
+        }
+    }
+
+    fn add(
+        &mut self,
+        part: &[Vec<u8>],
+        k: usize,
+        paired_fragments: bool,
+        reference: Option<&HashMap<u128, RefKmer>>,
+    ) {
+        if paired_fragments {
+            for mates in part.chunks(2) {
+                if mates.len() != 2 {
+                    append_read_kmers(&mates[0], k, &mut self.physical);
+                    self.observations.extend_from_slice(&self.physical);
+                    continue;
+                }
+                append_read_kmers(&mates[0], k, &mut self.first_mate);
+                self.observations.extend_from_slice(&self.first_mate);
+                append_read_kmers(&mates[1], k, &mut self.second_mate);
+                self.observations.extend_from_slice(&self.second_mate);
+
+                // A retained mate is useful flank evidence only
+                // when its *opposite* mate anchors in reference
+                // sequence.  Counting every k-mer in every pair
+                // would otherwise preserve recurrent errors.
+                if let Some(reference) = reference {
+                    let first_anchor = self
+                        .first_mate
+                        .iter()
+                        .any(|kmer| reference.contains_key(&kmer.into_kmer()));
+                    let second_anchor = self
+                        .second_mate
+                        .iter()
+                        .any(|kmer| reference.contains_key(&kmer.into_kmer()));
+                    if first_anchor && !second_anchor {
+                        self.fragments.extend_from_slice(&self.second_mate);
+                    } else if second_anchor && !first_anchor {
+                        self.fragments.extend_from_slice(&self.first_mate);
+                    }
+                }
+            }
+        } else {
+            for sequence in part {
+                append_read_kmers(sequence, k, &mut self.physical);
+                self.observations.extend_from_slice(&self.physical);
+            }
+        }
+    }
+
+    fn into_counts(self) -> Vec<KmerCount> {
+        counts_from_observations(self.observations, self.fragments)
+    }
+}
+
+/// Counts the blocks this worker claims from `next_block`.
+fn count_claimed_blocks<K: CountKey>(
+    sequences: &[Vec<u8>],
     k: usize,
     paired_fragments: bool,
     reference: Option<&HashMap<u128, RefKmer>>,
+    next_block: &AtomicUsize,
+    expected_observations: usize,
 ) -> Vec<KmerCount> {
-    let estimate: usize = part
-        .iter()
-        .map(|sequence| sequence.len().saturating_sub(k - 1).saturating_mul(2))
-        .sum();
-    let mut observations = Vec::<K>::with_capacity(estimate);
-    let mut fragments = Vec::<K>::with_capacity(estimate / 4);
-    let mut physical = Vec::new();
-    let mut first_mate = Vec::new();
-    let mut second_mate = Vec::new();
-    if paired_fragments {
-        for mates in part.chunks(2) {
-            if mates.len() != 2 {
-                append_read_kmers(&mates[0], k, &mut physical);
-                observations.extend_from_slice(&physical);
-                continue;
-            }
-            append_read_kmers(&mates[0], k, &mut first_mate);
-            observations.extend_from_slice(&first_mate);
-            append_read_kmers(&mates[1], k, &mut second_mate);
-            observations.extend_from_slice(&second_mate);
-
-            // A retained mate is useful flank evidence only
-            // when its *opposite* mate anchors in reference
-            // sequence.  Counting every k-mer in every pair
-            // would otherwise preserve recurrent errors.
-            if let Some(reference) = reference {
-                let first_anchor = first_mate
-                    .iter()
-                    .any(|kmer| reference.contains_key(&kmer.into_kmer()));
-                let second_anchor = second_mate
-                    .iter()
-                    .any(|kmer| reference.contains_key(&kmer.into_kmer()));
-                if first_anchor && !second_anchor {
-                    fragments.extend_from_slice(&second_mate);
-                } else if second_anchor && !first_anchor {
-                    fragments.extend_from_slice(&first_mate);
-                }
-            }
+    let slots = if paired_fragments { 2 } else { 1 };
+    let block_slots = COUNT_BLOCK_UNITS * slots;
+    let mut buffers = CountBuffers::<K>::with_capacity(expected_observations);
+    loop {
+        let start = next_block
+            .fetch_add(1, AtomicOrdering::Relaxed)
+            .saturating_mul(block_slots);
+        if start >= sequences.len() {
+            break;
         }
-    } else {
-        for sequence in part {
-            append_read_kmers(sequence, k, &mut physical);
-            observations.extend_from_slice(&physical);
-        }
+        let end = (start + block_slots).min(sequences.len());
+        buffers.add(&sequences[start..end], k, paired_fragments, reference);
     }
-    counts_from_observations(observations, fragments)
+    buffers.into_counts()
 }
 
 pub fn count_assemble_chunk_parallel(
@@ -245,32 +295,58 @@ pub fn count_assemble_chunk_parallel(
     if sequences.is_empty() {
         return Vec::new();
     }
+    if 2 * k <= u64::BITS as usize {
+        count_chunk::<u64>(sequences, k, threads, paired_fragments, reference)
+    } else {
+        count_chunk::<u128>(sequences, k, threads, paired_fragments, reference)
+    }
+}
+
+fn count_chunk<K: CountKey>(
+    sequences: &[Vec<u8>],
+    k: usize,
+    threads: usize,
+    paired_fragments: bool,
+    reference: Option<&HashMap<u128, RefKmer>>,
+) -> Vec<KmerCount> {
     let units = if paired_fragments {
         sequences.len().div_ceil(2)
     } else {
         sequences.len()
     };
-    let workers = threads.max(1).min(units);
-    let width = units.div_ceil(workers);
+    let blocks = units.div_ceil(COUNT_BLOCK_UNITS);
+    let workers = threads.max(1).min(blocks);
+    let expected_observations = sequences
+        .iter()
+        .map(|sequence| sequence.len().saturating_sub(k - 1).saturating_mul(2))
+        .sum::<usize>()
+        / workers;
+    let next_block = AtomicUsize::new(0);
+    if workers == 1 {
+        return count_claimed_blocks::<K>(
+            sequences,
+            k,
+            paired_fragments,
+            reference,
+            &next_block,
+            expected_observations,
+        );
+    }
     let mut partials: Vec<Vec<KmerCount>> = Vec::with_capacity(workers);
     std::thread::scope(|scope| {
         let handles: Vec<_> = (0..workers)
-            .filter_map(|worker| {
-                let start_unit = worker * width;
-                let end_unit = ((worker + 1) * width).min(units);
-                (start_unit < end_unit).then(|| {
-                    let part = if paired_fragments {
-                        &sequences[start_unit * 2..(end_unit * 2).min(sequences.len())]
-                    } else {
-                        &sequences[start_unit..end_unit]
-                    };
-                    scope.spawn(move || {
-                        if 2 * k <= u64::BITS as usize {
-                            count_part::<u64>(part, k, paired_fragments, reference)
-                        } else {
-                            count_part::<u128>(part, k, paired_fragments, reference)
-                        }
-                    })
+            .map(|_| {
+                let next_block = &next_block;
+                scope.spawn(move || {
+                    gm2_tools::platform::prefer_performance_cores();
+                    count_claimed_blocks::<K>(
+                        sequences,
+                        k,
+                        paired_fragments,
+                        reference,
+                        next_block,
+                        expected_observations,
+                    )
                 })
             })
             .collect();
@@ -1447,7 +1523,7 @@ mod tests {
             (state % bound as u64) as usize
         };
         let genome: Vec<u8> = (0..600).map(|_| b"ACGT"[next(4)]).collect();
-        let sequences: Vec<Vec<u8>> = (0..240)
+        let sequences: Vec<Vec<u8>> = (0..2_001)
             .map(|_| {
                 let start = next(genome.len() - 40);
                 let mut read = genome[start..start + 20 + next(20)].to_vec();
@@ -1466,9 +1542,15 @@ mod tests {
                 crate::io_utils::build_reference_kmers(&[("r".into(), genome[..200].to_vec())], k);
             for paired in [false, true] {
                 for anchors in [None, Some(&reference)] {
-                    let narrow = count_part::<u64>(&sequences, k, paired, anchors);
-                    let wide = count_part::<u128>(&sequences, k, paired, anchors);
+                    let narrow = count_chunk::<u64>(&sequences, k, 1, paired, anchors);
+                    let wide = count_chunk::<u128>(&sequences, k, 1, paired, anchors);
                     assert_eq!(narrow, wide, "k={k} paired={paired}");
+                    // Dynamic block claiming must not depend on the worker count.
+                    for threads in [2, 3, 8] {
+                        let parallel =
+                            count_assemble_chunk_parallel(&sequences, k, threads, paired, anchors);
+                        assert_eq!(parallel, narrow, "k={k} paired={paired} threads={threads}");
+                    }
                 }
             }
         }

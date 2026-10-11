@@ -6,4 +6,5 @@ rust-version.workspace = true
 license.workspace = true
 
 [dependencies]
+gm2_tools = { path = "../gm2_tools" }
 ahash = "0.8"

@@ -5,5 +5,6 @@ pub mod gene_annotation;
 pub mod merge;
 pub mod mito_merge;
 pub mod mito_reads;
+pub mod platform;
 pub mod stats;
 pub mod trim;

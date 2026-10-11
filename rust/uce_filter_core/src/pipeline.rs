@@ -536,6 +536,7 @@ impl BackgroundReader {
         let worker = thread::Builder::new()
             .name(format!("uce-decode-{mate}"))
             .spawn(move || {
+                gm2_tools::platform::prefer_performance_cores();
                 let mut input = match open_input(&path) {
                     Ok(input) => input,
                     Err(error) => {
@@ -806,6 +807,7 @@ fn constrain_evidence(
 }
 
 pub fn run(config: &Config) -> Result<RunSummary, String> {
+    gm2_tools::platform::prefer_performance_cores();
     let started = Instant::now();
     let index_started = Instant::now();
     let verify_k = config
@@ -838,6 +840,10 @@ pub fn run(config: &Config) -> Result<RunSummary, String> {
         eprintln!("UCEFilter recruitment: subset gate with full-panel candidate expansion");
     }
     eprintln!("UCEFilter gzip backend: {}", gzip_backend_name());
+    eprintln!(
+        "UCEFilter CPU: {}",
+        gm2_tools::platform::cpu_info().summary()
+    );
     if config.profile {
         eprintln!(
             "UCEFilter paired decode: 2 background workers, {} x {} KiB buffers per mate",

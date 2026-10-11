@@ -124,6 +124,7 @@ pub(crate) fn evaluate_contig_probe_support_parallel(
         let mut handles = Vec::with_capacity(worker_count);
         for _ in 0..worker_count {
             handles.push(scope.spawn(|| {
+                gm2_tools::platform::prefer_performance_cores();
                 let mut recruited = RecruitScratch::default();
                 let mut rows = Vec::new();
                 loop {

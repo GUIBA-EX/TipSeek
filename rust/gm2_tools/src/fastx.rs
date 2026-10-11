@@ -81,7 +81,17 @@ unsafe fn dlsym_typed<F: Copy>(handle: *mut c_void, symbol: &str) -> Option<F> {
 
 #[cfg(unix)]
 fn detect_zlib_ng() -> Option<ZlibBackend> {
-    for library in ["libz-ng.so.2", "libz-ng.so.1", "libz-ng.so"] {
+    // macOS does not search Homebrew prefixes by default, so its usual
+    // install locations are listed explicitly.
+    for library in [
+        "libz-ng.so.2",
+        "libz-ng.so.1",
+        "libz-ng.so",
+        "libz-ng.2.dylib",
+        "libz-ng.dylib",
+        "/opt/homebrew/lib/libz-ng.2.dylib",
+        "/usr/local/lib/libz-ng.2.dylib",
+    ] {
         let library = CString::new(library).expect("static string contains no NUL");
         let handle = unsafe { libc::dlopen(library.as_ptr(), libc::RTLD_NOW | libc::RTLD_LOCAL) };
         if handle.is_null() {

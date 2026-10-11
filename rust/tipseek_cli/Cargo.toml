@@ -11,5 +11,6 @@ name = "tipseek"
 path = "src/main.rs"
 
 [dependencies]
+gm2_tools = { path = "../gm2_tools" }
 sha2 = "0.10"
 uce_filter_core = { path = "../uce_filter_core" }

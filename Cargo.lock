@@ -293,6 +293,7 @@ name = "main_assembler"
 version = "0.7.0"
 dependencies = [
  "ahash",
+ "gm2_tools",
 ]
 
 [[package]]
@@ -542,6 +543,7 @@ dependencies = [
 name = "tipseek_cli"
 version = "0.1.0"
 dependencies = [
+ "gm2_tools",
  "sha2",
  "uce_filter_core",
 ]

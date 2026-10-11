@@ -6191,10 +6191,11 @@ fn auto_worker_budget() -> (usize, String) {
         .or_else(|| thread::available_parallelism().ok().map(usize::from))
         .unwrap_or(1)
         .max(1);
+    let cpu = gm2_tools::platform::cpu_info();
     let physical = allowed
         .as_deref()
         .and_then(|cpus| physical_core_count(cpus, Path::new("/sys/devices/system/cpu")))
-        .unwrap_or(logical)
+        .unwrap_or_else(|| cpu.physical.min(logical))
         .max(1);
     let cgroup = cgroup_cpu_quota();
     let scheduler = scheduler_cpu_limit();
@@ -6207,6 +6208,13 @@ fn auto_worker_budget() -> (usize, String) {
     }
     let mut source =
         format!("auto: {physical} physical core(s) from {logical} allowed logical CPU(s)");
+    if let (Some(performance), Some(efficiency)) = (cpu.performance, cpu.efficiency) {
+        if efficiency > 0 {
+            source.push_str(&format!(
+                " ({performance} performance + {efficiency} efficiency)"
+            ));
+        }
+    }
     if let Some(limit) = cgroup {
         source.push_str(&format!(", cgroup quota {limit}"));
     }
@@ -6217,13 +6225,7 @@ fn auto_worker_budget() -> (usize, String) {
 }
 
 fn available_memory_mib() -> Option<u64> {
-    let contents = fs::read_to_string("/proc/meminfo").ok()?;
-    contents.lines().find_map(|line| {
-        let mut fields = line.split_whitespace();
-        (fields.next()? == "MemAvailable:")
-            .then(|| fields.next()?.parse::<u64>().ok())??
-            .checked_div(1024)
-    })
+    gm2_tools::platform::available_memory_mib()
 }
 
 fn read_memory_bytes(path: &Path) -> Option<u64> {
