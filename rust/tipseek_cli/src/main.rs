@@ -1133,15 +1133,37 @@ fn restore_locus_file(
     Ok(())
 }
 
-fn locus_file_name_matches(name: &str, locus: &str, paired: bool) -> bool {
-    let stem = Path::new(name)
-        .file_stem()
-        .and_then(|value| value.to_str())
-        .unwrap_or_default();
-    if paired {
-        stem == format!("{locus}_1") || stem == format!("{locus}_2")
-    } else {
-        stem == locus
+/// File names in rescue read directories, grouped by file stem and listed once
+/// per directory. Restoring a locus only removes or copies files carrying that
+/// locus' own stems, and each locus is restored at most once per round, so a
+/// per-round listing stays exact for every later locus.
+#[derive(Default)]
+struct LocusFileListings {
+    by_root: std::collections::HashMap<PathBuf, BTreeMap<String, Vec<std::ffi::OsString>>>,
+}
+
+impl LocusFileListings {
+    fn names(&mut self, root: &Path, stem: &str) -> Result<&[std::ffi::OsString], String> {
+        if !self.by_root.contains_key(root) {
+            let mut by_stem = BTreeMap::<String, Vec<std::ffi::OsString>>::new();
+            if root.is_dir() {
+                for entry in fs::read_dir(root).map_err(|e| e.to_string())? {
+                    let entry = entry.map_err(|e| e.to_string())?;
+                    if entry.path().is_file() {
+                        let name = entry.file_name();
+                        let text = name.to_string_lossy();
+                        let stem = Path::new(text.as_ref())
+                            .file_stem()
+                            .and_then(|value| value.to_str())
+                            .unwrap_or_default()
+                            .to_owned();
+                        by_stem.entry(stem).or_default().push(name);
+                    }
+                }
+            }
+            self.by_root.insert(root.to_path_buf(), by_stem);
+        }
+        Ok(self.by_root[root].get(stem).map_or(&[], Vec::as_slice))
     }
 }
 
@@ -1150,26 +1172,22 @@ fn restore_locus_directory_files(
     backup: &Path,
     directory: &str,
     locus: &str,
+    listings: &mut LocusFileListings,
 ) -> Result<(), String> {
     let source_dir = backup.join(directory);
     let destination_dir = sample.join(directory);
+    let stems = if directory == "filtered_pe" {
+        vec![format!("{locus}_1"), format!("{locus}_2")]
+    } else {
+        vec![locus.to_owned()]
+    };
     let mut names = std::collections::BTreeSet::new();
     for root in [&source_dir, &destination_dir] {
-        if !root.is_dir() {
-            continue;
-        }
-        for entry in fs::read_dir(root).map_err(|e| e.to_string())? {
-            let entry = entry.map_err(|e| e.to_string())?;
-            if entry.path().is_file() {
-                names.insert(entry.file_name());
-            }
+        for stem in &stems {
+            names.extend(listings.names(root, stem)?.iter().cloned());
         }
     }
     for name in names {
-        let text = name.to_string_lossy();
-        if !locus_file_name_matches(&text, locus, directory == "filtered_pe") {
-            continue;
-        }
         let source = source_dir.join(&name);
         let destination = destination_dir.join(&name);
         if destination.exists() {
@@ -1238,12 +1256,17 @@ fn write_result_dict_from_uce_summary(sample: &Path, summary: &UceSummary) -> Re
     fs::write(sample.join("result_dict.txt"), text).map_err(|e| e.to_string())
 }
 
-fn restore_rescue_locus(sample: &Path, backup: &Path, locus: &str) -> Result<(), String> {
+fn restore_rescue_locus(
+    sample: &Path,
+    backup: &Path,
+    locus: &str,
+    listings: &mut LocusFileListings,
+) -> Result<(), String> {
     for directory in ["results", "contigs_all", "contigs_all_low"] {
         restore_locus_file(sample, backup, directory, locus)?;
     }
     for directory in ["filtered", "filtered_pe"] {
-        restore_locus_directory_files(sample, backup, directory, locus)?;
+        restore_locus_directory_files(sample, backup, directory, locus, listings)?;
     }
     restore_locus_read_count(sample, backup, locus)
 }
@@ -1915,12 +1938,13 @@ fn execute_uce_rescue(
             let mut after = read_uce_summary(&sample_dir.join("uce_assembly_summary.csv"))?;
             let mut statuses = std::collections::BTreeMap::new();
             let mut evidence_by_locus = std::collections::BTreeMap::new();
+            let mut listings = LocusFileListings::default();
             for (locus, before_row) in &before.rows {
                 let inactive = active
                     .as_ref()
                     .is_some_and(|active| !active.contains(locus));
                 if inactive {
-                    restore_rescue_locus(sample_dir, &backup, locus)?;
+                    restore_rescue_locus(sample_dir, &backup, locus, &mut listings)?;
                     after.rows.insert(locus.clone(), before_row.clone());
                     statuses.insert(
                         locus.clone(),
@@ -1940,7 +1964,7 @@ fn execute_uce_rescue(
                     } else {
                         "not_recovered"
                     };
-                    restore_rescue_locus(sample_dir, &backup, locus)?;
+                    restore_rescue_locus(sample_dir, &backup, locus, &mut listings)?;
                     after.rows.insert(locus.clone(), before_row.clone());
                     statuses.insert(locus.clone(), status.into());
                     continue;
@@ -1951,7 +1975,7 @@ fn execute_uce_rescue(
                         .zip(row_density(after.rows.get(locus)))
                         .is_some_and(|(old, new)| old > 0.0 && new / old < density_ratio);
                 if density_drop {
-                    restore_rescue_locus(sample_dir, &backup, locus)?;
+                    restore_rescue_locus(sample_dir, &backup, locus, &mut listings)?;
                     after.rows.insert(locus.clone(), before_row.clone());
                     statuses.insert(locus.clone(), "reverted_density_drop".into());
                     continue;
@@ -1967,13 +1991,13 @@ fn execute_uce_rescue(
                         evidence_by_locus.insert(locus.clone(), evidence);
                     }
                     if terminal_status == "missing_contig" || terminal_status == "core_changed" {
-                        restore_rescue_locus(sample_dir, &backup, locus)?;
+                        restore_rescue_locus(sample_dir, &backup, locus, &mut listings)?;
                         after.rows.insert(locus.clone(), before_row.clone());
                         statuses.insert(locus.clone(), format!("reverted_{terminal_status}"));
                         continue;
                     }
                     if terminal_status == "no_supported_extension" {
-                        restore_rescue_locus(sample_dir, &backup, locus)?;
+                        restore_rescue_locus(sample_dir, &backup, locus, &mut listings)?;
                         after.rows.insert(locus.clone(), before_row.clone());
                         statuses.insert(locus.clone(), "stable_no_supported_extension".into());
                         continue;
@@ -2004,7 +2028,7 @@ fn execute_uce_rescue(
                     locus,
                     inverted_repeat_minimum,
                 )? {
-                    restore_rescue_locus(sample_dir, &backup, locus)?;
+                    restore_rescue_locus(sample_dir, &backup, locus, &mut listings)?;
                     after.rows.insert(locus.clone(), before_row.clone());
                     evidence_by_locus.remove(locus);
                     statuses.insert(locus.clone(), "reverted_inverted_repeat".into());
@@ -2013,7 +2037,7 @@ fn execute_uce_rescue(
                 if uce_row_accepted(Some(before_row))
                     && rescue_introduces_unsupported_internal_gap(sample_dir, &backup, locus)?
                 {
-                    restore_rescue_locus(sample_dir, &backup, locus)?;
+                    restore_rescue_locus(sample_dir, &backup, locus, &mut listings)?;
                     after.rows.insert(locus.clone(), before_row.clone());
                     evidence_by_locus.remove(locus);
                     statuses.insert(locus.clone(), "reverted_unsupported_internal_gap".into());
