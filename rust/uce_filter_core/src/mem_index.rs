@@ -14,7 +14,6 @@
 //! occurrence counts, strand masks and seeds.
 
 use crate::index::{code, OrientedReference};
-use ahash::AHashMap;
 
 const ALPHABET_SIZE: usize = 6;
 const SA_SAMPLE_RATE: usize = 16;
@@ -22,11 +21,13 @@ const SENTINEL: u8 = 0;
 const SEPARATOR: u8 = 5;
 /// Largest run-k served by [`RunKAnchors`]; longer run-k uses the FM index.
 const MAX_ANCHOR_K: usize = 32;
-/// Forward-text code between and after spans. Read codes are 0..=3, so a
-/// comparison always stops here and never crosses a span boundary.
-const ANCHOR_STOP: u8 = 4;
-/// Trailing stop codes that keep eight-byte comparisons inside the text.
-const ANCHOR_PADDING: usize = 8;
+/// Empty run-k table slot.
+const EMPTY_SLOT: u32 = u32::MAX;
+/// Slot flag for a run-k that occurs more than once; the value bits then
+/// index `RunKAnchors::repeat_starts` instead of holding a text position.
+const REPEAT_SLOT: u32 = 1 << 31;
+/// Read lengths packed on the stack; longer reads use a heap buffer.
+const STACK_READ_WORDS: usize = 24;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) struct MemSeed {
@@ -81,52 +82,85 @@ pub(crate) struct LocusMemIndex {
 }
 
 /// Exact run-k occurrences over the forward reference text of one locus.
+///
+/// Memory is kept near 6–12 bytes per reference base: the text is packed at
+/// two bits per base, and the open-addressing table stores one `u32` per
+/// slot without the run-k itself. A slot holds the text position of a run-k
+/// that occurs once (the common case) or flags a group of repeated
+/// occurrences. Lookups confirm a candidate slot by reading its run-k back
+/// from the packed text, which is small enough to stay in cache.
 #[derive(Debug, Default)]
 struct RunKAnchors {
     run_k: usize,
-    /// Base codes 0..=3 of each span in reference orientation, each followed
-    /// by `ANCHOR_STOP`, then `ANCHOR_PADDING` more stop codes.
-    text: Vec<u8>,
-    /// Start of each span in `text`, parallel to `LocusMemIndex::spans`.
+    /// Forward reference bases of all spans, two bits each, first base in
+    /// the low bits of a word; one trailing zero word keeps reads in range.
+    packed: Vec<u64>,
+    /// Start and end of each span in `packed`, parallel to
+    /// `LocusMemIndex::spans`.
     span_starts: Vec<u32>,
-    /// Text positions of every run-k, grouped by run-k in ascending order.
-    positions: Vec<u32>,
-    /// Run-k code -> (first index into `positions`, occurrence count).
-    table: AHashMap<u64, (u32, u32)>,
+    span_ends: Vec<u32>,
+    /// `EMPTY_SLOT`, or `[REPEAT_SLOT flag | fingerprint | value]` where the
+    /// value is a text position or, with the flag, a repeat group. The value
+    /// uses the fewest bits that fit this locus; the rest of the low 31 bits
+    /// hold a run-k hash fingerprint that rejects most probes without
+    /// reading the packed text.
+    slots: Vec<u32>,
+    slot_bits: u32,
+    value_bits: u32,
+    /// Group `g` occurs at `repeat_positions[repeat_starts[g]..repeat_starts[g + 1]]`.
+    repeat_starts: Vec<u32>,
+    repeat_positions: Vec<u32>,
+}
+
+/// Text positions of one run-k.
+enum Occurrences<'a> {
+    One(u32),
+    Many(&'a [u32]),
 }
 
 impl RunKAnchors {
     fn build(run_k: usize, span_texts: &[Vec<u8>]) -> Result<Self, String> {
         debug_assert!((1..=MAX_ANCHOR_K).contains(&run_k));
-        let total = span_texts.iter().map(|text| text.len() + 1).sum::<usize>() + ANCHOR_PADDING;
-        if total > u32::MAX as usize {
-            return Err("locus anchor text length exceeds u32".to_string());
+        let total = span_texts.iter().map(Vec::len).sum::<usize>();
+        if total >= (REPEAT_SLOT - 1) as usize {
+            return Err("locus anchor text length exceeds 2^31 bases".to_string());
         }
         let mut anchors = Self {
             run_k,
-            text: Vec::with_capacity(total),
+            packed: vec![0_u64; total.div_ceil(32) + 1],
             span_starts: Vec::with_capacity(span_texts.len()),
+            span_ends: Vec::with_capacity(span_texts.len()),
             ..Self::default()
         };
-        let mut keyed = Vec::<(u64, u32)>::new();
-        let mask = run_k_mask(run_k);
+        let mut keyed = Vec::<(u64, u32)>::with_capacity(total);
+        let mut position = 0_usize;
         for span in span_texts {
-            let start = anchors.text.len();
-            anchors.span_starts.push(start as u32);
-            anchors.text.extend_from_slice(span);
-            anchors.text.push(ANCHOR_STOP);
+            anchors.span_starts.push(position as u32);
             let mut kmer = 0_u64;
             for (offset, &value) in span.iter().enumerate() {
-                kmer = ((kmer << 2) | u64::from(value)) & mask;
+                anchors.packed[position / 32] |= u64::from(value) << (2 * (position % 32));
+                kmer = push_base(kmer, value, run_k);
                 if offset + 1 >= run_k {
-                    keyed.push((kmer, (start + offset + 1 - run_k) as u32));
+                    keyed.push((kmer, (position + 1 - run_k) as u32));
                 }
+                position += 1;
             }
+            anchors.span_ends.push(position as u32);
         }
-        anchors.text.resize(total, ANCHOR_STOP);
         keyed.sort_unstable();
-        anchors.positions = keyed.iter().map(|&(_, position)| position).collect();
-        anchors.table.reserve(keyed.len());
+
+        let groups = keyed
+            .iter()
+            .enumerate()
+            .filter(|&(index, entry)| index == 0 || keyed[index - 1].0 != entry.0)
+            .count();
+        // Load factor at most 2/3 keeps probe chains short.
+        let capacity = (groups + groups / 2 + 1).next_power_of_two().max(2);
+        anchors.slot_bits = capacity.trailing_zeros();
+        // One spare value keeps every occupied slot distinct from EMPTY_SLOT.
+        anchors.value_bits = usize::BITS - (total.max(groups) + 1).leading_zeros();
+        anchors.slots = vec![EMPTY_SLOT; capacity];
+        anchors.repeat_starts.push(0);
         let mut first = 0_usize;
         while first < keyed.len() {
             let kmer = keyed[first].0;
@@ -134,13 +168,80 @@ impl RunKAnchors {
             while end < keyed.len() && keyed[end].0 == kmer {
                 end += 1;
             }
-            anchors
-                .table
-                .insert(kmer, (first as u32, (end - first) as u32));
+            let value = if end - first == 1 {
+                keyed[first].1
+            } else {
+                anchors
+                    .repeat_positions
+                    .extend(keyed[first..end].iter().map(|&(_, position)| position));
+                anchors
+                    .repeat_starts
+                    .push(anchors.repeat_positions.len() as u32);
+                REPEAT_SLOT | (anchors.repeat_starts.len() - 2) as u32
+            };
+            let hash = slot_hash(kmer);
+            let value = value | anchors.fingerprint(hash);
+            let mut slot = anchors.home_slot(hash);
+            while anchors.slots[slot] != EMPTY_SLOT {
+                slot = (slot + 1) & (capacity - 1);
+            }
+            anchors.slots[slot] = value;
             first = end;
         }
-        anchors.table.shrink_to_fit();
         Ok(anchors)
+    }
+
+    /// Table index from the high hash bits.
+    #[inline(always)]
+    fn home_slot(&self, hash: u64) -> usize {
+        (hash >> (64 - self.slot_bits)) as usize
+    }
+
+    /// Low hash bits placed above the value bits of a slot.
+    #[inline(always)]
+    fn fingerprint(&self, hash: u64) -> u32 {
+        (hash as u32) & !REPEAT_SLOT & !self.value_mask()
+    }
+
+    #[inline(always)]
+    fn value_mask(&self) -> u32 {
+        (1_u32 << self.value_bits) - 1
+    }
+
+    #[inline(always)]
+    fn find(&self, kmer: u64) -> Option<Occurrences<'_>> {
+        let mask = run_k_mask(self.run_k);
+        let hash = slot_hash(kmer);
+        let fingerprint = self.fingerprint(hash);
+        let fingerprint_mask = !REPEAT_SLOT & !self.value_mask();
+        let mut slot = self.home_slot(hash);
+        loop {
+            let value = self.slots[slot];
+            if value == EMPTY_SLOT {
+                return None;
+            }
+            if value & fingerprint_mask != fingerprint {
+                slot = (slot + 1) & (self.slots.len() - 1);
+                continue;
+            }
+            let occurrences = if value & REPEAT_SLOT == 0 {
+                Occurrences::One(value & self.value_mask())
+            } else {
+                let group = (value & self.value_mask()) as usize;
+                Occurrences::Many(
+                    &self.repeat_positions[self.repeat_starts[group] as usize
+                        ..self.repeat_starts[group + 1] as usize],
+                )
+            };
+            let first = match occurrences {
+                Occurrences::One(position) => position,
+                Occurrences::Many(positions) => positions[0],
+            };
+            if packed_word(&self.packed, first as usize) & mask == kmer {
+                return Some(occurrences);
+            }
+            slot = (slot + 1) & (self.slots.len() - 1);
+        }
     }
 
     /// Index into `LocusMemIndex::spans` of the span holding `position`.
@@ -148,6 +249,11 @@ impl RunKAnchors {
     fn span_index(&self, position: u32) -> usize {
         self.span_starts.partition_point(|&start| start <= position) - 1
     }
+}
+
+#[inline(always)]
+fn slot_hash(kmer: u64) -> u64 {
+    (kmer ^ (kmer >> 31)).wrapping_mul(0x9e37_79b9_7f4a_7c15)
 }
 
 #[inline(always)]
@@ -159,25 +265,57 @@ fn run_k_mask(run_k: usize) -> u64 {
     }
 }
 
-/// Number of leading equal codes. `text` must hold a stop code no later than
-/// `read.len()` bytes past any matching prefix, which `ANCHOR_STOP` padding
-/// guarantees; read codes are 0..=3 and never equal a stop code.
+/// Appends a base to a rolling run-k whose first base is in the low bits,
+/// matching the layout of `packed_word`.
 #[inline(always)]
-fn common_prefix(read: &[u8], text: &[u8]) -> usize {
+fn push_base(kmer: u64, value: u8, run_k: usize) -> u64 {
+    (kmer >> 2) | (u64::from(value) << (2 * (run_k - 1)))
+}
+
+/// Thirty-two bases starting at `position`, first base in the low bits.
+/// `words` must end with a zero word past the last base.
+#[inline(always)]
+fn packed_word(words: &[u64], position: usize) -> u64 {
+    let word = position / 32;
+    let shift = 2 * (position % 32);
+    if shift == 0 {
+        words[word]
+    } else {
+        (words[word] >> shift) | (words[word + 1] << (64 - shift))
+    }
+}
+
+/// Packs base codes into `words` (with one trailing zero word).
+fn pack_codes(codes: &[u8], words: &mut [u64]) {
+    words.fill(0);
+    for (position, &value) in codes.iter().enumerate() {
+        words[position / 32] |= u64::from(value) << (2 * (position % 32));
+    }
+}
+
+/// Number of equal bases, at most `limit`, comparing up to 32 per step.
+#[inline(always)]
+fn packed_common_prefix(
+    read: &[u64],
+    read_start: usize,
+    text: &[u64],
+    text_start: usize,
+    limit: usize,
+) -> usize {
     let mut matched = 0_usize;
-    while matched + 8 <= read.len() {
-        let left = u64::from_le_bytes(read[matched..matched + 8].try_into().unwrap());
-        let right = u64::from_le_bytes(text[matched..matched + 8].try_into().unwrap());
-        let difference = left ^ right;
-        if difference != 0 {
-            return matched + (difference.trailing_zeros() / 8) as usize;
+    while matched < limit {
+        let step = (limit - matched).min(32);
+        let mut difference =
+            packed_word(read, read_start + matched) ^ packed_word(text, text_start + matched);
+        if step < 32 {
+            difference &= (1_u64 << (2 * step)) - 1;
         }
-        matched += 8;
+        if difference != 0 {
+            return matched + (difference.trailing_zeros() / 2) as usize;
+        }
+        matched += step;
     }
-    while matched < read.len() && read[matched] == text[matched] {
-        matched += 1;
-    }
-    matched
+    limit
 }
 
 /// Writes the 0..=3 base codes of a validated DNA read into `codes`.
@@ -377,21 +515,39 @@ impl LocusMemIndex {
         profile: &mut MemQueryProfile,
     ) -> Option<MemSeed> {
         let run_k = anchors.run_k;
-        let mask = run_k_mask(run_k);
+        let words = read.len().div_ceil(32) + 1;
+        let mut stack = [0_u64; STACK_READ_WORDS];
+        let mut heap = Vec::new();
+        let packed_read = if words <= STACK_READ_WORDS {
+            &mut stack[..words]
+        } else {
+            heap.resize(words, 0);
+            &mut heap[..]
+        };
+        pack_codes(read, packed_read);
+        let packed_read = &*packed_read;
+
         let mut kmer = read[..run_k - 1]
             .iter()
-            .fold(0_u64, |kmer, &value| (kmer << 2) | u64::from(value));
+            .fold(0_u64, |kmer, &value| push_base(kmer, value, run_k));
         let mut best = None::<MemSeed>;
         for read_start in 0..occurrence_counts.len() {
             profile.run_windows += 1;
-            kmer = ((kmer << 2) | u64::from(read[read_start + run_k - 1])) & mask;
-            let Some(&(first, count)) = anchors.table.get(&kmer) else {
+            kmer = push_base(kmer, read[read_start + run_k - 1], run_k);
+            let Some(found) = anchors.find(kmer) else {
                 continue;
             };
             profile.matching_windows += 1;
-            let occurrences = &anchors.positions[first as usize..(first + count) as usize];
-            occurrence_counts[read_start] = count;
-            if count == 1 {
+            let single;
+            let occurrences = match found {
+                Occurrences::One(position) => {
+                    single = position;
+                    std::slice::from_ref(&single)
+                }
+                Occurrences::Many(positions) => positions,
+            };
+            occurrence_counts[read_start] = occurrences.len() as u32;
+            if occurrences.len() == 1 {
                 strand_masks[read_start] = self.spans[anchors.span_index(occurrences[0])].strand;
             }
             // A match starting here can be at most this long. Once it is
@@ -399,12 +555,21 @@ impl LocusMemIndex {
             if best.is_some_and(|current| read.len() - read_start < current.len()) {
                 continue;
             }
-            let suffix = &read[read_start + run_k..];
+            let read_tail = read_start + run_k;
             let mut chosen = None::<(usize, u32, usize)>;
             for &position in occurrences {
-                let tail = position as usize + run_k;
-                let length = run_k + common_prefix(suffix, &anchors.text[tail..]);
                 let span_index = anchors.span_index(position);
+                let text_tail = position as usize + run_k;
+                let limit = (read.len() - read_tail)
+                    .min(anchors.span_ends[span_index] as usize - text_tail);
+                let length = run_k
+                    + packed_common_prefix(
+                        packed_read,
+                        read_tail,
+                        &anchors.packed,
+                        text_tail,
+                        limit,
+                    );
                 let span = self.spans[span_index];
                 let reference_start = span.reference_start as usize
                     + (position - anchors.span_starts[span_index]) as usize;
@@ -1218,34 +1383,40 @@ mod tests {
     }
 
     #[test]
-    fn common_prefix_stops_at_mismatch_and_span_end() {
-        let text = [
-            0,
-            1,
-            2,
-            3,
-            0,
-            1,
-            2,
-            3,
-            0,
-            1,
-            ANCHOR_STOP,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-        ];
-        assert_eq!(
-            common_prefix(&[0, 1, 2, 3, 0, 1, 2, 3, 0, 1, 2, 3], &text),
-            10
-        );
-        assert_eq!(common_prefix(&[0, 1, 2, 3, 0, 1, 3, 3, 0], &text), 6);
-        assert_eq!(common_prefix(&[0, 1, 2], &text), 3);
-        assert_eq!(common_prefix(&[], &text), 0);
+    fn packed_prefix_matches_bytewise_comparison() {
+        let mut state = 0x9e37_79b9_7f4a_7c15_u64;
+        let mut next = |bound: usize| {
+            state ^= state << 13;
+            state ^= state >> 7;
+            state ^= state << 17;
+            (state % bound as u64) as usize
+        };
+        for _ in 0..2_000 {
+            let text: Vec<u8> = (0..1 + next(200)).map(|_| next(4) as u8).collect();
+            let start = next(text.len());
+            let mut read: Vec<u8> = text[start..].to_vec();
+            read.truncate(next(read.len() + 1));
+            if !read.is_empty() && next(2) == 0 {
+                let at = next(read.len());
+                read[at] = (read[at] + 1 + next(3) as u8) % 4;
+            }
+            read.extend((0..next(40)).map(|_| next(4) as u8));
+            let mut packed_text = vec![0; text.len().div_ceil(32) + 1];
+            pack_codes(&text, &mut packed_text);
+            let mut packed_read = vec![0; read.len().div_ceil(32) + 1];
+            pack_codes(&read, &mut packed_read);
+            let read_start = next(read.len() + 1);
+            let limit = (read.len() - read_start).min(text.len() - start);
+            let expected = read[read_start..]
+                .iter()
+                .zip(&text[start..])
+                .take(limit)
+                .take_while(|(left, right)| left == right)
+                .count();
+            assert_eq!(
+                packed_common_prefix(&packed_read, read_start, &packed_text, start, limit),
+                expected
+            );
+        }
     }
 }
