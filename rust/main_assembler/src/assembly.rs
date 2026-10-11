@@ -102,7 +102,35 @@ impl SortedKmerCounts {
     }
 }
 
-fn append_read_kmers(sequence: &[u8], k: usize, physical: &mut Vec<u128>) {
+/// Sort key for k-mer counting. K-mers of k <= 32 fit in `u64`; sorting them
+/// at that width gives the same order as `u128` with half the memory traffic.
+trait CountKey: Copy + Ord + Send {
+    fn from_kmer(kmer: u128) -> Self;
+    fn into_kmer(self) -> u128;
+}
+
+impl CountKey for u64 {
+    fn from_kmer(kmer: u128) -> Self {
+        debug_assert!(kmer <= u128::from(u64::MAX));
+        kmer as u64
+    }
+
+    fn into_kmer(self) -> u128 {
+        u128::from(self)
+    }
+}
+
+impl CountKey for u128 {
+    fn from_kmer(kmer: u128) -> Self {
+        kmer
+    }
+
+    fn into_kmer(self) -> u128 {
+        self
+    }
+}
+
+fn append_read_kmers<K: CountKey>(sequence: &[u8], k: usize, physical: &mut Vec<K>) {
     physical.clear();
     let expected = sequence.len().saturating_sub(k - 1).saturating_mul(2);
     if physical.capacity() < expected {
@@ -110,17 +138,17 @@ fn append_read_kmers(sequence: &[u8], k: usize, physical: &mut Vec<u128>) {
     }
     for (_, run) in valid_runs(sequence) {
         for_each_kmer(run, k, |_, forward, reverse| {
-            physical.push(forward);
-            physical.push(reverse);
+            physical.push(K::from_kmer(forward));
+            physical.push(K::from_kmer(reverse));
         });
     }
     physical.sort_unstable();
     physical.dedup();
 }
 
-fn counts_from_observations(
-    mut observations: Vec<u128>,
-    mut fragments: Vec<u128>,
+fn counts_from_observations<K: CountKey>(
+    mut observations: Vec<K>,
+    mut fragments: Vec<K>,
 ) -> Vec<KmerCount> {
     observations.sort_unstable();
     fragments.sort_unstable();
@@ -143,12 +171,66 @@ fn counts_from_observations(
             fragment_index += 1;
         }
         counts.push(KmerCount {
-            kmer,
+            kmer: kmer.into_kmer(),
             depth,
             fragment_support,
         });
     }
     counts
+}
+
+fn count_part<K: CountKey>(
+    part: &[Vec<u8>],
+    k: usize,
+    paired_fragments: bool,
+    reference: Option<&HashMap<u128, RefKmer>>,
+) -> Vec<KmerCount> {
+    let estimate: usize = part
+        .iter()
+        .map(|sequence| sequence.len().saturating_sub(k - 1).saturating_mul(2))
+        .sum();
+    let mut observations = Vec::<K>::with_capacity(estimate);
+    let mut fragments = Vec::<K>::with_capacity(estimate / 4);
+    let mut physical = Vec::new();
+    let mut first_mate = Vec::new();
+    let mut second_mate = Vec::new();
+    if paired_fragments {
+        for mates in part.chunks(2) {
+            if mates.len() != 2 {
+                append_read_kmers(&mates[0], k, &mut physical);
+                observations.extend_from_slice(&physical);
+                continue;
+            }
+            append_read_kmers(&mates[0], k, &mut first_mate);
+            observations.extend_from_slice(&first_mate);
+            append_read_kmers(&mates[1], k, &mut second_mate);
+            observations.extend_from_slice(&second_mate);
+
+            // A retained mate is useful flank evidence only
+            // when its *opposite* mate anchors in reference
+            // sequence.  Counting every k-mer in every pair
+            // would otherwise preserve recurrent errors.
+            if let Some(reference) = reference {
+                let first_anchor = first_mate
+                    .iter()
+                    .any(|kmer| reference.contains_key(&kmer.into_kmer()));
+                let second_anchor = second_mate
+                    .iter()
+                    .any(|kmer| reference.contains_key(&kmer.into_kmer()));
+                if first_anchor && !second_anchor {
+                    fragments.extend_from_slice(&second_mate);
+                } else if second_anchor && !first_anchor {
+                    fragments.extend_from_slice(&first_mate);
+                }
+            }
+        }
+    } else {
+        for sequence in part {
+            append_read_kmers(sequence, k, &mut physical);
+            observations.extend_from_slice(&physical);
+        }
+    }
+    counts_from_observations(observations, fragments)
 }
 
 pub fn count_assemble_chunk_parallel(
@@ -183,50 +265,11 @@ pub fn count_assemble_chunk_parallel(
                         &sequences[start_unit..end_unit]
                     };
                     scope.spawn(move || {
-                        let estimate: usize = part
-                            .iter()
-                            .map(|sequence| sequence.len().saturating_sub(k - 1).saturating_mul(2))
-                            .sum();
-                        let mut observations = Vec::with_capacity(estimate);
-                        let mut fragments = Vec::with_capacity(estimate / 4);
-                        let mut physical = Vec::new();
-                        let mut first_mate = Vec::new();
-                        let mut second_mate = Vec::new();
-                        if paired_fragments {
-                            for mates in part.chunks(2) {
-                                if mates.len() != 2 {
-                                    append_read_kmers(&mates[0], k, &mut physical);
-                                    observations.extend_from_slice(&physical);
-                                    continue;
-                                }
-                                append_read_kmers(&mates[0], k, &mut first_mate);
-                                observations.extend_from_slice(&first_mate);
-                                append_read_kmers(&mates[1], k, &mut second_mate);
-                                observations.extend_from_slice(&second_mate);
-
-                                // A retained mate is useful flank evidence only
-                                // when its *opposite* mate anchors in reference
-                                // sequence.  Counting every k-mer in every pair
-                                // would otherwise preserve recurrent errors.
-                                if let Some(reference) = reference {
-                                    let first_anchor =
-                                        first_mate.iter().any(|kmer| reference.contains_key(kmer));
-                                    let second_anchor =
-                                        second_mate.iter().any(|kmer| reference.contains_key(kmer));
-                                    if first_anchor && !second_anchor {
-                                        fragments.extend_from_slice(&second_mate);
-                                    } else if second_anchor && !first_anchor {
-                                        fragments.extend_from_slice(&first_mate);
-                                    }
-                                }
-                            }
+                        if 2 * k <= u64::BITS as usize {
+                            count_part::<u64>(part, k, paired_fragments, reference)
                         } else {
-                            for sequence in part {
-                                append_read_kmers(sequence, k, &mut physical);
-                                observations.extend_from_slice(&physical);
-                            }
+                            count_part::<u128>(part, k, paired_fragments, reference)
                         }
-                        counts_from_observations(observations, fragments)
                     })
                 })
             })
@@ -1392,6 +1435,43 @@ mod tests {
             outgoing(&graph, current, 3, &blocked, &other_arm, None, false, None, 0.25)[0].kmer,
             reverse_reused
         );
+    }
+
+    #[test]
+    fn narrow_count_keys_match_wide_count_keys() {
+        let mut state = 0x6a09_e667_f3bc_c909_u64;
+        let mut next = |bound: usize| {
+            state ^= state << 13;
+            state ^= state >> 7;
+            state ^= state << 17;
+            (state % bound as u64) as usize
+        };
+        let genome: Vec<u8> = (0..600).map(|_| b"ACGT"[next(4)]).collect();
+        let sequences: Vec<Vec<u8>> = (0..240)
+            .map(|_| {
+                let start = next(genome.len() - 40);
+                let mut read = genome[start..start + 20 + next(20)].to_vec();
+                for base in read.iter_mut() {
+                    match next(30) {
+                        0 => *base = b'N',
+                        1 => *base = b"ACGT"[next(4)],
+                        _ => {}
+                    }
+                }
+                read
+            })
+            .collect();
+        for k in [3, 11, 21, 31, 32] {
+            let reference =
+                crate::io_utils::build_reference_kmers(&[("r".into(), genome[..200].to_vec())], k);
+            for paired in [false, true] {
+                for anchors in [None, Some(&reference)] {
+                    let narrow = count_part::<u64>(&sequences, k, paired, anchors);
+                    let wide = count_part::<u128>(&sequences, k, paired, anchors);
+                    assert_eq!(narrow, wide, "k={k} paired={paired}");
+                }
+            }
+        }
     }
 
     #[test]
