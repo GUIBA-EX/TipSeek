@@ -5,13 +5,28 @@
 //! segments in one FM index, separated by sentinels. Runtime state is limited to
 //! symbol rank bitvectors and sparse suffix-array samples: no positional anchor
 //! hash table and no full suffix array or RMQ remain resident.
+//!
+//! For run-k values up to 32 (the default is 19) the FM index is replaced by
+//! [`RunKAnchors`]: an exact run-k table plus the forward reference text.
+//! Every run-k window then costs one hash lookup, and a MEM is extended by
+//! comparing eight bases per step against each occurrence of its run-k
+//! prefix, instead of two rank queries per base. Both paths return identical
+//! occurrence counts, strand masks and seeds.
 
 use crate::index::{code, OrientedReference};
+use ahash::AHashMap;
 
 const ALPHABET_SIZE: usize = 6;
 const SA_SAMPLE_RATE: usize = 16;
 const SENTINEL: u8 = 0;
 const SEPARATOR: u8 = 5;
+/// Largest run-k served by [`RunKAnchors`]; longer run-k uses the FM index.
+const MAX_ANCHOR_K: usize = 32;
+/// Forward-text code between and after spans. Read codes are 0..=3, so a
+/// comparison always stops here and never crosses a span boundary.
+const ANCHOR_STOP: u8 = 4;
+/// Trailing stop codes that keep eight-byte comparisons inside the text.
+const ANCHOR_PADDING: usize = 8;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) struct MemSeed {
@@ -61,6 +76,114 @@ pub(crate) struct LocusMemIndex {
     /// separators). A run-k match spans only bases, so it never crosses a
     /// span boundary and its strand is that of the span it starts in.
     row_strands: Vec<u8>,
+    /// Exact run-k table that replaces the FM index when run-k <= 32.
+    anchors: Option<RunKAnchors>,
+}
+
+/// Exact run-k occurrences over the forward reference text of one locus.
+#[derive(Debug, Default)]
+struct RunKAnchors {
+    run_k: usize,
+    /// Base codes 0..=3 of each span in reference orientation, each followed
+    /// by `ANCHOR_STOP`, then `ANCHOR_PADDING` more stop codes.
+    text: Vec<u8>,
+    /// Start of each span in `text`, parallel to `LocusMemIndex::spans`.
+    span_starts: Vec<u32>,
+    /// Text positions of every run-k, grouped by run-k in ascending order.
+    positions: Vec<u32>,
+    /// Run-k code -> (first index into `positions`, occurrence count).
+    table: AHashMap<u64, (u32, u32)>,
+}
+
+impl RunKAnchors {
+    fn build(run_k: usize, span_texts: &[Vec<u8>]) -> Result<Self, String> {
+        debug_assert!((1..=MAX_ANCHOR_K).contains(&run_k));
+        let total = span_texts.iter().map(|text| text.len() + 1).sum::<usize>() + ANCHOR_PADDING;
+        if total > u32::MAX as usize {
+            return Err("locus anchor text length exceeds u32".to_string());
+        }
+        let mut anchors = Self {
+            run_k,
+            text: Vec::with_capacity(total),
+            span_starts: Vec::with_capacity(span_texts.len()),
+            ..Self::default()
+        };
+        let mut keyed = Vec::<(u64, u32)>::new();
+        let mask = run_k_mask(run_k);
+        for span in span_texts {
+            let start = anchors.text.len();
+            anchors.span_starts.push(start as u32);
+            anchors.text.extend_from_slice(span);
+            anchors.text.push(ANCHOR_STOP);
+            let mut kmer = 0_u64;
+            for (offset, &value) in span.iter().enumerate() {
+                kmer = ((kmer << 2) | u64::from(value)) & mask;
+                if offset + 1 >= run_k {
+                    keyed.push((kmer, (start + offset + 1 - run_k) as u32));
+                }
+            }
+        }
+        anchors.text.resize(total, ANCHOR_STOP);
+        keyed.sort_unstable();
+        anchors.positions = keyed.iter().map(|&(_, position)| position).collect();
+        anchors.table.reserve(keyed.len());
+        let mut first = 0_usize;
+        while first < keyed.len() {
+            let kmer = keyed[first].0;
+            let mut end = first + 1;
+            while end < keyed.len() && keyed[end].0 == kmer {
+                end += 1;
+            }
+            anchors
+                .table
+                .insert(kmer, (first as u32, (end - first) as u32));
+            first = end;
+        }
+        anchors.table.shrink_to_fit();
+        Ok(anchors)
+    }
+
+    /// Index into `LocusMemIndex::spans` of the span holding `position`.
+    #[inline(always)]
+    fn span_index(&self, position: u32) -> usize {
+        self.span_starts.partition_point(|&start| start <= position) - 1
+    }
+}
+
+#[inline(always)]
+fn run_k_mask(run_k: usize) -> u64 {
+    if run_k >= MAX_ANCHOR_K {
+        u64::MAX
+    } else {
+        (1_u64 << (2 * run_k)) - 1
+    }
+}
+
+/// Number of leading equal codes. `text` must hold a stop code no later than
+/// `read.len()` bytes past any matching prefix, which `ANCHOR_STOP` padding
+/// guarantees; read codes are 0..=3 and never equal a stop code.
+#[inline(always)]
+fn common_prefix(read: &[u8], text: &[u8]) -> usize {
+    let mut matched = 0_usize;
+    while matched + 8 <= read.len() {
+        let left = u64::from_le_bytes(read[matched..matched + 8].try_into().unwrap());
+        let right = u64::from_le_bytes(text[matched..matched + 8].try_into().unwrap());
+        let difference = left ^ right;
+        if difference != 0 {
+            return matched + (difference.trailing_zeros() / 8) as usize;
+        }
+        matched += 8;
+    }
+    while matched < read.len() && read[matched] == text[matched] {
+        matched += 1;
+    }
+    matched
+}
+
+/// Writes the 0..=3 base codes of a validated DNA read into `codes`.
+pub(crate) fn read_codes_into(read: &[u8], codes: &mut Vec<u8>) {
+    codes.clear();
+    codes.extend(read.iter().map(|&base| code(base).unwrap_or(0)));
 }
 
 impl LocusMemIndex {
@@ -219,6 +342,12 @@ impl LocusMemIndex {
             .min_by_key(|&(sequence, start, _)| (sequence, start))
     }
 
+    /// Run-k occurrence statistics and the longest exact match of a read.
+    ///
+    /// `read` holds base codes 0..=3 (see [`read_codes_into`]). For every
+    /// run-k window it records the occurrence count, and the strand when the
+    /// window occurs once. It returns the longest match of at least run-k
+    /// bases, ties broken by (sequence, reference start, read start).
     pub fn collect(
         &self,
         read: &[u8],
@@ -231,6 +360,89 @@ impl LocusMemIndex {
             return None;
         }
         profile.index_queries += 1;
+        match self.anchors.as_ref() {
+            Some(anchors) if anchors.run_k == run_k => {
+                self.collect_anchored(anchors, read, occurrence_counts, strand_masks, profile)
+            }
+            _ => self.collect_fm(read, run_k, occurrence_counts, strand_masks, profile),
+        }
+    }
+
+    fn collect_anchored(
+        &self,
+        anchors: &RunKAnchors,
+        read: &[u8],
+        occurrence_counts: &mut [u32],
+        strand_masks: &mut [u8],
+        profile: &mut MemQueryProfile,
+    ) -> Option<MemSeed> {
+        let run_k = anchors.run_k;
+        let mask = run_k_mask(run_k);
+        let mut kmer = read[..run_k - 1]
+            .iter()
+            .fold(0_u64, |kmer, &value| (kmer << 2) | u64::from(value));
+        let mut best = None::<MemSeed>;
+        for read_start in 0..occurrence_counts.len() {
+            profile.run_windows += 1;
+            kmer = ((kmer << 2) | u64::from(read[read_start + run_k - 1])) & mask;
+            let Some(&(first, count)) = anchors.table.get(&kmer) else {
+                continue;
+            };
+            profile.matching_windows += 1;
+            let occurrences = &anchors.positions[first as usize..(first + count) as usize];
+            occurrence_counts[read_start] = count;
+            if count == 1 {
+                strand_masks[read_start] = self.spans[anchors.span_index(occurrences[0])].strand;
+            }
+            // A match starting here can be at most this long. Once it is
+            // shorter than the current best it can neither win nor tie.
+            if best.is_some_and(|current| read.len() - read_start < current.len()) {
+                continue;
+            }
+            let suffix = &read[read_start + run_k..];
+            let mut chosen = None::<(usize, u32, usize)>;
+            for &position in occurrences {
+                let tail = position as usize + run_k;
+                let length = run_k + common_prefix(suffix, &anchors.text[tail..]);
+                let span_index = anchors.span_index(position);
+                let span = self.spans[span_index];
+                let reference_start = span.reference_start as usize
+                    + (position - anchors.span_starts[span_index]) as usize;
+                if chosen.is_none_or(|(best_length, sequence, start)| {
+                    length > best_length
+                        || (length == best_length
+                            && (span.sequence, reference_start) < (sequence, start))
+                }) {
+                    chosen = Some((length, span.sequence, reference_start));
+                }
+            }
+            let Some((length, sequence, reference_start)) = chosen else {
+                continue;
+            };
+            profile.mem_starts += 1;
+            profile.mem_bases += length as u64;
+            let candidate = MemSeed {
+                sequence,
+                read_start,
+                read_end: read_start + length,
+                reference_start,
+                reference_end: reference_start + length,
+            };
+            if best.is_none_or(|current| candidate_wins(candidate, current)) {
+                best = Some(candidate);
+            }
+        }
+        best
+    }
+
+    fn collect_fm(
+        &self,
+        read: &[u8],
+        run_k: usize,
+        occurrence_counts: &mut [u32],
+        strand_masks: &mut [u8],
+        profile: &mut MemQueryProfile,
+    ) -> Option<MemSeed> {
         let mut best = None::<MemSeed>;
         for read_start in 0..occurrence_counts.len() {
             profile.run_windows += 1;
@@ -240,8 +452,8 @@ impl LocusMemIndex {
             let cannot_win = best.is_some_and(|current| read.len() - read_start < current.len());
             let mut interval = (0_usize, self.length);
             let mut length = 0_usize;
-            for &base in &read[read_start..] {
-                let next = self.extend(interval, base_symbol(base));
+            for &value in &read[read_start..] {
+                let next = self.extend(interval, value + 1);
                 if next.0 == next.1 {
                     break;
                 }
@@ -276,19 +488,7 @@ impl LocusMemIndex {
                 reference_start,
                 reference_end,
             };
-            if best.is_none_or(|current| {
-                candidate.len() > current.len()
-                    || (candidate.len() == current.len()
-                        && (
-                            candidate.sequence,
-                            candidate.reference_start,
-                            candidate.read_start,
-                        ) < (
-                            current.sequence,
-                            current.reference_start,
-                            current.read_start,
-                        ))
-            }) {
+            if best.is_none_or(|current| candidate_wins(candidate, current)) {
                 best = Some(candidate);
             }
         }
@@ -300,15 +500,43 @@ impl LocusMemIndex {
     }
 }
 
+/// Longer seeds win; equal lengths prefer (sequence, reference start, read start).
+#[inline(always)]
+fn candidate_wins(candidate: MemSeed, current: MemSeed) -> bool {
+    candidate.len() > current.len()
+        || (candidate.len() == current.len()
+            && (
+                candidate.sequence,
+                candidate.reference_start,
+                candidate.read_start,
+            ) < (
+                current.sequence,
+                current.reference_start,
+                current.read_start,
+            ))
+}
+
 pub(crate) fn build_locus_indexes(
     references: &[OrientedReference],
     locus_count: usize,
     run_k: usize,
 ) -> Result<Vec<LocusMemIndex>, String> {
+    build_locus_indexes_with(references, locus_count, run_k, run_k <= MAX_ANCHOR_K)
+}
+
+fn build_locus_indexes_with(
+    references: &[OrientedReference],
+    locus_count: usize,
+    run_k: usize,
+    use_anchors: bool,
+) -> Result<Vec<LocusMemIndex>, String> {
     let mut loci = (0..locus_count)
         .map(|_| LocusMemIndex::default())
         .collect::<Vec<_>>();
     let mut texts = (0..locus_count).map(|_| Vec::new()).collect::<Vec<_>>();
+    let mut span_texts = (0..locus_count)
+        .map(|_| Vec::<Vec<u8>>::new())
+        .collect::<Vec<_>>();
     for (sequence, reference) in references.iter().enumerate() {
         let sequence = u32::try_from(sequence)
             .map_err(|_| "reference sequence count exceeds u32".to_string())?;
@@ -338,6 +566,14 @@ pub(crate) fn build_locus_indexes(
                     .rev()
                     .map(|&base| base_symbol(base)),
             );
+            if use_anchors {
+                span_texts[locus_id].push(
+                    reference.bases[reference_start..reference_end]
+                        .iter()
+                        .map(|&base| code(base).expect("span holds only bases"))
+                        .collect(),
+                );
+            }
             locus.spans.push(ReferenceSpan {
                 text_start: u32::try_from(text_start)
                     .map_err(|_| "locus text coordinate exceeds u32".to_string())?,
@@ -352,9 +588,16 @@ pub(crate) fn build_locus_indexes(
             });
         }
     }
-    for (locus, text) in loci.iter_mut().zip(&mut texts) {
-        if !text.is_empty() {
-            text.push(SENTINEL);
+    for ((locus, text), spans) in loci.iter_mut().zip(&mut texts).zip(&span_texts) {
+        if text.is_empty() {
+            continue;
+        }
+        text.push(SENTINEL);
+        if use_anchors {
+            // The FM text length is kept as the reported index size.
+            locus.length = text.len();
+            locus.anchors = Some(RunKAnchors::build(run_k, spans)?);
+        } else {
             locus.build(text)?;
         }
     }
@@ -692,6 +935,12 @@ fn build_suffix_array(text: &[u8]) -> Result<Vec<usize>, String> {
 mod tests {
     use super::*;
 
+    fn codes(read: &[u8]) -> Vec<u8> {
+        let mut values = Vec::new();
+        read_codes_into(read, &mut values);
+        values
+    }
+
     fn text_index(texts: &[(&[u8], u8)]) -> LocusMemIndex {
         let mut index = LocusMemIndex::default();
         let mut text = Vec::new();
@@ -726,12 +975,12 @@ mod tests {
     #[test]
     fn longest_prefix_returns_leftmost_equal_occurrence() {
         let index = text_index(&[(b"TTACGTTTACGT", 1)]);
-        let read = b"ACGTAA";
+        let read = codes(b"ACGTAA");
         let mut counts = vec![0; read.len() - 3 + 1];
         let mut strands = vec![0; counts.len()];
         let seed = index
             .collect(
-                read,
+                &read,
                 3,
                 &mut counts,
                 &mut strands,
@@ -754,8 +1003,8 @@ mod tests {
         for read_start in 0..occurrence_counts.len() {
             let mut interval = (0_usize, index.length);
             let mut length = 0_usize;
-            for &base in &read[read_start..] {
-                let next = index.extend(interval, base_symbol(base));
+            for &value in &read[read_start..] {
+                let next = index.extend(interval, value + 1);
                 if next.0 == next.1 {
                     break;
                 }
@@ -854,6 +1103,7 @@ mod tests {
                 if read.len() < run_k {
                     continue;
                 }
+                let read = codes(&read);
                 let windows = read.len() - run_k + 1;
                 let (mut counts, mut strands) = (vec![0; windows], vec![0; windows]);
                 let pruned = index.collect(
@@ -878,5 +1128,124 @@ mod tests {
         let index = text_index(&[(b"AAAAC", 1), (b"GTTTT", 2)]);
         let interval = index.interval(b"ACG");
         assert_eq!(interval.0, interval.1);
+    }
+
+    fn query(
+        index: &LocusMemIndex,
+        read: &[u8],
+        run_k: usize,
+    ) -> (Option<MemSeed>, Vec<u32>, Vec<u8>, MemQueryProfile) {
+        let windows = read.len() - run_k + 1;
+        let (mut counts, mut strands) = (vec![0; windows], vec![0; windows]);
+        let mut profile = MemQueryProfile::default();
+        let seed = index.collect(read, run_k, &mut counts, &mut strands, &mut profile);
+        (seed, counts, strands, profile)
+    }
+
+    #[test]
+    fn anchored_collect_matches_fm_index() {
+        // References drawn from short repeat units with ambiguous bases make
+        // repeated run-k windows, split spans and equal-length ties common.
+        let mut state = 0x2545_f491_4f6c_dd1d_u64;
+        let mut next = |bound: usize| {
+            state ^= state << 13;
+            state ^= state >> 7;
+            state ^= state << 17;
+            (state % bound as u64) as usize
+        };
+        let mut compared = 0_usize;
+        for iteration in 0..300 {
+            let run_k = [1, 2, 5, 11, 19, 19, 23, 31, 32][next(9)];
+            let unit: Vec<u8> = (0..1 + next(16)).map(|_| b"ACGT"[next(4)]).collect();
+            let loci = 1 + next(3);
+            let mut references = Vec::new();
+            for locus in 0..loci {
+                for _ in 0..1 + next(3) {
+                    let bases: Vec<u8> = (0..run_k + next(300))
+                        .map(|i| match next(40) {
+                            0 => b'N',
+                            1..=12 => b"ACGT"[next(4)],
+                            _ => unit[i % unit.len()],
+                        })
+                        .collect();
+                    let reverse = crate::index::reverse_complement(&bases);
+                    references.push(OrientedReference {
+                        locus: locus as u32,
+                        strand: 1,
+                        bases,
+                    });
+                    references.push(OrientedReference {
+                        locus: locus as u32,
+                        strand: 2,
+                        bases: reverse,
+                    });
+                }
+            }
+            let fm = build_locus_indexes_with(&references, loci, run_k, false).unwrap();
+            let anchored = build_locus_indexes_with(&references, loci, run_k, true).unwrap();
+            for locus in 0..loci {
+                assert_eq!(fm[locus].symbols(), anchored[locus].symbols());
+            }
+            for _ in 0..40 {
+                let source = &references[next(references.len())];
+                let start = next(source.bases.len());
+                let mut read: Vec<u8> = source.bases[start..]
+                    .iter()
+                    .take(run_k + next(160))
+                    .map(|&base| if base == b'N' { b"ACGT"[next(4)] } else { base })
+                    .collect();
+                for base in read.iter_mut() {
+                    if next(25) == 0 {
+                        *base = b"ACGTacgu"[next(8)];
+                    }
+                }
+                if read.len() < run_k {
+                    continue;
+                }
+                let read = codes(&read);
+                let locus = next(loci);
+                let (fm_seed, fm_counts, fm_strands, fm_profile) = query(&fm[locus], &read, run_k);
+                let (seed, counts, strands, profile) = query(&anchored[locus], &read, run_k);
+                assert_eq!(seed, fm_seed, "iteration={iteration} run_k={run_k}");
+                assert_eq!(counts, fm_counts, "iteration={iteration} run_k={run_k}");
+                assert_eq!(strands, fm_strands, "iteration={iteration} run_k={run_k}");
+                assert_eq!(profile.mem_starts, fm_profile.mem_starts);
+                assert_eq!(profile.mem_bases, fm_profile.mem_bases);
+                compared += 1;
+            }
+        }
+        assert!(compared > 5_000);
+    }
+
+    #[test]
+    fn common_prefix_stops_at_mismatch_and_span_end() {
+        let text = [
+            0,
+            1,
+            2,
+            3,
+            0,
+            1,
+            2,
+            3,
+            0,
+            1,
+            ANCHOR_STOP,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+        ];
+        assert_eq!(
+            common_prefix(&[0, 1, 2, 3, 0, 1, 2, 3, 0, 1, 2, 3], &text),
+            10
+        );
+        assert_eq!(common_prefix(&[0, 1, 2, 3, 0, 1, 3, 3, 0], &text), 6);
+        assert_eq!(common_prefix(&[0, 1, 2], &text), 3);
+        assert_eq!(common_prefix(&[], &text), 0);
     }
 }

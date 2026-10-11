@@ -1,4 +1,6 @@
-use crate::mem_index::{build_locus_indexes, LocusMemIndex, MemQueryProfile, MemSeed};
+use crate::mem_index::{
+    build_locus_indexes, read_codes_into, LocusMemIndex, MemQueryProfile, MemSeed,
+};
 use crate::model::{Locus, LocusId};
 use ahash::AHashMap;
 use gm2_tools::fastx::{FastxFormat, FastxReader};
@@ -134,6 +136,7 @@ pub struct ReadEvidenceScratch {
     best_exact: Vec<Option<ExactSeed>>,
     occurrence_counts: Vec<u32>,
     strand_masks: Vec<u8>,
+    read_codes: Vec<u8>,
 }
 
 impl ReadEvidenceScratch {
@@ -161,6 +164,7 @@ impl ReadEvidenceScratch {
             + self.best_exact.capacity() * std::mem::size_of::<Option<ExactSeed>>()
             + self.occurrence_counts.capacity() * std::mem::size_of::<u32>()
             + self.strand_masks.capacity() * std::mem::size_of::<u8>()
+            + self.read_codes.capacity() * std::mem::size_of::<u8>()
     }
 }
 
@@ -670,12 +674,13 @@ impl UceIndex {
             return;
         }
         let mut profile = profile;
+        read_codes_into(read, &mut result.read_codes);
         for (slot, &locus) in candidates.iter().enumerate() {
             result.occurrence_counts.fill(0);
             result.strand_masks.fill(0);
             let mut query_profile = MemQueryProfile::default();
             let best = self.exact[locus as usize].collect(
-                read,
+                &result.read_codes,
                 self.run_k,
                 &mut result.occurrence_counts,
                 &mut result.strand_masks,
@@ -709,9 +714,11 @@ impl UceIndex {
         let windows = read.len() - self.run_k + 1;
         let mut occurrence_counts = vec![0_u32; windows];
         let mut strand_masks = vec![0_u8; windows];
+        let mut read_codes = Vec::with_capacity(read.len());
+        read_codes_into(read, &mut read_codes);
         self.exact[locus as usize]
             .collect(
-                read,
+                &read_codes,
                 self.run_k,
                 &mut occurrence_counts,
                 &mut strand_masks,
