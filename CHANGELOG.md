@@ -1,5 +1,16 @@
 # Changelog
 
+## v1.6.6 — Table-based UCE evidence and Apple silicon tuning
+
+Released 2026-10-12.
+
+- Replaced FM-index extension in UCEFilter exact-match evidence with an exact run-k table when run-k ≤ 32 (default 19): each run-k window costs one lookup, and a MEM extends by comparing 32 packed bases per step against each occurrence of its run-k prefix. Occurrence counts, strand masks and seeds, including tie-breaks, are unchanged; larger run-k keeps the FM index.
+- Stored the run-k table compactly: two bits per reference base and one fingerprinted `u32` per hash slot, so the faster path uses about 16 MB more peak memory than the FM index on the benchmark below.
+- Added host processor and memory detection. `-p auto` reports performance and efficiency cores on Apple silicon, macOS now measures available memory instead of falling back to a 512 MiB UCEFilter fragment bank, and compute threads ask macOS to prefer performance cores.
+- Assembler k-mer counting workers now claim small blocks instead of fixed equal slices, so faster cores take more work; counts are identical for any worker count.
+- Scheduling is unchanged: stage thread budgets, stage priorities and sample order still follow the GeneMiner2 dispatcher.
+- On the 575,435-pair UCE benchmark used for v1.6.5 (Apple M2, `-p 8`, default `filter assemble --assembly-mode uce`), the run fell from 47.3–49.8 s to 32.3–33.2 s: the first-pass filter from 4.8–5.0 s to 1.8–2.0 s and the rescue-round filter from 18.8–20.0 s to 5.5–6.7 s. All result files were byte-identical to v1.6.5 on this benchmark and on real phyluce *Gallus* UCE reads.
+
 ## v1.6.5 — Faster UCE recruitment, rescue and assembly
 
 Released 2026-10-11.
