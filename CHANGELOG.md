@@ -1,5 +1,15 @@
 # Changelog
 
+## v1.6.5 — Faster UCE recruitment, rescue and assembly
+
+Released 2026-10-11.
+
+- Pruned exact-match (MEM) evidence in UCEFilter: a read start stops extending past run-k once its longest possible match can no longer reach the current best seed, and unique run-k strands are read from a per-row table instead of a sampled suffix-array walk. Seeds, occurrence counts and strand masks are unchanged.
+- Rewrote rescue internal-gap QC on packed 15-mer keys with a single pass over reads for both the before and after contigs, and made rescue rollback list `filtered/` and `filtered_pe/` once per round instead of once per restored locus.
+- Counted assembler k-mers with 64-bit keys when k ≤ 32 (including the k=21 rescue assembly); larger k keeps the 128-bit path.
+- Scheduling is unchanged: stage thread budgets, stage priorities and sample order still follow the GeneMiner2 dispatcher.
+- On a 575,435-pair UCE benchmark (2,211 bivalve loci; on-target pairs simulated from real DK40 UCE contigs, off-target pairs from a real WGS library; Apple M2, `-p 8`), the default `filter assemble --assembly-mode uce` run fell from 82.6 s to 49.1–49.6 s: the rescue round from 70.7 s to about 40 s and the first-pass filter from 8.3 s to about 5.3 s. All result files were byte-identical to v1.6.4 on this benchmark and on real phyluce *Gallus* UCE reads.
+
 ## v1.6.4 — Exon reference derivation and validated fragment joining
 
 Released 2026-09-21.
