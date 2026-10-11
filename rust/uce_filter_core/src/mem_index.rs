@@ -57,6 +57,10 @@ pub(crate) struct LocusMemIndex {
     sample_bits: Vec<u64>,
     sample_prefix: Vec<u32>,
     sample_values: Vec<u32>,
+    /// Strand of the reference span holding each BWT row's suffix (0 at
+    /// separators). A run-k match spans only bases, so it never crosses a
+    /// span boundary and its strand is that of the span it starts in.
+    row_strands: Vec<u8>,
 }
 
 impl LocusMemIndex {
@@ -93,6 +97,10 @@ impl LocusMemIndex {
                 self.sample_values.push(position as u32);
             }
         }
+        self.row_strands = suffixes
+            .iter()
+            .map(|&position| self.span_at(position).map_or(0, |span| span.strand))
+            .collect();
         self.symbol_prefix = std::array::from_fn(|symbol| {
             let mut prefix = Vec::with_capacity(words + 1);
             prefix.push(0_u32);
@@ -226,6 +234,10 @@ impl LocusMemIndex {
         let mut best = None::<MemSeed>;
         for read_start in 0..occurrence_counts.len() {
             profile.run_windows += 1;
+            // A match starting here can be at most this long. Once it is
+            // shorter than the current best it can neither win nor tie, so
+            // only the run-k window statistics are still needed.
+            let cannot_win = best.is_some_and(|current| read.len() - read_start < current.len());
             let mut interval = (0_usize, self.length);
             let mut length = 0_usize;
             for &base in &read[read_start..] {
@@ -240,13 +252,14 @@ impl LocusMemIndex {
                     profile.matching_windows += 1;
                     occurrence_counts[read_start] = occurrences.min(u32::MAX as usize) as u32;
                     if occurrences == 1 {
-                        if let Some((_, _, _, strand)) = self.occurrence(interval.0, run_k) {
-                            strand_masks[read_start] = strand;
-                        }
+                        strand_masks[read_start] = self.row_strands[interval.0];
+                    }
+                    if cannot_win {
+                        break;
                     }
                 }
             }
-            if length < run_k {
+            if length < run_k || cannot_win {
                 continue;
             }
             profile.mem_starts += 1;
@@ -727,6 +740,137 @@ mod tests {
             .unwrap();
         assert_eq!((seed.read_start, seed.read_end), (0, 4));
         assert_eq!((seed.reference_start, seed.reference_end), (2, 6));
+    }
+
+    /// The pre-pruning `collect`: extends every start to its full MEM.
+    fn collect_unpruned(
+        index: &LocusMemIndex,
+        read: &[u8],
+        run_k: usize,
+        occurrence_counts: &mut [u32],
+        strand_masks: &mut [u8],
+    ) -> Option<MemSeed> {
+        let mut best = None::<MemSeed>;
+        for read_start in 0..occurrence_counts.len() {
+            let mut interval = (0_usize, index.length);
+            let mut length = 0_usize;
+            for &base in &read[read_start..] {
+                let next = index.extend(interval, base_symbol(base));
+                if next.0 == next.1 {
+                    break;
+                }
+                interval = next;
+                length += 1;
+                if length == run_k {
+                    let occurrences = interval.1 - interval.0;
+                    occurrence_counts[read_start] = occurrences as u32;
+                    if occurrences == 1 {
+                        if let Some((_, _, _, strand)) = index.occurrence(interval.0, run_k) {
+                            strand_masks[read_start] = strand;
+                        }
+                    }
+                }
+            }
+            if length < run_k {
+                continue;
+            }
+            let Some((sequence, reference_start, reference_end)) =
+                index.best_occurrence(interval, length)
+            else {
+                continue;
+            };
+            let candidate = MemSeed {
+                sequence,
+                read_start,
+                read_end: read_start + length,
+                reference_start,
+                reference_end,
+            };
+            if best.is_none_or(|current| {
+                candidate.len() > current.len()
+                    || (candidate.len() == current.len()
+                        && (
+                            candidate.sequence,
+                            candidate.reference_start,
+                            candidate.read_start,
+                        ) < (
+                            current.sequence,
+                            current.reference_start,
+                            current.read_start,
+                        ))
+            }) {
+                best = Some(candidate);
+            }
+        }
+        best
+    }
+
+    #[test]
+    fn pruned_collect_matches_full_extension() {
+        // Small alphabet-biased references and reads drawn from them with
+        // mutations make repeats and equal-length MEM ties common.
+        let mut state = 0x9e37_79b9_7f4a_7c15_u64;
+        let mut next = |bound: usize| {
+            state ^= state << 13;
+            state ^= state >> 7;
+            state ^= state << 17;
+            (state % bound as u64) as usize
+        };
+        for _ in 0..400 {
+            let unit: Vec<u8> = (0..1 + next(12)).map(|_| b"ACGT"[next(4)]).collect();
+            let references: Vec<Vec<u8>> = (0..1 + next(3))
+                .map(|_| {
+                    (0..20 + next(200))
+                        .map(|i| {
+                            if next(3) == 0 {
+                                b"ACGT"[next(4)]
+                            } else {
+                                unit[i % unit.len()]
+                            }
+                        })
+                        .collect()
+                })
+                .collect();
+            let texts: Vec<(&[u8], u8)> = references
+                .iter()
+                .enumerate()
+                .map(|(i, r)| (r.as_slice(), 1 + (i % 2) as u8))
+                .collect();
+            let index = text_index(&texts);
+            for _ in 0..20 {
+                let source = &references[next(references.len())];
+                let start = next(source.len());
+                let mut read: Vec<u8> = source[start..]
+                    .iter()
+                    .take(10 + next(60))
+                    .copied()
+                    .collect();
+                for base in read.iter_mut() {
+                    if next(15) == 0 {
+                        *base = b"ACGT"[next(4)];
+                    }
+                }
+                let run_k = 1 + next(9);
+                if read.len() < run_k {
+                    continue;
+                }
+                let windows = read.len() - run_k + 1;
+                let (mut counts, mut strands) = (vec![0; windows], vec![0; windows]);
+                let pruned = index.collect(
+                    &read,
+                    run_k,
+                    &mut counts,
+                    &mut strands,
+                    &mut MemQueryProfile::default(),
+                );
+                let (mut full_counts, mut full_strands) = (vec![0; windows], vec![0; windows]);
+                let full =
+                    collect_unpruned(&index, &read, run_k, &mut full_counts, &mut full_strands);
+                assert_eq!(pruned, full);
+                assert_eq!(counts, full_counts);
+                assert_eq!(strands, full_strands);
+            }
+        }
     }
 
     #[test]
