@@ -163,3 +163,33 @@ All **367 workspace tests** passed with serial test execution, along with Clippy
 Local evidence: `tipseek_population_real_validation_20261018/bam-fastcompression-final` (including `summary.json` and `bam_sizes.json`) and `bam-fastcompression-synthetic`. Reproduce with the benchmark command above using `9778103` as baseline and `--repeats 3`. Timings exclude UCE assembly and comparison work, as before; ADMIXTURE remains excluded.
 
 Final tested executable SHA-256: `bc2c7d932f01be78101bc85f536ffb67baa1c17b99b293181818dd847448bca7`.
+
+
+## Follow-up: remaining bottlenecks; no runtime change retained
+
+Both candidates below were tested against **`0029414`**, using the same four real UCE read subsets, accepted assemblies, eight requested threads and tools. Neither meets the requirement for a consistent speed improvement with identical results. The source and local release executable were restored to `0029414`; this follow-up commits only the investigation record.
+
+| Candidate | Baseline median | Candidate median | Decision |
+| --- | ---: | ---: | --- |
+| Standard collate instead of parallel query-name sort; two paired trials | 7.135 s | 7.840 s | Reject: slower and raw variant records differ |
+| One additional flagstat decompression thread within each sample budget; three paired trials | 7.173 s | 7.136 s | Reject: only 0.52% median difference, two of three paired trials slower |
+
+The collate trial used standard mode, preserving all alignment classes; the filtering fast mode was not tested. The [samtools 1.16 collate manual](https://www.htslib.org/doc/1.16/samtools-collate.html) and [markdup implementation](https://github.com/samtools/samtools/blob/1.16.1/bam_markdup.c) were reviewed before the experiment. Collate changed ordering between read-name groups and increased reported filesystem output blocks from **3,035,968 to 3,820,168**. The strict comparison stopped at raw calls: both outputs had 1,859 records, but **8 shared records differed**, including QUAL, INFO and sample fields. The 263 final filtered records were identical, which is insufficient to accept the change. No claim of full alignment equivalence is made for this rejected candidate.
+
+Flagstat trial pairs, in seconds, were 7.173 → 7.237, 7.083 → 7.104 and 7.179 → 7.136. All six runs passed complete alignment, variant, flagstat, coverage, mapping QC, BAI count, PLINK and PCA checks. The timings do not demonstrate a reliable end-to-end gain. Full scanning and the existing single-thread flagstat invocation therefore remain unchanged.
+
+An additional instrumented run of the unchanged baseline recorded child-process CPU time with wrappers around minibwa and samtools. The following totals cover four samples; they are **summed CPU seconds**, not elapsed pipeline time. Pipeline stages overlap, and this single diagnostic run is not a new speed benchmark.
+
+| Stage | Summed CPU seconds |
+| --- | ---: |
+| minibwa mapping | 12.800 |
+| samtools duplicate marking / final BAM output | 3.684 |
+| samtools query-name sorting | 3.570 |
+| samtools coordinate sorting | 1.046 |
+| samtools flagstat | 1.036 |
+| samtools fixmate | 0.524 |
+| samtools coverage | 0.008 |
+
+These measurements prioritize mapper profiling over additional flagstat thread tuning. Any future change to mapper batching, grouping or sort order must still pass full raw-call and alignment comparisons; equality of the final SNP count alone is not sufficient.
+
+Local evidence under `tipseek_population_real_validation_20261018`: `bam-collate-trial` (timings and `differences.json`), `bam-flagstat-trial` (six equivalent runs and candidate patch), `stage-profile.jsonl`, `stage-profile-summary.json`, `stage-profile-tools` and `stage-profile-run`. The restored executable hash remains `bc2c7d932f01be78101bc85f536ffb67baa1c17b99b293181818dd847448bca7`. No production-code changes remain; documentation diff checks passed. Workspace tests were not rerun for this documentation-only result.
