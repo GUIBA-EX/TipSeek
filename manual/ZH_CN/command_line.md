@@ -191,8 +191,8 @@ cli/tipseek te -f te_samples.tsv -o te_output -p 32
 
 ```bash
 cli/tipseek mito \
-  -f samples.tsv -o mito_output -p auto \
-  --mito-genbank mitochondrial_reference.gb
+  -f samples.tsv -o mito_output \
+  -r mitochondrial_reference.gb
 ```
 
 适用范围、闭环判据、自适应停止和输出见[线粒体说明](../../docs/mitochondria_CN.md)。

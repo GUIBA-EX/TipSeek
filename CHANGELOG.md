@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+- Use the shared `-r` option for mito GenBank references; retain the legacy alias and automatic workflow defaults.
+- Preserve paired reads during mito refiltering and restore the primary assembly when rescue fails or does not produce a verified circle.
+- Replace stale mito outputs on reruns, report current empty/failed states, and handle short circular sequences safely during standardization.
+- Honor one-pass `--max-reads` and support cleanup previews; clean only confirmed samples from the current invocation.
+
 ## v1.6.8 — Faster population processing and reliable stage reuse
 
 Released 2026-10-18.

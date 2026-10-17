@@ -474,7 +474,7 @@ fn standardize_circular(
         .iter()
         .min_by_key(|row| (anchor_rank(&row.name), row.start))?;
     let gene = gene_anchor_sequence(reference, anchor);
-    let lead_len = gene.len().min(120);
+    let lead_len = gene.len().min(120).min(sequence.len());
     if lead_len < 20 {
         return None;
     }
@@ -557,15 +557,65 @@ fn write_standardized(
     )
 }
 
+const FINAL_OUTPUTS: &[&str] = &[
+    "mitochondrial_assembly.fasta",
+    "mitochondrial_assembly_raw.fasta",
+    "mitochondrial_assembly_summary.tsv",
+    "mitochondrial_evidence.json",
+    "mitochondrial_feature_evidence.tsv",
+    "mitochondrial_standardized.fasta",
+    "mitochondrial_mate_links.tsv",
+];
+
+fn clear_final_outputs(output: &Path) -> Result<(), String> {
+    fs::create_dir_all(output).map_err(|e| e.to_string())?;
+    for name in FINAL_OUTPUTS {
+        match fs::remove_file(output.join(name)) {
+            Ok(()) => {}
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+            Err(e) => return Err(e.to_string()),
+        }
+    }
+    Ok(())
+}
+
 fn finalize(options: &HashMap<String, String>) -> Result<(), String> {
+    let output = Path::new(required(options, "--out-dir"));
+    clear_final_outputs(output)?;
+    let result = finalize_current(options);
+    // Expected non-circular rejection retains the current partial evidence.
+    // Other failures must never leave a successful status or mixed outputs.
+    if result.is_err() {
+        clear_final_outputs(output)?;
+        fs::write(
+            output.join("mitochondrial_assembly_summary.tsv"),
+            "status\tfailed\n",
+        )
+        .map_err(|e| e.to_string())?;
+        fs::write(
+            output.join("mitochondrial_evidence.json"),
+            "{\"status\":\"failed\"}\n",
+        )
+        .map_err(|e| e.to_string())?;
+    }
+    let status = result?;
+    let require_circular = options
+        .get("--require-circular")
+        .is_some_and(|value| matches!(value.as_str(), "true" | "1" | "yes"));
+    if require_circular && status != "circular" {
+        return Err(format!(
+            "GM2 mitochondrial assembly is {status}; a read-supported circular genome is required"
+        ));
+    }
+    Ok(())
+}
+
+fn finalize_current(options: &HashMap<String, String>) -> Result<String, String> {
     let reference = read_fasta(Path::new(required(options, "--reference-genome")))?
         .into_iter()
         .next()
         .ok_or("empty mitochondrial reference")?
         .1;
-    let require_circular = options
-        .get("--require-circular")
-        .is_some_and(|value| matches!(value.as_str(), "true" | "1" | "yes"));
     let contig_path = Path::new(required(options, "--contigs"));
     let contigs: Vec<MitoContig> = if contig_path.is_file() {
         read_fasta(contig_path)?
@@ -576,12 +626,6 @@ fn finalize(options: &HashMap<String, String>) -> Result<(), String> {
         Vec::new()
     };
     if contigs.is_empty() {
-        if require_circular {
-            return Err(
-                "GM2 mitochondrial assembly is no_contigs; a read-supported circular genome is required"
-                    .into(),
-            );
-        }
         // An adaptive depth is a checkpoint, not a complete run. At shallow
         // depths there may not yet be enough recruited reads to produce a
         // contig, so record that observation and let the caller try more reads.
@@ -593,7 +637,12 @@ fn finalize(options: &HashMap<String, String>) -> Result<(), String> {
             "status\tno_contigs\nresolution_reason\tno_assembled_contigs\ncomponent_count\t0\n",
         )
         .map_err(|error| error.to_string())?;
-        return Ok(());
+        fs::write(
+            output.join("mitochondrial_evidence.json"),
+            "{\"status\":\"no_contigs\",\"component_count\":0}\n",
+        )
+        .map_err(|e| e.to_string())?;
+        return Ok("no_contigs".into());
     }
     let config = LinkConfig {
         minimum_overlap: number(options, "--minimum-overlap", 41)?,
@@ -637,12 +686,7 @@ fn finalize(options: &HashMap<String, String>) -> Result<(), String> {
             write_standardized(out_dir, &reference, Path::new(metadata), &assembly)?;
         }
     }
-    if require_circular && status != "circular" {
-        return Err(format!(
-            "GM2 mitochondrial assembly is {status}; a read-supported circular genome is required"
-        ));
-    }
-    Ok(())
+    Ok(status)
 }
 
 fn fastq_pair_id(header: &str) -> String {
@@ -831,6 +875,19 @@ mod tests {
     }
 
     #[test]
+    fn short_circle_does_not_slice_past_its_end() {
+        let reference = pseudo_dna(200, 7);
+        let rows = vec![GeneRow {
+            name: "cox1".into(),
+            segments: vec![(0, 120)],
+            reverse: false,
+            start: 0,
+        }];
+        let result = standardize_circular(&reference[..110], &rows, &reference).unwrap();
+        assert_eq!(result.sequence, reference[..110]);
+    }
+
+    #[test]
     fn empty_contigs_are_a_nonfatal_adaptive_checkpoint() {
         let unique = SystemTime::now()
             .duration_since(UNIX_EPOCH)
@@ -858,7 +915,18 @@ mod tests {
             ("--out-dir".into(), output.display().to_string()),
             ("--require-circular".into(), "false".into()),
         ]);
+        fs::create_dir_all(&output).unwrap();
+        for name in FINAL_OUTPUTS {
+            fs::write(output.join(name), "stale circular result").unwrap();
+        }
         finalize(&arguments).unwrap();
+        assert!(!output.join("mitochondrial_standardized.fasta").exists());
+        assert!(!output.join("mitochondrial_feature_evidence.tsv").exists());
+        assert!(
+            fs::read_to_string(output.join("mitochondrial_evidence.json"))
+                .unwrap()
+                .contains("no_contigs")
+        );
         assert_eq!(
             fs::read_to_string(output.join("mitochondrial_assembly_summary.tsv")).unwrap(),
             "status\tno_contigs\nresolution_reason\tno_assembled_contigs\ncomponent_count\t0\n"
@@ -872,6 +940,20 @@ mod tests {
         assert!(finalize(&arguments)
             .unwrap_err()
             .contains("assembly is no_contigs"));
+        assert!(
+            fs::read_to_string(output.join("mitochondrial_assembly_summary.tsv"))
+                .unwrap()
+                .contains("no_contigs")
+        );
+        fs::write(output.join("mitochondrial_standardized.fasta"), "stale").unwrap();
+        fs::remove_file(&reference).unwrap();
+        assert!(finalize(&arguments).is_err());
+        assert!(!output.join("mitochondrial_standardized.fasta").exists());
+        assert!(!output.join("mitochondrial_assembly.fasta").exists());
+        assert_eq!(
+            fs::read_to_string(output.join("mitochondrial_assembly_summary.tsv")).unwrap(),
+            "status\tfailed\n"
+        );
         fs::remove_dir_all(root).unwrap();
     }
 

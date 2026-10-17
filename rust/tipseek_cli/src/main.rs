@@ -3448,11 +3448,29 @@ fn raw_number<T: std::str::FromStr>(
         .map_err(|_| format!("{label} must be numeric"))
 }
 
+fn mito_reference_input(opt: &Options) -> Result<PathBuf, String> {
+    let legacy = value(&opt.raw, &["--mito-genbank"], "")?;
+    if !opt.reference.is_empty() && !legacy.is_empty() && opt.reference != legacy {
+        return Err(
+            "mito: -r and --mito-genbank specify different references; use -r alone".into(),
+        );
+    }
+    let input = if opt.reference.is_empty() {
+        legacy
+    } else {
+        opt.reference.clone()
+    };
+    if input.is_empty() {
+        return Err("mito requires -r with an annotated mitochondrial GenBank reference".into());
+    }
+    Ok(PathBuf::from(input))
+}
+
 fn mito_reference(opt: &Options, bins: &Path) -> Result<PathBuf, String> {
     let raw = &opt.raw;
-    let input = PathBuf::from(value(raw, &["--mito-genbank"], "")?);
+    let input = mito_reference_input(opt)?;
     if !input.is_file() {
-        return Err("mito requires a readable --mito-genbank".into());
+        return Err("mito requires a readable GenBank reference (-r)".into());
     }
     let flank: usize = raw_number(raw, &["--mito-flank"], "150", "--mito-flank")?;
     let length: usize = raw_number(raw, &["--mito-tile-length"], "1200", "--mito-tile-length")?;
@@ -3623,6 +3641,7 @@ fn mito_recruit_refilter_assemble(
             value(raw, &["-kf"], "31")?,
             "-p".into(),
             "1".into(),
+            "--keep-linked-mates".into(),
             "--log-file".into(),
             sample_dir.join("log.txt").display().to_string(),
             "--min-depth".into(),
@@ -3904,6 +3923,30 @@ fn finalize_mito_sample(
     run(bins, "mito_workflow", &args)
 }
 
+// Partial rescue is not proof of improvement: extra recruited sequence may be
+// off-target. Only a read-verified circle replaces the primary partial result.
+fn retain_mito_rescue(
+    sample: &Path,
+    backup: &Path,
+    result: Result<(), String>,
+) -> Result<(), String> {
+    let accepted = result.is_ok()
+        && mito_observation(sample)
+            .is_ok_and(|(status, sequence)| status == "circular" && !sequence.is_empty());
+    if accepted {
+        fs::remove_dir_all(backup).map_err(|e| e.to_string())?;
+    } else {
+        if let Err(error) = result {
+            eprintln!("Mito rescue rejected; restoring primary result: {error}");
+        }
+        if sample.exists() {
+            fs::remove_dir_all(sample).map_err(|e| e.to_string())?;
+        }
+        move_tree(backup, sample)?;
+    }
+    Ok(())
+}
+
 #[allow(clippy::too_many_arguments)]
 fn execute_mito_single_stage(
     opt: &Options,
@@ -4009,15 +4052,8 @@ fn execute_mito_single_stage(
                         &rescue_dict,
                         max_reads,
                     )
-                })();
-                if rescue_result.is_err() {
-                    if sample_dir.exists() {
-                        fs::remove_dir_all(&sample_dir).map_err(|e| e.to_string())?;
-                    }
-                    move_tree(&backup, &sample_dir)?;
-                } else if backup.exists() {
-                    fs::remove_dir_all(&backup).map_err(|e| e.to_string())?;
-                }
+                })().and_then(|_| finalize_mito_sample(&stage_opt, &bins, &reference, &sample_dir, false));
+                retain_mito_rescue(&sample_dir, &backup, rescue_result)?;
                 // Fold the attempted rescue reference into the sample directory
                 // so the on-disk layout matches prior behaviour for inspection,
                 // whether the rescue attempt succeeded or was rolled back.
@@ -4028,7 +4064,10 @@ fn execute_mito_single_stage(
                     }
                     move_tree(&rescue_stage_root, &destination)?;
                 }
-                finalize_mito_sample(&stage_opt, &bins, &reference, &sample_dir, require_circular)
+                if require_circular && mito_observation(&sample_dir)?.0 != "circular" {
+                    return Err("mitochondrial assembly remains partial after rescue; primary result retained".into());
+                }
+                Ok(())
             });
             if let Err(error) = result {
                 failures
@@ -4421,9 +4460,12 @@ fn execute_mito(opt: &Options, bins: &Path, samples: &[Sample]) -> Result<(), St
             &reference,
             root,
             &dictionary,
-            initial,
+            opt.max_reads
+                .parse()
+                .map_err(|_| "--max-reads must be a nonnegative integer")?,
             true,
-        );
+        )
+        .and_then(|_| cleanup_mito_intermediates(opt, samples));
     }
     let stages = root.join(".mito_adaptive");
     // `previous` holds each sample's observation from the prior depth; `settled`
@@ -4483,7 +4525,7 @@ fn execute_mito(opt: &Options, bins: &Path, samples: &[Sample]) -> Result<(), St
         if settled.len() == samples.len() {
             // Every sample produced the same verified circle at two consecutive
             // depths, so the cohort can stop before the maximum read budget.
-            return Ok(());
+            return cleanup_mito_intermediates(opt, samples);
         }
         if reached_max {
             // The read budget is spent with at least one sample still changing:
@@ -5807,6 +5849,63 @@ fn execute_stats(opt: &Options, bins: &Path, samples: &[Sample]) -> Result<(), S
     run(bins, "gm2_stats", &args)
 }
 
+fn cleanup_mito_intermediates(opt: &Options, samples: &[Sample]) -> Result<(), String> {
+    if !opt.cleanup_intermediates {
+        return Ok(());
+    }
+    // Check the entire cohort before removing any evidence-bearing reads.
+    for sample in samples {
+        let (status, sequence) = mito_observation(&Path::new(&opt.output).join(&sample.name))?;
+        if status != "circular" || sequence.is_empty() {
+            return Err("mito cleanup requires confirmed circular results for every sample".into());
+        }
+    }
+    let root = Path::new(&opt.output);
+    let mut paths = Vec::new();
+    let stages = root.join(".mito_adaptive");
+    if stages.is_dir() && !stages.is_symlink() {
+        for entry in fs::read_dir(&stages).map_err(|e| e.to_string())? {
+            let stage = entry.map_err(|e| e.to_string())?.path();
+            if stage.is_dir() && !stage.is_symlink() {
+                for sample in samples {
+                    paths.push(stage.join(&sample.name));
+                }
+            }
+        }
+    }
+    for sample in samples {
+        for name in ["filtered", "filtered_pe", "filtered_pe_collapsed"] {
+            paths.push(root.join(&sample.name).join(name));
+        }
+    }
+    let mut manifest = String::from("path\tbytes\taction\treason\n");
+    for path in paths {
+        if !path.is_dir() || path.is_symlink() {
+            continue;
+        }
+        let bytes = directory_size(&path)?;
+        let action = if opt.cleanup_dry_run {
+            "would_remove"
+        } else {
+            fs::remove_dir_all(&path).map_err(|e| e.to_string())?;
+            "removed"
+        };
+        manifest.push_str(&format!(
+            "{}\t{bytes}\t{action}\tconfirmed mitochondrial intermediates\n",
+            path.display()
+        ));
+    }
+    fs::write(
+        root.join(if opt.cleanup_dry_run {
+            "cleanup_preview.tsv"
+        } else {
+            "cleanup_manifest.tsv"
+        }),
+        manifest,
+    )
+    .map_err(|e| e.to_string())
+}
+
 fn cleanup_native_intermediates(opt: &Options, samples: &[Sample]) -> Result<(), String> {
     validate_cleanup_options(opt)?;
     if !opt.cleanup_intermediates {
@@ -5849,6 +5948,9 @@ fn validate_cleanup_options(opt: &Options) -> Result<(), String> {
         return Err("--cleanup-dry-run requires --cleanup-intermediates".into());
     }
     if !opt.cleanup_intermediates {
+        return Ok(());
+    }
+    if opt.commands == ["mito"] {
         return Ok(());
     }
     if !opt.commands.iter().any(|command| command == "filter")
@@ -6901,7 +7003,7 @@ fn print_help() {
     let (workers, source) = auto_worker_budget();
     println!(
         "TipSeek CLI\n\nNative Rust command dispatcher; no Python runtime is required.\n\n\
-Usage: tipseek [COMMAND ...] -f SAMPLES -r REFERENCES -o OUTPUT [-p INT|auto]\n\n\
+Usage: tipseek [COMMAND ...] -f SAMPLES -r REFERENCES -o OUTPUT [-p INT|auto]\nMito: tipseek mito -f SAMPLES -r REFERENCE.gb -o OUTPUT (automatic defaults)\n\n\
 Assembly modes:\n  \
 --assembly-mode gene|exon|uce\n               \
 Default: gene. Gene mode recovers and summarizes family candidates. Exon mode\n               \
@@ -8295,6 +8397,138 @@ mod tests {
         assert!(parsed.reuse_reference_cache);
         assert!(parsed.legacy_uce_filter);
         assert!(parsed.workflow_profile);
+    }
+
+    #[test]
+    fn mito_reuses_reference_option_and_preserves_legacy_alias() {
+        let options =
+            |args: &[&str]| parse(&args.iter().map(|s| s.to_string()).collect::<Vec<_>>()).unwrap();
+        for args in [
+            vec!["mito", "-r", "reference.gb"],
+            vec!["mito", "--mito-genbank", "reference.gb"],
+            vec![
+                "mito",
+                "-r",
+                "reference.gb",
+                "--mito-genbank",
+                "reference.gb",
+            ],
+        ] {
+            assert_eq!(
+                mito_reference_input(&options(&args)).unwrap(),
+                PathBuf::from("reference.gb")
+            );
+        }
+        assert!(mito_reference_input(&options(&["mito"])).is_err());
+        assert!(
+            mito_reference_input(&options(&["mito", "-r", "a.gb", "--mito-genbank", "b.gb"]))
+                .is_err()
+        );
+    }
+
+    #[test]
+    fn mito_rescue_rolls_back_empty_partial_and_failed_results() {
+        let root = env::temp_dir().join(format!("mito_rollback_{}", std::process::id()));
+        for (status, failure, accepted) in [
+            ("no_contigs", false, false),
+            ("partial", false, false),
+            ("circular", true, false),
+            ("circular", false, true),
+        ] {
+            let sample = root.join("sample");
+            let backup = root.join("backup");
+            fs::create_dir_all(sample.join("mito")).unwrap();
+            fs::create_dir_all(&backup).unwrap();
+            fs::write(backup.join("primary"), "original evidence").unwrap();
+            fs::write(
+                sample.join("mito/mitochondrial_assembly_summary.tsv"),
+                format!("status\t{status}\n"),
+            )
+            .unwrap();
+            fs::write(
+                sample.join("mito/mitochondrial_assembly.fasta"),
+                ">rescue\nACGT\n",
+            )
+            .unwrap();
+            retain_mito_rescue(
+                &sample,
+                &backup,
+                if failure {
+                    Err("finalization failed".into())
+                } else {
+                    Ok(())
+                },
+            )
+            .unwrap();
+            assert_eq!(sample.join("primary").exists(), !accepted);
+            assert_eq!(sample.join("mito").exists(), accepted);
+            assert!(!backup.exists());
+            fs::remove_dir_all(&root).unwrap();
+        }
+    }
+
+    #[test]
+    fn mito_cleanup_requires_circles_and_respects_preview() {
+        let root = env::temp_dir().join(format!(
+            "mito_cleanup_{}_{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        let mut opt = parse(&[
+            "mito".into(),
+            "-o".into(),
+            root.display().to_string(),
+            "--cleanup-intermediates".into(),
+            "--cleanup-dry-run".into(),
+        ])
+        .unwrap();
+        assert!(validate_cleanup_options(&opt).is_ok());
+        let sample = Sample {
+            name: "sample".into(),
+            read1: "reads.fq".into(),
+            read2: None,
+        };
+        let samples = vec![sample];
+        fs::create_dir_all(root.join("sample/mito")).unwrap();
+        fs::create_dir_all(root.join("sample/filtered")).unwrap();
+        fs::create_dir_all(root.join(".mito_adaptive/10m/sample")).unwrap();
+        fs::create_dir_all(root.join(".mito_adaptive/10m/other_sample")).unwrap();
+        fs::write(
+            root.join(".mito_adaptive/10m/other_sample/reads.fq"),
+            "retain",
+        )
+        .unwrap();
+        fs::write(root.join("sample/filtered/mitochondrion.fq"), "reads").unwrap();
+        let summary = root.join("sample/mito/mitochondrial_assembly_summary.tsv");
+        fs::write(&summary, "status\tpartial\n").unwrap();
+        assert!(cleanup_mito_intermediates(&opt, &samples).is_err());
+        assert!(root.join("sample/filtered").exists());
+        fs::write(&summary, "status\tcircular\n").unwrap();
+        fs::write(
+            root.join("sample/mito/mitochondrial_assembly.fasta"),
+            ">circle\nACGT\n",
+        )
+        .unwrap();
+        cleanup_mito_intermediates(&opt, &samples).unwrap();
+        assert!(root.join("sample/filtered").exists());
+        assert!(root.join(".mito_adaptive").exists());
+        assert!(root.join("cleanup_preview.tsv").exists());
+        opt.cleanup_dry_run = false;
+        cleanup_mito_intermediates(&opt, &samples).unwrap();
+        assert!(!root.join("sample/filtered").exists());
+        assert!(!root.join(".mito_adaptive/10m/sample").exists());
+        assert_eq!(
+            fs::read_to_string(root.join(".mito_adaptive/10m/other_sample/reads.fq")).unwrap(),
+            "retain"
+        );
+        assert!(root
+            .join("sample/mito/mitochondrial_assembly.fasta")
+            .exists());
+        assert!(root.join("cleanup_manifest.tsv").exists());
+        fs::remove_dir_all(root).unwrap();
     }
 
     #[test]

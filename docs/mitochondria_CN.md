@@ -18,12 +18,11 @@
 cli/tipseek mito \
   -f samples.tsv \
   -o mito_output \
-  -p 8 \
-  --mito-genbank mitochondrial_reference.gb
+  -r mitochondrial_reference.gb
 ```
 
 `--mito-max-reads 320` 限制自适应流程的最大输入；`--no-mito-adaptive-stop` 改为一次性过滤。
-`--cleanup-intermediates` 仅在最终闭环确认后删除 `filtered/mitochondrion.fq` 与自适应 stage 副本，并在输出根目录留下 `cleanup_manifest.tsv`；默认不删除。
+`--cleanup-intermediates` 仅在最终闭环确认后删除 `filtered/mitochondrion.fq` 与本次样本的自适应 stage 副本，并在输出根目录留下 `cleanup_manifest.tsv`；默认不删除。配合 `--cleanup-dry-run` 时仅生成 `cleanup_preview.tsv`，不删除文件。成功后也清理 `filtered_pe/` 候选 reads；失败或部分组装保留中间文件。
 
 ## 流程
 
@@ -47,13 +46,11 @@ GenBank gene/rRNA/tRNA + genome/tile baits
 
 闭环结果必须同时满足：单一 component、无 `N`、每个连接都来自严格 overlap 或唯一 GFA/read-graph bridge、首尾闭合，并有至少 `--mito-min-junction-support` 条 reads 跨越最终 junction。junction 支持取沿接缝平铺的一小段 k-mer 各位置跨越深度的**最小值**——单个侥幸命中的 k-mer 不能替代一致的跨越覆盖；每条 read 允许在任一链上 ≤1 个错配，一个测序错误不再丢弃真实的跨越 read；若某接缝 k-mer 在 contig 内部也出现，则不计为闭环证据。条件不足时保留 partial 输出，但命令返回失败。
 
-## 常用与专家参数
+## 参数尽量使用默认值
 
-- `--mito-genbank`：必需；带注释的线粒体 GenBank 参考。
-- `--mito-max-reads 320`：自适应流程最大约 1.05M paired-read blocks；连续两个阶段产生严格一致的闭环（忽略切点和链方向）时提前停止。稳定性按样本各自判定：某样本只有在连续两个深度得到相同的已验证闭环时才被冻结；未成环（包括尚无 contig）只是检查点状态，会继续增加 reads 直至成环或达到上限。因此混合 cohort 只让尚未确认稳定闭环的样本承担更深的读数预算。
-- `--no-mito-adaptive-stop`：关闭分阶段早停，改用普通 `--max-reads` 的一次性过滤。
+常规运行只需 `-f samples.tsv -r reference.gb -o output`。线程数自动检测，reads 深度自动递增，配对保留、补救回退和闭环验证自动执行，无需额外开关。内部拼接阈值沿用已验证的默认值。
 
-以下为隐藏的专家覆盖参数，仅在明确诊断招募、图连接或闭环失败时调整：`--mito-min-overlap`、`--mito-min-overlap-identity`、`--mito-terminal-window`、`--mito-link-kmer`、`--mito-min-link-hits`、`--mito-min-pair-support`、`--mito-bridge-kmer`、`--mito-bridge-min-depth`、`--mito-max-bridge`、`--mito-min-junction-support`。
+仅在需要时使用通用选项 `-p`、`--cleanup-intermediates` 和 `--cleanup-dry-run`。旧的 `--mito-genbank` 及 mito 专家参数仍兼容既有脚本，但不需要在新命令中显式填写；`-r` 与旧参考参数不能指定不同文件。
 
 ## 输出
 
@@ -64,3 +61,9 @@ GenBank gene/rRNA/tRNA + genome/tile baits
 - `<sample>/mito/mitochondrial_feature_evidence.tsv`：参考 feature 的 canonical 21-mer 相似度；仅说明与参考的精确锚点共享，不能据此判断远缘样本的基因存在或缺失；`translation_status=not_checked`，不是 CDS 注释或翻译判定。
 - `<sample>/mito/mitochondrial_mate_links.tsv`：已接受的 read-supported links。
 - `.gm2_mito_reference/metadata/mitochondrial_genes.tsv`：bait 元数据；坐标为 0-based 半开区间，`segments_0_half_open` 保留跨 origin 或 `join(...)` feature 的全部片段。
+
+## 重跑与补救结果
+
+二次过滤在任一端通过时保留双端 reads，保证后续图连接与闭环验证接收正确的配对。补救组装只有通过 reads 支持的闭环验证后才替换首轮部分结果；为空、仍为部分组装或运行失败时恢复首轮结果。
+
+每次最终判定都会替换本模块管理的输出：无 contig 时摘要和 JSON 均记录 `no_contigs`，非预期错误记录 `failed`，旧标准化序列和特征证据会清除。要求闭环但未成环时保留本次部分结果，同时返回错误。单次模式将 `--max-reads` 传给招募阶段，单位为每个输入文件 1,048,576 条记录，`0` 表示全部 reads。
