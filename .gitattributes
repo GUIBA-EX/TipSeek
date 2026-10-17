@@ -61,3 +61,6 @@
 #*.PDF   diff=astextplain
 #*.rtf   diff=astextplain
 #*.RTF   diff=astextplain
+
+# Empty final TSV columns are data, not trailing whitespace.
+docs/development/*.tsv whitespace=-blank-at-eol

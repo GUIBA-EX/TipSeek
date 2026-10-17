@@ -1,4 +1,4 @@
-use std::cmp::Ordering;
+use std::{cmp::Ordering, collections::BTreeMap};
 
 use super::{GeneModel, ModelState};
 
@@ -45,6 +45,19 @@ pub fn select_competing_models(models: &mut [GeneModel]) {
         model.selected = false;
         model.competition_group = 0;
     }
+    // Models on different observed contigs cannot compete. Index candidate
+    // membership once instead of scanning every model for every winner.
+    // Preserve global rank and original index order, including group numbering.
+    let mut by_candidate: BTreeMap<String, Vec<usize>> = BTreeMap::new();
+    // Small groups are cheaper to scan than to allocate and index.
+    if models.len() >= 1024 {
+        for (index, model) in models.iter().enumerate() {
+            by_candidate
+                .entry(model.candidate_id.clone())
+                .or_default()
+                .push(index);
+        }
+    }
     let mut order: Vec<_> = (0..models.len()).collect();
     order.sort_by(|left, right| model_order(&models[*left], &models[*right]));
     let mut assigned = vec![false; models.len()];
@@ -56,9 +69,17 @@ pub fn select_competing_models(models: &mut [GeneModel]) {
         group_number += 1;
         let mut group = vec![seed];
         assigned[seed] = true;
-        let mut competitors: Vec<_> = (0..models.len())
-            .filter(|other| !assigned[*other] && competing(&models[seed], &models[*other]))
-            .collect();
+        let available =
+            |other: &usize| !assigned[*other] && competing(&models[seed], &models[*other]);
+        let mut competitors: Vec<_> = if by_candidate.is_empty() {
+            (0..models.len()).filter(available).collect()
+        } else {
+            by_candidate[&models[seed].candidate_id]
+                .iter()
+                .copied()
+                .filter(available)
+                .collect()
+        };
         competitors.sort_by(|left, right| model_order(&models[*left], &models[*right]));
         for competitor in competitors {
             assigned[competitor] = true;
@@ -67,19 +88,23 @@ pub fn select_competing_models(models: &mut [GeneModel]) {
         for index in &group {
             models[*index].competition_group = group_number;
         }
-        if group.len() > 1 && nearly_tied(&models[group[0]], &models[group[1]]) {
-            for index in group.iter().copied().take(2) {
-                models[index].state = ModelState::AmbiguousModel;
+        let ambiguous: Vec<bool> = group
+            .iter()
+            .map(|index| *index == seed || nearly_tied(&models[seed], &models[*index]))
+            .collect();
+        if ambiguous.iter().skip(1).any(|value| *value) {
+            for (index, is_ambiguous) in group.into_iter().zip(ambiguous) {
                 models[index].eligible_for_resolve = false;
-                models[index]
-                    .qc_flags
-                    .push("ambiguous_competitor".to_owned());
-            }
-            for index in group.into_iter().skip(2) {
-                models[index].eligible_for_resolve = false;
-                models[index]
-                    .qc_flags
-                    .push("competing_model_not_selected".to_owned());
+                if is_ambiguous {
+                    models[index].state = ModelState::AmbiguousModel;
+                    models[index]
+                        .qc_flags
+                        .push("ambiguous_competitor".to_owned());
+                } else {
+                    models[index]
+                        .qc_flags
+                        .push("competing_model_not_selected".to_owned());
+                }
             }
         } else {
             let winner = group[0];
@@ -107,6 +132,7 @@ mod tests {
         defective: bool,
     ) -> GeneModel {
         GeneModel {
+            engine: Some(crate::gene_annotation::evidence::AlignmentEngine::Miniprot),
             gff_id: id.into(),
             candidate_id: "c1".into(),
             protein_id: "p1".into(),
@@ -128,6 +154,7 @@ mod tests {
             exons: Vec::new(),
             introns: Vec::new(),
             cds: format!("ATG{id}"),
+            query_cds_offsets: None,
             protein: Some("M".into()),
             gene: String::new(),
             state: if defective {
@@ -139,6 +166,33 @@ mod tests {
             selected: false,
             eligible_for_resolve: !defective,
             competition_group: 0,
+        }
+    }
+
+    #[test]
+    fn candidate_index_preserves_global_winner_order_and_competition_groups() {
+        let mut models = Vec::new();
+        for i in 0..600 {
+            let mut strong = model(
+                &format!("strong{i}"),
+                Interval::new(0, 90).unwrap(),
+                Interval::new(0, 30).unwrap(),
+                200 + i,
+                false,
+            );
+            strong.candidate_id = format!("contig{i}");
+            let mut weak = strong.clone();
+            weak.gff_id = format!("weak{i}");
+            weak.alignment_score = 100;
+            weak.cds = "other".into();
+            models.extend([weak, strong]);
+        }
+        select_competing_models(&mut models);
+        for i in 0..600 {
+            assert!(!models[2 * i].selected);
+            assert!(models[2 * i + 1].selected);
+            assert_eq!(models[2 * i].competition_group, 600 - i);
+            assert_eq!(models[2 * i + 1].competition_group, 600 - i);
         }
     }
 
@@ -240,5 +294,48 @@ mod tests {
         assert!(!models[1].selected);
         assert!(models[2].selected);
         assert_ne!(models[0].competition_group, models[2].competition_group);
+    }
+    #[test]
+    fn third_near_tied_distinct_cds_is_not_hidden_by_duplicate_top_models() {
+        let mut models = ["a", "b", "c"].map(|id| {
+            model(
+                id,
+                Interval::new(0, 300).unwrap(),
+                Interval::new(0, 100).unwrap(),
+                100,
+                false,
+            )
+        });
+        models[1].cds = models[0].cds.clone();
+        select_competing_models(&mut models);
+        assert!(models
+            .iter()
+            .all(|m| !m.selected && !m.eligible_for_resolve));
+        assert_eq!(models[2].state, ModelState::AmbiguousModel);
+    }
+
+    #[test]
+    fn translated_internal_stop_cannot_outrank_clean_model() {
+        let mut models = vec![
+            model(
+                "bad",
+                Interval::new(0, 300).unwrap(),
+                Interval::new(0, 100).unwrap(),
+                200,
+                false,
+            ),
+            model(
+                "good",
+                Interval::new(0, 270).unwrap(),
+                Interval::new(0, 90).unwrap(),
+                180,
+                false,
+            ),
+        ];
+        models[0].state = ModelState::InternalStop;
+        models[0].protein = Some("MK*AA".into());
+        models[0].eligible_for_resolve = false;
+        select_competing_models(&mut models);
+        assert!(models[1].selected && models[1].eligible_for_resolve);
     }
 }

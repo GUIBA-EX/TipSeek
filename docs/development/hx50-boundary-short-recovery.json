@@ -1,0 +1,219 @@
+{
+  "status": "completed",
+  "reference_families": 7006,
+  "outputs_per_backend": 6935,
+  "missing_output_families": 71,
+  "reference_exon_intervals": 82712,
+  "reference_fasta": "/home/yasuda2/starsco/geneminer_sco_refs/fasta",
+  "scope": "Fixed common reference coordinates; one sequence per output SCO, missing/conflicting evidence N. Real HX50 read-derived assemblies and frozen alignments reused; 276 short candidates realigned per backend. Full reads recruitment and assembly were not rerun. Reference exon intervals are cross-species proxies, not HX50 exon-boundary or false-merge truth.",
+  "tests": {
+    "library": 117,
+    "gene_workflow": 32,
+    "clippy": "passed",
+    "diff_check": "passed"
+  },
+  "short_candidate_gate": {
+    "previously_rejected": 4140,
+    "insufficient_unique_read_coverage": 3861,
+    "ambiguous_anchor": 3,
+    "passed": 276,
+    "families": 231
+  },
+  "backends": {
+    "miniprot": {
+      "before_exons": {
+        "families_with_output": 6935,
+        "scorable_families": 7006,
+        "families_with_mask_reason_audit": 6935,
+        "reference_exons": 82712,
+        "complete_reference_exon_intervals": 9052,
+        "exons_with_any_observed_bases": 59205,
+        "exons_with_no_observed_bases": 23507,
+        "source_exon_nt": 14281287,
+        "observed_source_exon_nt": 8076968,
+        "exons_audited_for_mask_reasons": 82712,
+        "exons_with_missing_evidence": 53917,
+        "missing_evidence_nt": 5961000,
+        "exons_with_base_conflict": 27320,
+        "base_conflict_nt": 142264,
+        "exons_with_coordinate_conflict": 7616,
+        "coordinate_conflict_nt": 101055,
+        "families_with_all_source_exons_observed": 8,
+        "fully_located_exon_intervals_including_base_ambiguity": 24868,
+        "families_without_output": 71,
+        "families_without_any_source_exon_index": 0
+      },
+      "after_exons": {
+        "families_with_output": 6935,
+        "scorable_families": 7006,
+        "families_with_mask_reason_audit": 6935,
+        "reference_exons": 82712,
+        "complete_reference_exon_intervals": 9052,
+        "exons_with_any_observed_bases": 59205,
+        "exons_with_no_observed_bases": 23507,
+        "source_exon_nt": 14281287,
+        "observed_source_exon_nt": 8076968,
+        "exons_audited_for_mask_reasons": 82712,
+        "exons_with_missing_evidence": 53917,
+        "missing_evidence_nt": 5961000,
+        "exons_with_base_conflict": 27320,
+        "base_conflict_nt": 142264,
+        "exons_with_coordinate_conflict": 7616,
+        "coordinate_conflict_nt": 101055,
+        "families_with_all_source_exons_observed": 8,
+        "fully_located_exon_intervals_including_base_ambiguity": 24868,
+        "families_without_output": 71,
+        "families_without_any_source_exon_index": 0
+      },
+      "before_complete_fraction": 0.10943998452461554,
+      "after_complete_fraction": 0.10943998452461554,
+      "near_complete_before": {
+        "near_complete_mixed_missing_and_conflicts": 1696,
+        "near_complete_internal": 13659,
+        "near_complete_only_missing_evidence": 3221,
+        "near_complete_at_ends": 4250,
+        "near_complete_only_conflicts": 12992
+      },
+      "chains": {
+        "chains": 85425,
+        "ambiguous_chains": 72926,
+        "search_limited_chains": 18928,
+        "discordant_edges_in_reported_paths": 0,
+        "unambiguous_chains": 12499,
+        "unambiguous_chains_with_some_paired_support": 66,
+        "unambiguous_chains_with_all_edges_paired_supported": 22,
+        "total_pairs": 2718255,
+        "unique_mapped_pairs": 181107,
+        "distinct_cross_contig_pairs": 12492,
+        "families_audited": 6935,
+        "families_with_reads": 6935,
+        "families_with_unambiguous_chain": 3644
+      },
+      "new_alignment_wall_seconds": 2.304091128986329,
+      "new_raw_hit_candidates": 0,
+      "sample_sequence_changes": {
+        "gained_nt": 0,
+        "lost_nt": 0,
+        "substituted_nt": 0
+      },
+      "performance": {
+        "subset_before_seconds": 248.10109722893685,
+        "subset_after_seconds": 6.700716077117249,
+        "subset_speedup": 37.0260572711318,
+        "full_seconds": 58.545130300102755,
+        "byte_identical_files": {
+          "sco": 6935,
+          "sco_masks": 6935,
+          "chain_audit": 6935
+        }
+      },
+      "historical_full_replay_seconds": 865.6396381349768,
+      "historical_to_final_full_speedup": 14.785852105848972
+    },
+    "exonerate-rs": {
+      "before_exons": {
+        "families_with_output": 6935,
+        "scorable_families": 7006,
+        "families_with_mask_reason_audit": 6935,
+        "reference_exons": 82712,
+        "complete_reference_exon_intervals": 7111,
+        "exons_with_any_observed_bases": 61348,
+        "exons_with_no_observed_bases": 21364,
+        "source_exon_nt": 14281287,
+        "observed_source_exon_nt": 8181100,
+        "exons_audited_for_mask_reasons": 82712,
+        "exons_with_missing_evidence": 54715,
+        "missing_evidence_nt": 5757006,
+        "exons_with_base_conflict": 31127,
+        "base_conflict_nt": 187646,
+        "exons_with_coordinate_conflict": 9067,
+        "coordinate_conflict_nt": 155535,
+        "families_with_all_source_exons_observed": 0,
+        "fully_located_exon_intervals_including_base_ambiguity": 23961,
+        "families_without_output": 71,
+        "families_without_any_source_exon_index": 0
+      },
+      "after_exons": {
+        "families_with_output": 6935,
+        "scorable_families": 7006,
+        "families_with_mask_reason_audit": 6935,
+        "reference_exons": 82712,
+        "complete_reference_exon_intervals": 7482,
+        "exons_with_any_observed_bases": 61350,
+        "exons_with_no_observed_bases": 21362,
+        "source_exon_nt": 14281287,
+        "observed_source_exon_nt": 8186455,
+        "exons_audited_for_mask_reasons": 82712,
+        "exons_with_missing_evidence": 53496,
+        "missing_evidence_nt": 5751606,
+        "exons_with_base_conflict": 31143,
+        "base_conflict_nt": 187691,
+        "exons_with_coordinate_conflict": 9067,
+        "coordinate_conflict_nt": 155535,
+        "families_with_all_source_exons_observed": 4,
+        "fully_located_exon_intervals_including_base_ambiguity": 24969,
+        "families_without_output": 71,
+        "families_without_any_source_exon_index": 0
+      },
+      "before_complete_fraction": 0.0859730147983364,
+      "after_complete_fraction": 0.09045845826482252,
+      "near_complete_before": {
+        "near_complete_mixed_missing_and_conflicts": 2220,
+        "near_complete_internal": 13923,
+        "near_complete_only_conflicts": 12798,
+        "near_complete_only_missing_evidence": 3451,
+        "near_complete_at_ends": 4546
+      },
+      "chains": {
+        "chains": 93103,
+        "ambiguous_chains": 81888,
+        "search_limited_chains": 26758,
+        "discordant_edges_in_reported_paths": 0,
+        "unambiguous_chains": 11215,
+        "unambiguous_chains_with_some_paired_support": 45,
+        "unambiguous_chains_with_all_edges_paired_supported": 17,
+        "total_pairs": 2718255,
+        "unique_mapped_pairs": 181107,
+        "distinct_cross_contig_pairs": 12492,
+        "families_audited": 6935,
+        "families_with_reads": 6935,
+        "families_with_unambiguous_chain": 3346
+      },
+      "new_alignment_wall_seconds": 12.524940753821284,
+      "new_raw_hit_candidates": 276,
+      "sample_sequence_changes": {
+        "gained_nt": 5391,
+        "lost_nt": 36,
+        "substituted_nt": 0
+      },
+      "performance": {
+        "subset_before_seconds": 217.82226267713122,
+        "subset_after_seconds": 6.78259184001945,
+        "subset_speedup": 32.114900588873795,
+        "full_seconds": 68.16029734699987,
+        "byte_identical_files": {
+          "sco": 6935,
+          "sco_masks": 6935,
+          "chain_audit": 6935
+        }
+      },
+      "historical_full_replay_seconds": 1138.8174442241434,
+      "historical_to_final_full_speedup": 16.7079295212944
+    }
+  },
+  "exonerate_interval_changes": {
+    "reference_exons": 82712,
+    "before_complete": 7111,
+    "after_complete": 7482,
+    "gained_complete": 373,
+    "gained_from_at_most_6nt": 373,
+    "lost_complete": 2
+  },
+  "performance_scope": "8 workers, cached reconstruction plus original recruited-read mapping and chain audit. Matched subset compares identical input models; historical full replay differs only by newly screened short candidates. Neither metric measures alignment-engine or reads-to-assembly throughput.",
+  "artifacts": {
+    "recovery_report": "/home/yasuda2/tipseek_HX50_exon_reads_rescue_20261011/boundary-audit-20261017/short-boundaries/report.json",
+    "performance_report": "/home/yasuda2/tipseek_HX50_exon_reads_rescue_20261011/boundary-audit-20261017/bounded-chains/report.json",
+    "miniprot_sco": "/home/yasuda2/tipseek_HX50_exon_reads_rescue_20261011/boundary-audit-20261017/bounded-chains/miniprot-full/sco",
+    "exonerate_rs_sco": "/home/yasuda2/tipseek_HX50_exon_reads_rescue_20261011/boundary-audit-20261017/bounded-chains/exonerate-rs-full/sco"
+  }
+}

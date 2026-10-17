@@ -1,0 +1,118 @@
+{
+  "scope": "Diagnostic protein-span union upper bounds, excluding obvious structural defects; different-reference coordinates are not combined, and query gaps can inflate span union. Not revised recovery results.",
+  "total_model_rows": 1207449,
+  "states": {
+    "low_coverage": 923672,
+    "ambiguous_model": 163340,
+    "frameshifted": 7453,
+    "terminal_partial": 80631,
+    "internal_partial": 30470,
+    "internal_stop": 1098,
+    "complete": 785
+  },
+  "references": {
+    "any_reference_span_union_ge_0.5": 2421,
+    "any_reference_span_union_ge_0.8": 675,
+    "any_reference_span_union_ge_0.95": 255,
+    "all_N_with_clean_evidence_on_other_reference": 1426,
+    "all_N_with_other_reference_span_ge_50pct": 232,
+    "chosen_ppect": 0,
+    "chosen_aamur": 6422,
+    "other_reference_span_20pct_better": 2472
+  },
+  "reference_examples": [
+    {
+      "family": "SCO_AST_000002_OG0000323",
+      "chosen": "aamur__auto1",
+      "chosen_span_union": 0.35168961201501875,
+      "alternative": "aplan__auto3",
+      "alternative_span_union": 0.5979899497487438
+    },
+    {
+      "family": "SCO_AST_000010_OG0000997",
+      "chosen": "aamur__auto1",
+      "chosen_span_union": 0,
+      "alternative": "sende__auto17",
+      "alternative_span_union": 0.24363636363636362
+    },
+    {
+      "family": "SCO_AST_000011_OG0001006",
+      "chosen": "aamur__auto1",
+      "chosen_span_union": 0.2906688687035508,
+      "alternative": "aplan__auto3",
+      "alternative_span_union": 0.5261209378856437
+    },
+    {
+      "family": "SCO_AST_000013_OG0001017",
+      "chosen": "aamur__auto1",
+      "chosen_span_union": 0.5112781954887218,
+      "alternative": "lmult__auto9",
+      "alternative_span_union": 0.7819548872180451
+    },
+    {
+      "family": "SCO_AST_000014_OG0001090",
+      "chosen": "aamur__auto1",
+      "chosen_span_union": 0.13267203967761934,
+      "alternative": "aplan__auto4",
+      "alternative_span_union": 0.4099023240148198
+    },
+    {
+      "family": "SCO_AST_000015_OG0001168",
+      "chosen": "aamur__auto1",
+      "chosen_span_union": 0,
+      "alternative": "lpola__auto12",
+      "alternative_span_union": 0.2537313432835821
+    },
+    {
+      "family": "SCO_AST_000021_OG0001364",
+      "chosen": "aamur__auto1",
+      "chosen_span_union": 0,
+      "alternative": "aplan__auto3",
+      "alternative_span_union": 0.484375
+    },
+    {
+      "family": "SCO_AST_000025_OG0001567",
+      "chosen": "aamur__auto1",
+      "chosen_span_union": 0,
+      "alternative": "aplan__auto3",
+      "alternative_span_union": 0.6724137931034483
+    },
+    {
+      "family": "SCO_AST_000037_OG0001814",
+      "chosen": "aamur__auto1",
+      "chosen_span_union": 0,
+      "alternative": "aplan__auto4",
+      "alternative_span_union": 0.4024390243902439
+    },
+    {
+      "family": "SCO_AST_000039_OG0001918",
+      "chosen": "aamur__auto1",
+      "chosen_span_union": 0.7108108108108108,
+      "alternative": "fres__auto7",
+      "alternative_span_union": 0.9752321981424149
+    }
+  ],
+  "reads_by_recovery": {
+    "all_N": {
+      "families": 1608,
+      "median_recruited_read_pairs": 22.0,
+      "with_at_most_10_recruited_pairs": 334
+    },
+    "below_50pct": {
+      "families": 5557,
+      "median_recruited_read_pairs": 49,
+      "with_at_most_10_recruited_pairs": 494
+    },
+    "at_least_80pct": {
+      "families": 194,
+      "median_recruited_read_pairs": 91.5,
+      "with_at_most_10_recruited_pairs": 0
+    }
+  },
+  "masking_totals": {
+    "observed_nt": 2972111,
+    "missing_nt": 10798377,
+    "conflict_nt": 37405,
+    "unmappable_models": 0
+  }
+}

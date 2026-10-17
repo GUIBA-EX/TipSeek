@@ -1,0 +1,484 @@
+{
+  "output_root": "/tmp/tipseek-backend-update-cqdqhr6e",
+  "runs": [
+    {
+      "repeat": 0,
+      "kind": "intact",
+      "binary": "before",
+      "seconds": 0.7117977250600234,
+      "cpu_seconds": 0.699547,
+      "command": [
+        "/tmp/tipseek-before-splice-io",
+        "annotate",
+        "--backend",
+        "exonerate-rs",
+        "--input",
+        "/home/yasuda2/tipseek_starfish_multigene_test_20260921/intact/gene",
+        "--nucleotide-reference",
+        "/home/yasuda2/tipseek_starfish_multigene_test_20260921/references",
+        "--out",
+        "/tmp/tipseek-backend-update-cqdqhr6e/0-intact-before",
+        "--threads",
+        "1"
+      ]
+    },
+    {
+      "repeat": 0,
+      "kind": "intact",
+      "binary": "after",
+      "seconds": 0.696092035039328,
+      "cpu_seconds": 0.6943339999999999,
+      "command": [
+        "/home/yasuda2/TipSeek/target/release/gene_workflow",
+        "annotate",
+        "--backend",
+        "exonerate-rs",
+        "--input",
+        "/home/yasuda2/tipseek_starfish_multigene_test_20260921/intact/gene",
+        "--nucleotide-reference",
+        "/home/yasuda2/tipseek_starfish_multigene_test_20260921/references",
+        "--out",
+        "/tmp/tipseek-backend-update-cqdqhr6e/0-intact-after",
+        "--threads",
+        "1"
+      ]
+    },
+    {
+      "repeat": 0,
+      "kind": "fragmented",
+      "binary": "before",
+      "seconds": 1.3599044770235196,
+      "cpu_seconds": 1.3570760000000002,
+      "command": [
+        "/tmp/tipseek-before-splice-io",
+        "annotate",
+        "--backend",
+        "exonerate-rs",
+        "--input",
+        "/home/yasuda2/tipseek_starfish_multigene_test_20260921/fragmented/gene",
+        "--nucleotide-reference",
+        "/home/yasuda2/tipseek_starfish_multigene_test_20260921/references",
+        "--out",
+        "/tmp/tipseek-backend-update-cqdqhr6e/0-fragmented-before",
+        "--threads",
+        "1"
+      ]
+    },
+    {
+      "repeat": 0,
+      "kind": "fragmented",
+      "binary": "after",
+      "seconds": 1.3692615970503539,
+      "cpu_seconds": 1.3680530000000002,
+      "command": [
+        "/home/yasuda2/TipSeek/target/release/gene_workflow",
+        "annotate",
+        "--backend",
+        "exonerate-rs",
+        "--input",
+        "/home/yasuda2/tipseek_starfish_multigene_test_20260921/fragmented/gene",
+        "--nucleotide-reference",
+        "/home/yasuda2/tipseek_starfish_multigene_test_20260921/references",
+        "--out",
+        "/tmp/tipseek-backend-update-cqdqhr6e/0-fragmented-after",
+        "--threads",
+        "1"
+      ]
+    },
+    {
+      "repeat": 1,
+      "kind": "intact",
+      "binary": "after",
+      "seconds": 0.6934141269885004,
+      "cpu_seconds": 0.6851920000000002,
+      "command": [
+        "/home/yasuda2/TipSeek/target/release/gene_workflow",
+        "annotate",
+        "--backend",
+        "exonerate-rs",
+        "--input",
+        "/home/yasuda2/tipseek_starfish_multigene_test_20260921/intact/gene",
+        "--nucleotide-reference",
+        "/home/yasuda2/tipseek_starfish_multigene_test_20260921/references",
+        "--out",
+        "/tmp/tipseek-backend-update-cqdqhr6e/1-intact-after",
+        "--threads",
+        "1"
+      ]
+    },
+    {
+      "repeat": 1,
+      "kind": "intact",
+      "binary": "before",
+      "seconds": 0.714009220013395,
+      "cpu_seconds": 0.7074999999999998,
+      "command": [
+        "/tmp/tipseek-before-splice-io",
+        "annotate",
+        "--backend",
+        "exonerate-rs",
+        "--input",
+        "/home/yasuda2/tipseek_starfish_multigene_test_20260921/intact/gene",
+        "--nucleotide-reference",
+        "/home/yasuda2/tipseek_starfish_multigene_test_20260921/references",
+        "--out",
+        "/tmp/tipseek-backend-update-cqdqhr6e/1-intact-before",
+        "--threads",
+        "1"
+      ]
+    },
+    {
+      "repeat": 1,
+      "kind": "fragmented",
+      "binary": "after",
+      "seconds": 1.3655355150112882,
+      "cpu_seconds": 1.3594119999999998,
+      "command": [
+        "/home/yasuda2/TipSeek/target/release/gene_workflow",
+        "annotate",
+        "--backend",
+        "exonerate-rs",
+        "--input",
+        "/home/yasuda2/tipseek_starfish_multigene_test_20260921/fragmented/gene",
+        "--nucleotide-reference",
+        "/home/yasuda2/tipseek_starfish_multigene_test_20260921/references",
+        "--out",
+        "/tmp/tipseek-backend-update-cqdqhr6e/1-fragmented-after",
+        "--threads",
+        "1"
+      ]
+    },
+    {
+      "repeat": 1,
+      "kind": "fragmented",
+      "binary": "before",
+      "seconds": 1.3797661230200902,
+      "cpu_seconds": 1.364764999999999,
+      "command": [
+        "/tmp/tipseek-before-splice-io",
+        "annotate",
+        "--backend",
+        "exonerate-rs",
+        "--input",
+        "/home/yasuda2/tipseek_starfish_multigene_test_20260921/fragmented/gene",
+        "--nucleotide-reference",
+        "/home/yasuda2/tipseek_starfish_multigene_test_20260921/references",
+        "--out",
+        "/tmp/tipseek-backend-update-cqdqhr6e/1-fragmented-before",
+        "--threads",
+        "1"
+      ]
+    },
+    {
+      "repeat": 2,
+      "kind": "intact",
+      "binary": "before",
+      "seconds": 0.6847763290861621,
+      "cpu_seconds": 0.6848929999999999,
+      "command": [
+        "/tmp/tipseek-before-splice-io",
+        "annotate",
+        "--backend",
+        "exonerate-rs",
+        "--input",
+        "/home/yasuda2/tipseek_starfish_multigene_test_20260921/intact/gene",
+        "--nucleotide-reference",
+        "/home/yasuda2/tipseek_starfish_multigene_test_20260921/references",
+        "--out",
+        "/tmp/tipseek-backend-update-cqdqhr6e/2-intact-before",
+        "--threads",
+        "1"
+      ]
+    },
+    {
+      "repeat": 2,
+      "kind": "intact",
+      "binary": "after",
+      "seconds": 0.6923974339151755,
+      "cpu_seconds": 0.689165,
+      "command": [
+        "/home/yasuda2/TipSeek/target/release/gene_workflow",
+        "annotate",
+        "--backend",
+        "exonerate-rs",
+        "--input",
+        "/home/yasuda2/tipseek_starfish_multigene_test_20260921/intact/gene",
+        "--nucleotide-reference",
+        "/home/yasuda2/tipseek_starfish_multigene_test_20260921/references",
+        "--out",
+        "/tmp/tipseek-backend-update-cqdqhr6e/2-intact-after",
+        "--threads",
+        "1"
+      ]
+    },
+    {
+      "repeat": 2,
+      "kind": "fragmented",
+      "binary": "before",
+      "seconds": 1.368863284937106,
+      "cpu_seconds": 1.3691150000000012,
+      "command": [
+        "/tmp/tipseek-before-splice-io",
+        "annotate",
+        "--backend",
+        "exonerate-rs",
+        "--input",
+        "/home/yasuda2/tipseek_starfish_multigene_test_20260921/fragmented/gene",
+        "--nucleotide-reference",
+        "/home/yasuda2/tipseek_starfish_multigene_test_20260921/references",
+        "--out",
+        "/tmp/tipseek-backend-update-cqdqhr6e/2-fragmented-before",
+        "--threads",
+        "1"
+      ]
+    },
+    {
+      "repeat": 2,
+      "kind": "fragmented",
+      "binary": "after",
+      "seconds": 1.3797914660535753,
+      "cpu_seconds": 1.3675099999999982,
+      "command": [
+        "/home/yasuda2/TipSeek/target/release/gene_workflow",
+        "annotate",
+        "--backend",
+        "exonerate-rs",
+        "--input",
+        "/home/yasuda2/tipseek_starfish_multigene_test_20260921/fragmented/gene",
+        "--nucleotide-reference",
+        "/home/yasuda2/tipseek_starfish_multigene_test_20260921/references",
+        "--out",
+        "/tmp/tipseek-backend-update-cqdqhr6e/2-fragmented-after",
+        "--threads",
+        "1"
+      ]
+    },
+    {
+      "repeat": 3,
+      "kind": "intact",
+      "binary": "after",
+      "seconds": 0.7120143659412861,
+      "cpu_seconds": 0.7087580000000006,
+      "command": [
+        "/home/yasuda2/TipSeek/target/release/gene_workflow",
+        "annotate",
+        "--backend",
+        "exonerate-rs",
+        "--input",
+        "/home/yasuda2/tipseek_starfish_multigene_test_20260921/intact/gene",
+        "--nucleotide-reference",
+        "/home/yasuda2/tipseek_starfish_multigene_test_20260921/references",
+        "--out",
+        "/tmp/tipseek-backend-update-cqdqhr6e/3-intact-after",
+        "--threads",
+        "1"
+      ]
+    },
+    {
+      "repeat": 3,
+      "kind": "intact",
+      "binary": "before",
+      "seconds": 0.7134252859978005,
+      "cpu_seconds": 0.7101989999999991,
+      "command": [
+        "/tmp/tipseek-before-splice-io",
+        "annotate",
+        "--backend",
+        "exonerate-rs",
+        "--input",
+        "/home/yasuda2/tipseek_starfish_multigene_test_20260921/intact/gene",
+        "--nucleotide-reference",
+        "/home/yasuda2/tipseek_starfish_multigene_test_20260921/references",
+        "--out",
+        "/tmp/tipseek-backend-update-cqdqhr6e/3-intact-before",
+        "--threads",
+        "1"
+      ]
+    },
+    {
+      "repeat": 3,
+      "kind": "fragmented",
+      "binary": "after",
+      "seconds": 1.3675378649495542,
+      "cpu_seconds": 1.3646539999999994,
+      "command": [
+        "/home/yasuda2/TipSeek/target/release/gene_workflow",
+        "annotate",
+        "--backend",
+        "exonerate-rs",
+        "--input",
+        "/home/yasuda2/tipseek_starfish_multigene_test_20260921/fragmented/gene",
+        "--nucleotide-reference",
+        "/home/yasuda2/tipseek_starfish_multigene_test_20260921/references",
+        "--out",
+        "/tmp/tipseek-backend-update-cqdqhr6e/3-fragmented-after",
+        "--threads",
+        "1"
+      ]
+    },
+    {
+      "repeat": 3,
+      "kind": "fragmented",
+      "binary": "before",
+      "seconds": 1.371444633929059,
+      "cpu_seconds": 1.3719080000000012,
+      "command": [
+        "/tmp/tipseek-before-splice-io",
+        "annotate",
+        "--backend",
+        "exonerate-rs",
+        "--input",
+        "/home/yasuda2/tipseek_starfish_multigene_test_20260921/fragmented/gene",
+        "--nucleotide-reference",
+        "/home/yasuda2/tipseek_starfish_multigene_test_20260921/references",
+        "--out",
+        "/tmp/tipseek-backend-update-cqdqhr6e/3-fragmented-before",
+        "--threads",
+        "1"
+      ]
+    },
+    {
+      "repeat": 4,
+      "kind": "intact",
+      "binary": "before",
+      "seconds": 0.7062149539124221,
+      "cpu_seconds": 0.7063619999999995,
+      "command": [
+        "/tmp/tipseek-before-splice-io",
+        "annotate",
+        "--backend",
+        "exonerate-rs",
+        "--input",
+        "/home/yasuda2/tipseek_starfish_multigene_test_20260921/intact/gene",
+        "--nucleotide-reference",
+        "/home/yasuda2/tipseek_starfish_multigene_test_20260921/references",
+        "--out",
+        "/tmp/tipseek-backend-update-cqdqhr6e/4-intact-before",
+        "--threads",
+        "1"
+      ]
+    },
+    {
+      "repeat": 4,
+      "kind": "intact",
+      "binary": "after",
+      "seconds": 0.6984013740438968,
+      "cpu_seconds": 0.6985559999999988,
+      "command": [
+        "/home/yasuda2/TipSeek/target/release/gene_workflow",
+        "annotate",
+        "--backend",
+        "exonerate-rs",
+        "--input",
+        "/home/yasuda2/tipseek_starfish_multigene_test_20260921/intact/gene",
+        "--nucleotide-reference",
+        "/home/yasuda2/tipseek_starfish_multigene_test_20260921/references",
+        "--out",
+        "/tmp/tipseek-backend-update-cqdqhr6e/4-intact-after",
+        "--threads",
+        "1"
+      ]
+    },
+    {
+      "repeat": 4,
+      "kind": "fragmented",
+      "binary": "before",
+      "seconds": 1.3815708950860426,
+      "cpu_seconds": 1.3639899999999994,
+      "command": [
+        "/tmp/tipseek-before-splice-io",
+        "annotate",
+        "--backend",
+        "exonerate-rs",
+        "--input",
+        "/home/yasuda2/tipseek_starfish_multigene_test_20260921/fragmented/gene",
+        "--nucleotide-reference",
+        "/home/yasuda2/tipseek_starfish_multigene_test_20260921/references",
+        "--out",
+        "/tmp/tipseek-backend-update-cqdqhr6e/4-fragmented-before",
+        "--threads",
+        "1"
+      ]
+    },
+    {
+      "repeat": 4,
+      "kind": "fragmented",
+      "binary": "after",
+      "seconds": 1.348188454983756,
+      "cpu_seconds": 1.3401379999999992,
+      "command": [
+        "/home/yasuda2/TipSeek/target/release/gene_workflow",
+        "annotate",
+        "--backend",
+        "exonerate-rs",
+        "--input",
+        "/home/yasuda2/tipseek_starfish_multigene_test_20260921/fragmented/gene",
+        "--nucleotide-reference",
+        "/home/yasuda2/tipseek_starfish_multigene_test_20260921/references",
+        "--out",
+        "/tmp/tipseek-backend-update-cqdqhr6e/4-fragmented-after",
+        "--threads",
+        "1"
+      ]
+    }
+  ],
+  "summary": [
+    {
+      "kind": "intact",
+      "median_seconds": {
+        "before": 0.7117977250600234,
+        "after": 0.696092035039328
+      },
+      "median_cpu_seconds": {
+        "before": 0.7063619999999995,
+        "after": 0.6943339999999999
+      },
+      "speedup": 1.0225626630245928
+    },
+    {
+      "kind": "fragmented",
+      "median_seconds": {
+        "before": 1.371444633929059,
+        "after": 1.3675378649495542
+      },
+      "median_cpu_seconds": {
+        "before": 1.364764999999999,
+        "after": 1.3646539999999994
+      },
+      "speedup": 1.0028567903526744
+    }
+  ],
+  "sha256": {
+    "/tmp/tipseek-before-splice-io": "63ecee1cfc23c3255bd316ad7868c8180bef24a38e84a0123bd66bac344e140b",
+    "target/release/gene_workflow": "8c351a1071074e2711777dd247e91f4b6d4330a8ac76bcd9e5e8f8853608bfc6",
+    "/home/yasuda2/exonerate/target/release/exonerate-rs": "08b051473541dc7711055e218d13334bb868517acc62e60bb9e5118b94a6ee46"
+  },
+  "scope": "Five paired repetitions of single-thread annotation on this machine; includes filesystem and child-process overhead.",
+  "accepted_outputs_unchanged": true,
+  "derived_exon_intron_file_open_counts": [
+    {
+      "kind": "intact",
+      "backend": "miniprot",
+      "before": 636,
+      "after": 111
+    },
+    {
+      "kind": "intact",
+      "backend": "exonerate-rs",
+      "before": 586,
+      "after": 110
+    },
+    {
+      "kind": "fragmented",
+      "backend": "miniprot",
+      "before": 601,
+      "after": 142
+    },
+    {
+      "kind": "fragmented",
+      "backend": "exonerate-rs",
+      "before": 578,
+      "after": 154
+    }
+  ]
+}

@@ -1,0 +1,24 @@
+{
+  "scope": "Intact candidates only; concordance with source annotation, not biological ground truth. Both engines used CDS-derived protein queries, so agreement is not independent annotation evidence.",
+  "source_cds_genome_checks": 56,
+  "source_gff_sha256": "2277b0e750708cb1c9e57727007b31e53f6d3e460b05996aab9f06c58a0eb0f3",
+  "command": [
+    "scripts/validation/audit_exonerate_reference.py",
+    "/home/yasuda2/tipseek_starfish_multigene_test_20260921",
+    "/tmp/tipseek-exonerate-shadow-ae1xogdx/intact-shadow",
+    "/home/yasuda2/starsco/annevo_gff/ppect.gff3",
+    "docs/development/exonerate-reference-audit.tsv"
+  ],
+  "engines": {
+    "miniprot": {
+      "source_cds_match_without_stop": 28,
+      "source_splice_boundaries_match": 28,
+      "same_strand_models_missing_microexons": 24
+    },
+    "exonerate_rs": {
+      "source_cds_match_without_stop": 28,
+      "source_splice_boundaries_match": 28,
+      "same_strand_models_missing_microexons": 24
+    }
+  }
+}

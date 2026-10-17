@@ -1,0 +1,192 @@
+{
+  "runs": [
+    {
+      "backend": "miniprot",
+      "command": [
+        "/home/yasuda2/TipSeek/target/release/gene_workflow",
+        "annotate",
+        "--backend",
+        "miniprot",
+        "--input",
+        "/tmp/tipseek-hx50-sco-recovery/gene",
+        "--nucleotide-reference",
+        "/home/yasuda2/starsco/geneminer_sco_refs/fasta",
+        "--out",
+        "/tmp/tipseek-hx50-family-scheduler-validation-final/miniprot",
+        "--reads-root",
+        "/tmp/tipseek-hx50-sco-recovery",
+        "--threads",
+        "8",
+        "--sco-reference",
+        "ppect",
+        "--miniprot",
+        "/home/yasuda2/miniforge3/pkgs/miniprot-0.18-h577a1d6_0/bin/miniprot"
+      ],
+      "seconds": 13.980898224981502
+    },
+    {
+      "backend": "exonerate-rs",
+      "command": [
+        "/home/yasuda2/TipSeek/target/release/gene_workflow",
+        "annotate",
+        "--backend",
+        "exonerate-rs",
+        "--input",
+        "/tmp/tipseek-hx50-sco-recovery/gene",
+        "--nucleotide-reference",
+        "/home/yasuda2/starsco/geneminer_sco_refs/fasta",
+        "--out",
+        "/tmp/tipseek-hx50-family-scheduler-validation-final/exonerate-rs",
+        "--reads-root",
+        "/tmp/tipseek-hx50-sco-recovery",
+        "--threads",
+        "8",
+        "--sco-reference",
+        "ppect"
+      ],
+      "seconds": 137.4214210959617
+    }
+  ],
+  "comparisons": {
+    "miniprot": {
+      "baseline": "/tmp/tipseek-hx50-sco-recovery/miniprot",
+      "compared_files": 6510,
+      "same_file_set": true,
+      "different_files": [],
+      "excluded": "Execution metadata, command provenance and external stderr (paths/timing); arguments normalized to ROOT; status first line checked, elapsed seconds excluded"
+    },
+    "exonerate-rs": {
+      "baseline": "/tmp/tipseek-hx50-sco-recovery/exonerate-rs",
+      "compared_files": 19844,
+      "same_file_set": true,
+      "different_files": [],
+      "excluded": "Execution metadata, command provenance and external stderr (paths/timing); arguments normalized to ROOT; status first line checked, elapsed seconds excluded"
+    }
+  },
+  "scope": "HX50 real-read 12-SCO panel, identical assembled candidates and reads support. 8 CPU slots for old candidate batching versus new SCO queue with shared tail budget. Full 7006-SCO task remains stopped by user.",
+  "baseline_runs": {
+    "reference_root": "/home/yasuda2/starsco/geneminer_sco_refs/fasta",
+    "sco_reference": "ppect",
+    "assembly_reference_subset_byte_identical": true,
+    "recruitment_reused": "/tmp/tipseek-hx50-multicontig/after/1_Hx50",
+    "binary_sha256": {
+      "/home/yasuda2/TipSeek/target/release/gene_workflow": "779fb2c85903b2056a9f99d26ac24effb2f72cbd1a9b0efef3cb82cadb80b92b",
+      "/home/yasuda2/TipSeek/target/release/main_assembler_original": "0add920918b1960eaf9c288cd726085a1ec7989ab591ec22346db14bdbdb1704",
+      "/home/yasuda2/miniforge3/pkgs/miniprot-0.18-h577a1d6_0/bin/miniprot": "f8822f41eceb53a6ca611bd6606faf035aeb913030d1dede7fd7889ab37d4f52"
+    },
+    "runs": [
+      {
+        "command": [
+          "/home/yasuda2/TipSeek/target/release/main_assembler_original",
+          "-r",
+          "/tmp/tipseek-hx50-multicontig/references",
+          "-o",
+          "/tmp/tipseek-hx50-sco-recovery/1_Hx50",
+          "-ka",
+          "0",
+          "-k_min",
+          "21",
+          "-k_max",
+          "51",
+          "-limit_count",
+          "2",
+          "-iteration",
+          "4096",
+          "-sb",
+          "10000",
+          "-cov_min",
+          "0",
+          "-p",
+          "1",
+          "--exhaust-seeds"
+        ],
+        "seconds": 1.3154933870537207
+      },
+      {
+        "command": [
+          "/home/yasuda2/TipSeek/target/release/gene_workflow",
+          "classify",
+          "--reference",
+          "/tmp/tipseek-hx50-multicontig/references",
+          "--contigs",
+          "/tmp/tipseek-hx50-sco-recovery/1_Hx50/contigs_all",
+          "--sample",
+          "1_Hx50",
+          "--out",
+          "/tmp/tipseek-hx50-sco-recovery/gene",
+          "--retain-exon-fragments"
+        ],
+        "seconds": 0.01548241707496345
+      },
+      {
+        "command": [
+          "/home/yasuda2/TipSeek/target/release/gene_workflow",
+          "cohort",
+          "--reference",
+          "/tmp/tipseek-hx50-multicontig/references",
+          "--out",
+          "/tmp/tipseek-hx50-sco-recovery/gene",
+          "--sample",
+          "1_Hx50"
+        ],
+        "seconds": 0.0032355079893022776
+      },
+      {
+        "command": [
+          "/home/yasuda2/TipSeek/target/release/gene_workflow",
+          "annotate",
+          "--backend",
+          "miniprot",
+          "--input",
+          "/tmp/tipseek-hx50-sco-recovery/gene",
+          "--nucleotide-reference",
+          "/home/yasuda2/starsco/geneminer_sco_refs/fasta",
+          "--out",
+          "/tmp/tipseek-hx50-sco-recovery/miniprot",
+          "--reads-root",
+          "/tmp/tipseek-hx50-sco-recovery",
+          "--threads",
+          "8",
+          "--sco-reference",
+          "ppect",
+          "--miniprot",
+          "/home/yasuda2/miniforge3/pkgs/miniprot-0.18-h577a1d6_0/bin/miniprot"
+        ],
+        "seconds": 18.40535530797206
+      },
+      {
+        "command": [
+          "/home/yasuda2/TipSeek/target/release/gene_workflow",
+          "annotate",
+          "--backend",
+          "exonerate-rs",
+          "--input",
+          "/tmp/tipseek-hx50-sco-recovery/gene",
+          "--nucleotide-reference",
+          "/home/yasuda2/starsco/geneminer_sco_refs/fasta",
+          "--out",
+          "/tmp/tipseek-hx50-sco-recovery/exonerate-rs",
+          "--reads-root",
+          "/tmp/tipseek-hx50-sco-recovery",
+          "--threads",
+          "8",
+          "--sco-reference",
+          "ppect"
+        ],
+        "seconds": 179.56983448192477
+      }
+    ]
+  },
+  "source_sha256": {
+    "rust/gm2_tools/src/gene_annotation/family_scheduler.rs": "a755364f20ec9419ed0a291a0b23b80cbcf2b0ad57275defc449c28769214c9d",
+    "rust/gm2_tools/src/bin/gene_workflow.rs": "2086d0135ed4dd66a1648fe5150a2a00f1a3a01aaa13e06fd7217351bf4e3ad0",
+    "/home/yasuda2/GeneMiner2/scripts/main_assembler.py": "071e9e1812959048343ea29494c7c0b2cf02da4565dd009bccb59ec6f9ee8df1",
+    "/home/yasuda2/GeneMiner2/scripts/main_refilter_new.py": "c3912637b777ee5b18c98d800be3dd621cd9b519fd094a69d0159c30507313bc"
+  },
+  "validation": {
+    "workspace_tests_passed": 331,
+    "clippy": "passed",
+    "release_build": "passed",
+    "multiple_samples_and_families": "serial and parallel ordered output equality checked"
+  }
+}

@@ -1,0 +1,159 @@
+{
+  "resolved_exonerate": "/home/yasuda2/exonerate/target/release/exonerate-rs",
+  "output_root": "/tmp/tipseek-exonerate-shadow-d568y5k9",
+  "sha256": {
+    "/home/yasuda2/TipSeek/target/release/gene_workflow": "6039ce31787a6263d92b210818a508bc735f8c41c7bb5feaeb0ab9f9347c15fd",
+    "/home/yasuda2/exonerate/target/release/exonerate-rs": "08b051473541dc7711055e218d13334bb868517acc62e60bb9e5118b94a6ee46",
+    "/home/yasuda2/miniforge3/pkgs/miniprot-0.18-h577a1d6_0/bin/miniprot": "f8822f41eceb53a6ca611bd6606faf035aeb913030d1dede7fd7889ab37d4f52"
+  },
+  "datasets": [
+    {
+      "kind": "intact",
+      "runs": {
+        "baseline": {
+          "command": [
+            "/home/yasuda2/TipSeek/target/release/gene_workflow",
+            "annotate",
+            "--input",
+            "/home/yasuda2/tipseek_starfish_multigene_test_20260921/intact/gene",
+            "--nucleotide-reference",
+            "/home/yasuda2/tipseek_starfish_multigene_test_20260921/references",
+            "--out",
+            "/tmp/tipseek-exonerate-shadow-d568y5k9/intact-baseline",
+            "--miniprot",
+            "/home/yasuda2/miniforge3/pkgs/miniprot-0.18-h577a1d6_0/bin/miniprot",
+            "--threads",
+            "1",
+            "--max-intron",
+            "50000",
+            "--minimum-coverage",
+            "0.20",
+            "--complete-coverage",
+            "0.80",
+            "--flank",
+            "0",
+            "--fragment-padding",
+            "100"
+          ],
+          "returncode": 0,
+          "seconds": 1.5662601320073009
+        },
+        "shadow": {
+          "command": [
+            "/home/yasuda2/TipSeek/target/release/gene_workflow",
+            "annotate",
+            "--input",
+            "/home/yasuda2/tipseek_starfish_multigene_test_20260921/intact/gene",
+            "--nucleotide-reference",
+            "/home/yasuda2/tipseek_starfish_multigene_test_20260921/references",
+            "--out",
+            "/tmp/tipseek-exonerate-shadow-d568y5k9/intact-shadow",
+            "--miniprot",
+            "/home/yasuda2/miniforge3/pkgs/miniprot-0.18-h577a1d6_0/bin/miniprot",
+            "--threads",
+            "1",
+            "--max-intron",
+            "50000",
+            "--minimum-coverage",
+            "0.20",
+            "--complete-coverage",
+            "0.80",
+            "--flank",
+            "0",
+            "--fragment-padding",
+            "100",
+            "--exonerate-shadow"
+          ],
+          "returncode": 0,
+          "seconds": 2.5677347709424794
+        }
+      },
+      "compared_files": 392,
+      "changed_authoritative_outputs": [],
+      "report_rows": 86,
+      "status_counts": {
+        "coordinate_difference": 86
+      },
+      "stage_counts": {
+        "candidate": 86
+      }
+    },
+    {
+      "kind": "fragmented",
+      "runs": {
+        "baseline": {
+          "command": [
+            "/home/yasuda2/TipSeek/target/release/gene_workflow",
+            "annotate",
+            "--input",
+            "/home/yasuda2/tipseek_starfish_multigene_test_20260921/fragmented/gene",
+            "--nucleotide-reference",
+            "/home/yasuda2/tipseek_starfish_multigene_test_20260921/references",
+            "--out",
+            "/tmp/tipseek-exonerate-shadow-d568y5k9/fragmented-baseline",
+            "--miniprot",
+            "/home/yasuda2/miniforge3/pkgs/miniprot-0.18-h577a1d6_0/bin/miniprot",
+            "--threads",
+            "1",
+            "--max-intron",
+            "50000",
+            "--minimum-coverage",
+            "0.20",
+            "--complete-coverage",
+            "0.80",
+            "--flank",
+            "0",
+            "--fragment-padding",
+            "100"
+          ],
+          "returncode": 0,
+          "seconds": 3.8201920200372115
+        },
+        "shadow": {
+          "command": [
+            "/home/yasuda2/TipSeek/target/release/gene_workflow",
+            "annotate",
+            "--input",
+            "/home/yasuda2/tipseek_starfish_multigene_test_20260921/fragmented/gene",
+            "--nucleotide-reference",
+            "/home/yasuda2/tipseek_starfish_multigene_test_20260921/references",
+            "--out",
+            "/tmp/tipseek-exonerate-shadow-d568y5k9/fragmented-shadow",
+            "--miniprot",
+            "/home/yasuda2/miniforge3/pkgs/miniprot-0.18-h577a1d6_0/bin/miniprot",
+            "--threads",
+            "1",
+            "--max-intron",
+            "50000",
+            "--minimum-coverage",
+            "0.20",
+            "--complete-coverage",
+            "0.80",
+            "--flank",
+            "0",
+            "--fragment-padding",
+            "100",
+            "--exonerate-shadow"
+          ],
+          "returncode": 0,
+          "seconds": 5.972407552064396
+        }
+      },
+      "compared_files": 495,
+      "changed_authoritative_outputs": [],
+      "report_rows": 179,
+      "status_counts": {
+        "exonerate_only": 5,
+        "coordinate_difference": 139,
+        "both_no_hit": 5,
+        "reported_hits_match": 30
+      },
+      "stage_counts": {
+        "candidate": 137,
+        "padded_join": 42
+      }
+    }
+  ],
+  "passed": true,
+  "scope": "Shadow mode non-interference and coordinate diagnostics; not annotation accuracy or speed superiority."
+}

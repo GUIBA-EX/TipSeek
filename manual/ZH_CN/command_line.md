@@ -309,6 +309,8 @@ cli/tipseek stats \
 | --- | --- |
 | `--gene-protein-reference DIR` | 可选的逐 family `.faa` 覆盖；同名 stem 替换自动翻译，其余 family 仍自动推导 |
 | `--gene-miniprot PATH` | miniprot 可执行文件；默认 `miniprot`，要求 0.18 或更高版本 |
+| `--gene-exon-backend NAME` | exon 独立注释后端：`miniprot`（默认）或 `exonerate-rs`；Exonerate 从当前 PATH 调用，无需路径 |
+| `--gene-exonerate-shadow` | 可选 exonerate-rs 对照，从当前环境 PATH 查找程序，无需路径；仅审计，不改变 miniprot 模型接纳；默认关闭 |
 | `--gene-max-intron INT` | miniprot 接受的最大 intron；默认 `50000` |
 | `--gene-min-model-coverage FLOAT` | 常规 partial model 最低蛋白覆盖度；默认 `0.20`。仅补 N 尝试允许 1-aa 离散容差 |
 | `--gene-complete-coverage FLOAT` | complete model 最低覆盖度；默认 `0.80`，并且仍要求到达蛋白两端 |
@@ -376,3 +378,7 @@ cli/tipseek stats \
 | `--stats-count-input-reads` | 统计输入 FASTQ reads 以填写 `InputReads` 和 `PctFiltered`；大数据集上较慢 |
 
 比例类参数使用 `0–1` 小数。对正式数据修改过滤阈值前，建议先保留默认值完成小规模测试，并同时检查中间 VCF、mapping QC 和 locus 占有率。
+
+exon 注释自动使用当前输出下的配对招募 reads 做保守连接审计；`--gene-reads-root DIR` 可指定原工作流根目录。`-p` 控制 GeneMiner2 式 SCO 任务池并行（最多 64）；每个 SCO 完成后立即领取下一项，每次比对单线程，队列收尾时剩余 SCO 可借用空闲核，总预算仍为 `-p`。详见 [exon 模式](../../docs/exon_ZH.md)。
+
+`--gene-sco-reference ID`：固定每个 SCO 内用于恢复序列坐标的参考记录。`exon/sco/<SCO>.fasta` 每样本一条汇总序列，缺失和冲突用 N；不等于完整 CDS 或经验证的单拷贝。

@@ -1,6 +1,6 @@
-use super::{
-    parse_protein_cigar, reverse_complement, translate_cds, Interval, RawGeneModel, Strand,
-};
+use super::{reverse_complement, translate_cds, Interval, RawGeneModel, Strand};
+
+use super::evidence::AlignmentEvidence;
 
 #[derive(Clone, Copy, Debug)]
 pub struct ModelConfig {
@@ -21,6 +21,7 @@ impl Default for ModelConfig {
 pub enum ModelState {
     Complete,
     TerminalPartial,
+    InternalPartial,
     LowCoverage,
     Frameshifted,
     InternalStop,
@@ -34,6 +35,7 @@ impl ModelState {
         match self {
             Self::Complete => "complete",
             Self::TerminalPartial => "terminal_partial",
+            Self::InternalPartial => "internal_partial",
             Self::LowCoverage => "low_coverage",
             Self::Frameshifted => "frameshifted",
             Self::InternalStop => "internal_stop",
@@ -83,6 +85,7 @@ pub struct IntronSequence {
 
 #[derive(Clone, Debug)]
 pub struct GeneModel {
+    pub engine: Option<super::evidence::AlignmentEngine>,
     pub gff_id: String,
     pub candidate_id: String,
     pub protein_id: String,
@@ -104,6 +107,7 @@ pub struct GeneModel {
     pub exons: Vec<ExonSequence>,
     pub introns: Vec<IntronSequence>,
     pub cds: String,
+    pub query_cds_offsets: Option<Vec<Option<usize>>>,
     pub protein: Option<String>,
     pub gene: String,
     pub state: ModelState,
@@ -114,6 +118,26 @@ pub struct GeneModel {
 }
 
 impl GeneModel {
+    /// A reference beginning with M does not justify inventing a genomic start
+    /// codon. Report the mismatch and keep an otherwise clean model partial.
+    pub fn check_reference_start(&mut self, reference_start: Option<u8>) {
+        if self.query_interval_aa.start == 0
+            && reference_start.is_some_and(|r| r.eq_ignore_ascii_case(&b'M'))
+            && self.protein.as_ref().is_some_and(|p| !p.starts_with('M'))
+        {
+            if !self
+                .qc_flags
+                .iter()
+                .any(|f| f == "reference_start_mismatch")
+            {
+                self.qc_flags.push("reference_start_mismatch".into());
+            }
+            if self.state == ModelState::Complete {
+                self.state = ModelState::TerminalPartial;
+            }
+        }
+    }
+
     pub fn coverage(&self) -> f64 {
         self.coverage_millionths as f64 / 1_000_000.0
     }
@@ -135,7 +159,7 @@ impl GeneModel {
 
     pub fn structural_defect_count(&self) -> usize {
         usize::from(self.frameshifts > 0)
-            + usize::from(self.inframe_stops > 0)
+            + usize::from(self.inframe_stops > 0 || self.state == ModelState::InternalStop)
             + usize::from(!self.phase_valid)
             + usize::from(
                 self.protein
@@ -143,6 +167,11 @@ impl GeneModel {
                     .is_some_and(|protein| protein.contains('X')),
             )
             + self.noncanonical_introns()
+            + self
+                .introns
+                .iter()
+                .filter(|i| i.splice_class == SpliceClass::Unavailable)
+                .count()
     }
 }
 
@@ -176,6 +205,12 @@ fn transcript_ordered_cdss(
         return Err("CDS strand or interval is inconsistent with its mRNA".to_owned());
     }
     cdss.sort_by_key(|cds| cds.interval.start);
+    if cdss
+        .windows(2)
+        .any(|pair| pair[0].interval.end > pair[1].interval.start)
+    {
+        return Err("model contains overlapping CDS features".into());
+    }
     if raw.strand == Strand::Reverse {
         cdss.reverse();
     }
@@ -228,40 +263,48 @@ pub fn build_gene_model(
     fallback_protein_len: Option<usize>,
     config: ModelConfig,
 ) -> Result<GeneModel, String> {
+    let evidence = match &raw.evidence {
+        Some(value) => Some(value.clone()),
+        None => AlignmentEvidence::from_miniprot(raw)?,
+    };
+    build_gene_model_with_evidence(
+        raw,
+        evidence.as_ref(),
+        candidate_sequence,
+        fallback_protein_len,
+        config,
+    )
+}
+
+/// Both adapters use the same sequence extraction and structural acceptance rules.
+pub fn build_gene_model_with_evidence(
+    raw: &RawGeneModel,
+    evidence: Option<&AlignmentEvidence>,
+    candidate_sequence: &str,
+    fallback_protein_len: Option<usize>,
+    config: ModelConfig,
+) -> Result<GeneModel, String> {
     let cdss = transcript_ordered_cdss(raw, candidate_sequence.len())?;
-    let paf = raw.paf.as_ref();
-    let protein_len = paf
+    let protein_len = evidence
         .map(|value| value.query_len)
         .or(fallback_protein_len)
         .ok_or_else(|| "protein length is unavailable".to_owned())?;
     if protein_len == 0 {
         return Err("protein length is zero".to_owned());
     }
-    let query_interval = paf
+    let query_interval = evidence
         .map(|value| value.query_interval)
         .unwrap_or(raw.target_interval_aa);
     if query_interval.end > protein_len {
         return Err("protein interval exceeds protein length".to_owned());
     }
-    let reported_frameshifts = raw
+    let frameshifts = raw
         .frameshifts
-        .max(paf.map(|value| value.frameshifts).unwrap_or(0));
+        .max(evidence.map(|v| v.frameshifts).unwrap_or(0));
     let inframe_stops = raw
         .inframe_stops
-        .max(paf.map(|value| value.inframe_stops).unwrap_or(0));
-    let mut large_query_gaps = 0usize;
-    let mut cigar_frameshifts = 0usize;
-    if let Some(cigar) = paf.and_then(|value| value.cigar.as_deref()) {
-        for operation in parse_protein_cigar(cigar)? {
-            if matches!(operation.op, 'F' | 'G') {
-                cigar_frameshifts += 1;
-            }
-            if operation.op == 'I' && operation.length >= 10 {
-                large_query_gaps += 1;
-            }
-        }
-    }
-    let frameshifts = reported_frameshifts.max(cigar_frameshifts);
+        .max(evidence.map(|v| v.inframe_stops).unwrap_or(0));
+    let large_query_gaps = evidence.map(|v| v.large_query_gaps).unwrap_or(0);
 
     let mut exons = Vec::new();
     let mut observed_cds = String::new();
@@ -319,11 +362,14 @@ pub fn build_gene_model(
     let genomic_end = cdss.iter().map(|cds| cds.interval.end).max().unwrap();
     let genomic_interval = Interval::new(genomic_start, genomic_end).unwrap();
     let gene = oriented_slice(candidate_sequence, genomic_interval, raw.strand)?;
-    let coverage = query_interval.len() as f64 / protein_len as f64;
+    let query_gap_aa = evidence.map(|e| e.query_gap_aa).unwrap_or(0);
+    let covered_aa = query_interval
+        .len()
+        .checked_sub(query_gap_aa)
+        .ok_or("query_gap_exceeds_span")?;
+    let coverage = covered_aa as f64 / protein_len as f64;
     let coverage_millionths = (coverage.min(1.0) * 1_000_000.0).round() as u32;
-    let terminal_tolerance = 3usize.max((protein_len as f64 * 0.02).ceil() as usize);
-    let reaches_ends = query_interval.start <= terminal_tolerance
-        && protein_len.saturating_sub(query_interval.end) <= terminal_tolerance;
+    let reaches_ends = query_interval.start == 0 && query_interval.end == protein_len;
     let has_ambiguous_codon = protein.as_ref().is_some_and(|value| value.contains('X'));
     let translated_internal_stop = protein.as_ref().is_some_and(|value| {
         value
@@ -331,6 +377,17 @@ pub fn build_gene_model(
             .unwrap_or(value.as_str())
             .contains('*')
     });
+    let query_cds_offsets =
+        evidence
+            .and_then(|e| e.coding_map.as_ref())
+            .and_then(|(offsets, length)| {
+                let terminal_stop = protein.as_ref().is_some_and(|p| p.ends_with('*'));
+                // Partial phase trimming must not silently shift alignment coordinates.
+                // Only retain maps whose coding consumption matches the extracted CDS.
+                (*length == cds.len()
+                    || (terminal_stop && length.checked_add(3) == Some(cds.len())))
+                .then(|| offsets.clone())
+            });
     let state = if frameshifts > 0 {
         ModelState::Frameshifted
     } else if inframe_stops > 0 || translated_internal_stop {
@@ -341,13 +398,21 @@ pub fn build_gene_model(
         ModelState::AmbiguousCds
     } else if coverage < config.minimum_coverage {
         ModelState::LowCoverage
+    } else if query_gap_aa > 0 {
+        ModelState::InternalPartial
     } else if coverage >= config.complete_coverage && reaches_ends {
         ModelState::Complete
     } else {
         ModelState::TerminalPartial
     };
     let mut qc_flags = Vec::new();
-    if paf.is_none() {
+    if query_interval.start > 0 {
+        qc_flags.push("query_start_truncated".into());
+    }
+    if query_interval.end < protein_len {
+        qc_flags.push("query_end_truncated".into());
+    }
+    if evidence.is_none() {
         qc_flags.push("missing_paf".to_owned());
     }
     if introns
@@ -356,13 +421,27 @@ pub fn build_gene_model(
     {
         qc_flags.push("noncanonical_splice".to_owned());
     }
+    if introns
+        .iter()
+        .any(|intron| intron.splice_class == SpliceClass::Unavailable)
+    {
+        qc_flags.push("invalid_splice_length".to_owned());
+    }
+    if query_gap_aa > 0 {
+        qc_flags.push(format!("query_gap_aa={query_gap_aa}"));
+    }
     if large_query_gaps > 0 {
         qc_flags.push("large_query_gap".to_owned());
     }
-    let structurally_eligible = matches!(state, ModelState::Complete | ModelState::TerminalPartial)
-        && paf.is_some()
-        && !qc_flags.iter().any(|flag| flag == "noncanonical_splice");
+    let structurally_eligible = matches!(
+        state,
+        ModelState::Complete | ModelState::TerminalPartial | ModelState::InternalPartial
+    ) && evidence.is_some()
+        && !qc_flags
+            .iter()
+            .any(|flag| flag == "noncanonical_splice" || flag == "invalid_splice_length");
     Ok(GeneModel {
+        engine: evidence.map(|e| e.engine),
         gff_id: raw.gff_id.clone(),
         candidate_id: raw.candidate_id.clone(),
         protein_id: raw.protein_id.clone(),
@@ -370,7 +449,7 @@ pub fn build_gene_model(
         query_interval_aa: query_interval,
         genomic_interval,
         strand: raw.strand,
-        alignment_score: paf
+        alignment_score: evidence
             .and_then(|value| value.alignment_score)
             .or(raw.gff_score)
             .unwrap_or(0),
@@ -387,6 +466,7 @@ pub fn build_gene_model(
         exons,
         introns,
         cds,
+        query_cds_offsets,
         protein,
         gene,
         state,
@@ -417,6 +497,7 @@ mod tests {
             inframe_stops: 0,
             rank: Some(0),
             cdss,
+            evidence: None,
             paf: Some(PafRecord {
                 query_id: "protein_1".into(),
                 query_len: 4,
@@ -435,6 +516,24 @@ mod tests {
                 cs: None,
             }),
         }
+    }
+
+    #[test]
+    fn missing_alignment_evidence_cannot_pass_structural_acceptance() {
+        let mut raw = raw_model(
+            Strand::Forward,
+            vec![CdsFeature {
+                interval: Interval::new(0, 12).unwrap(),
+                strand: Strand::Forward,
+                phase: Some(0),
+            }],
+        );
+        raw.paf = None;
+        let model =
+            build_gene_model(&raw, "ATGAAATTTCCC", Some(4), ModelConfig::default()).unwrap();
+        assert_eq!(model.state, ModelState::Complete);
+        assert!(!model.eligible_for_resolve);
+        assert!(model.qc_flags.iter().any(|f| f == "missing_paf"));
     }
 
     #[test]
@@ -700,6 +799,62 @@ mod tests {
     }
 
     #[test]
+    fn miniprot_query_gap_reduces_coverage_and_prevents_complete_state() {
+        let mut raw = raw_model(
+            Strand::Forward,
+            vec![CdsFeature {
+                interval: Interval::new(0, 12).unwrap(),
+                strand: Strand::Forward,
+                phase: Some(0),
+            }],
+        );
+        let paf = raw.paf.as_mut().unwrap();
+        paf.query_len = 5;
+        paf.query_interval = Interval::new(0, 5).unwrap();
+        paf.cigar = Some("2M1I2M".into());
+        let model = build_gene_model(&raw, "ATGAAATTTCCC", None, ModelConfig::default()).unwrap();
+        assert_eq!(model.state, ModelState::InternalPartial);
+        assert_eq!(model.coverage_millionths, 800_000);
+        assert_eq!(
+            model.query_cds_offsets,
+            Some(vec![Some(0), Some(3), None, Some(6), Some(9)])
+        );
+    }
+
+    #[test]
+    fn incomplete_splice_signals_cannot_pass_qc_on_either_strand() {
+        for length in 1..4 {
+            for strand in [Strand::Forward, Strand::Reverse] {
+                let forward = format!("ATGAAA{}TTTCCC", "G".repeat(length));
+                let target = if strand == Strand::Reverse {
+                    super::super::reverse_complement(&forward)
+                } else {
+                    forward
+                };
+                let raw = raw_model(
+                    strand,
+                    vec![
+                        CdsFeature {
+                            interval: Interval::new(0, 6).unwrap(),
+                            strand,
+                            phase: Some(0),
+                        },
+                        CdsFeature {
+                            interval: Interval::new(6 + length, 12 + length).unwrap(),
+                            strand,
+                            phase: Some(0),
+                        },
+                    ],
+                );
+                let model = build_gene_model(&raw, &target, None, ModelConfig::default()).unwrap();
+                assert!(!model.eligible_for_resolve);
+                assert!(model.qc_flags.iter().any(|f| f == "invalid_splice_length"));
+                assert_eq!(model.structural_defect_count(), 1);
+            }
+        }
+    }
+
+    #[test]
     fn classifies_minor_and_noncanonical_splice_sites() {
         assert_eq!(splice_metadata("GCAG").2, SpliceClass::Minor);
         assert_eq!(splice_metadata("ATAC").2, SpliceClass::Minor);
@@ -725,5 +880,84 @@ mod tests {
         assert_eq!(model.introns[0].splice_class, SpliceClass::Noncanonical);
         assert!(model.qc_flags.contains(&"noncanonical_splice".to_owned()));
         assert!(!model.eligible_for_resolve);
+    }
+    #[test]
+    fn a_single_missing_terminal_residue_is_partial_even_at_high_coverage() {
+        for (start, end, flag) in [
+            (1, 100, "query_start_truncated"),
+            (0, 99, "query_end_truncated"),
+        ] {
+            let mut raw = raw_model(
+                Strand::Forward,
+                vec![CdsFeature {
+                    interval: Interval::new(0, 297).unwrap(),
+                    strand: Strand::Forward,
+                    phase: Some(0),
+                }],
+            );
+            let paf = raw.paf.as_mut().unwrap();
+            paf.query_len = 100;
+            paf.query_interval = Interval::new(start, end).unwrap();
+            paf.cigar = Some("99M".into());
+            let model =
+                build_gene_model(&raw, &"ATG".repeat(99), None, ModelConfig::default()).unwrap();
+            assert_eq!(model.state, ModelState::TerminalPartial);
+            assert!(model.eligible_for_resolve);
+            assert!(model.qc_flags.iter().any(|f| f == flag));
+        }
+    }
+
+    #[test]
+    fn reference_start_mismatch_is_audited_without_inventing_sequence() {
+        let raw = raw_model(
+            Strand::Forward,
+            vec![CdsFeature {
+                interval: Interval::new(0, 12).unwrap(),
+                strand: Strand::Forward,
+                phase: Some(0),
+            }],
+        );
+        let mut model =
+            build_gene_model(&raw, "CCAAAATTTCCC", None, ModelConfig::default()).unwrap();
+        model.check_reference_start(Some(b'P'));
+        assert_eq!(model.state, ModelState::Complete);
+        model.check_reference_start(Some(b'M'));
+        model.check_reference_start(Some(b'M'));
+        assert_eq!(model.state, ModelState::TerminalPartial);
+        assert_eq!(model.cds, "CCAAAATTTCCC");
+        assert_eq!(
+            model
+                .qc_flags
+                .iter()
+                .filter(|f| *f == "reference_start_mismatch")
+                .count(),
+            1
+        );
+        model.state = ModelState::Frameshifted;
+        model.eligible_for_resolve = false;
+        model.check_reference_start(Some(b'M'));
+        assert_eq!(model.state, ModelState::Frameshifted);
+        assert!(!model.eligible_for_resolve);
+    }
+    #[test]
+    fn overlapping_cds_features_are_rejected_on_both_strands() {
+        for strand in [Strand::Forward, Strand::Reverse] {
+            let raw = raw_model(
+                strand,
+                vec![
+                    CdsFeature {
+                        interval: Interval::new(0, 6).unwrap(),
+                        strand,
+                        phase: Some(0),
+                    },
+                    CdsFeature {
+                        interval: Interval::new(3, 9).unwrap(),
+                        strand,
+                        phase: Some(0),
+                    },
+                ],
+            );
+            assert!(build_gene_model(&raw, "ATGAAATTT", None, ModelConfig::default()).is_err());
+        }
     }
 }

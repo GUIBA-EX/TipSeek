@@ -1,0 +1,1351 @@
+{
+  "source_root": "/tmp/tipseek-independent-backends-8kd6xrui",
+  "original": "/home/yasuda2/exonerate/upstream/src/program/exonerate",
+  "output_root": "/tmp/tipseek-original-current",
+  "runs": [
+    {
+      "kind": "intact",
+      "case": "Patiria_pectinifera/ppect_mg001/TSK000001",
+      "ok": true,
+      "equal": true,
+      "seconds": 0.03639087197370827
+    },
+    {
+      "kind": "intact",
+      "case": "Patiria_pectinifera/ppect_mg002/TSK000001",
+      "ok": true,
+      "equal": true,
+      "seconds": 0.044311698991805315
+    },
+    {
+      "kind": "intact",
+      "case": "Patiria_pectinifera/ppect_mg003/TSK000001",
+      "ok": true,
+      "equal": true,
+      "seconds": 0.019084610976278782
+    },
+    {
+      "kind": "intact",
+      "case": "Patiria_pectinifera/ppect_mg004/TSK000001",
+      "ok": true,
+      "equal": true,
+      "seconds": 0.01355821592733264
+    },
+    {
+      "kind": "intact",
+      "case": "Patiria_pectinifera/ppect_mg005/TSK000001",
+      "ok": true,
+      "equal": true,
+      "seconds": 0.014348182012327015
+    },
+    {
+      "kind": "intact",
+      "case": "Patiria_pectinifera/ppect_mg006/TSK000001",
+      "ok": true,
+      "equal": true,
+      "seconds": 0.01108864403795451
+    },
+    {
+      "kind": "intact",
+      "case": "Patiria_pectinifera/ppect_mg007/TSK000001",
+      "ok": true,
+      "equal": true,
+      "seconds": 0.01448805199470371
+    },
+    {
+      "kind": "intact",
+      "case": "Patiria_pectinifera/ppect_mg008/TSK000001",
+      "ok": true,
+      "equal": true,
+      "seconds": 0.02346606890205294
+    },
+    {
+      "kind": "intact",
+      "case": "Patiria_pectinifera/ppect_mg009/TSK000001",
+      "ok": true,
+      "equal": true,
+      "seconds": 0.011506298906169832
+    },
+    {
+      "kind": "intact",
+      "case": "Patiria_pectinifera/ppect_mg010/TSK000001",
+      "ok": true,
+      "equal": true,
+      "seconds": 0.01173200795892626
+    },
+    {
+      "kind": "intact",
+      "case": "Patiria_pectinifera/ppect_mg011/TSK000001",
+      "ok": true,
+      "equal": true,
+      "seconds": 0.026147947064600885
+    },
+    {
+      "kind": "intact",
+      "case": "Patiria_pectinifera/ppect_mg012/TSK000001",
+      "ok": true,
+      "equal": true,
+      "seconds": 0.022005098988302052
+    },
+    {
+      "kind": "intact",
+      "case": "Patiria_pectinifera/ppect_mg013/TSK000001",
+      "ok": true,
+      "equal": true,
+      "seconds": 0.006355721969157457
+    },
+    {
+      "kind": "intact",
+      "case": "Patiria_pectinifera/ppect_mg014/TSK000001",
+      "ok": true,
+      "equal": true,
+      "seconds": 0.010873134015128016
+    },
+    {
+      "kind": "intact",
+      "case": "Patiria_pectinifera/ppect_mg015/TSK000001",
+      "ok": true,
+      "equal": true,
+      "seconds": 0.016684135887771845
+    },
+    {
+      "kind": "intact",
+      "case": "Patiria_pectinifera/ppect_mg016/TSK000001",
+      "ok": true,
+      "equal": true,
+      "seconds": 0.01913532498292625
+    },
+    {
+      "kind": "intact",
+      "case": "Patiria_pectinifera/ppect_mg017/TSK000001",
+      "ok": true,
+      "equal": true,
+      "seconds": 0.00635873805731535
+    },
+    {
+      "kind": "intact",
+      "case": "Patiria_pectinifera/ppect_mg018/TSK000001",
+      "ok": true,
+      "equal": true,
+      "seconds": 0.00978414504788816
+    },
+    {
+      "kind": "intact",
+      "case": "Patiria_pectinifera/ppect_mg019/TSK000001",
+      "ok": true,
+      "equal": true,
+      "seconds": 0.010020582005381584
+    },
+    {
+      "kind": "intact",
+      "case": "Patiria_pectinifera/ppect_mg020/TSK000001",
+      "ok": true,
+      "equal": true,
+      "seconds": 0.013428185018710792
+    },
+    {
+      "kind": "intact",
+      "case": "Patiria_pectinifera/ppect_mg021/TSK000001",
+      "ok": true,
+      "equal": true,
+      "seconds": 0.005868388921953738
+    },
+    {
+      "kind": "intact",
+      "case": "Patiria_pectinifera/ppect_mg022/TSK000001",
+      "ok": true,
+      "equal": true,
+      "seconds": 0.011421752045862377
+    },
+    {
+      "kind": "intact",
+      "case": "Patiria_pectinifera/ppect_mg023/TSK000001",
+      "ok": true,
+      "equal": true,
+      "seconds": 0.011552545009180903
+    },
+    {
+      "kind": "intact",
+      "case": "Patiria_pectinifera/ppect_mg024/TSK000001",
+      "ok": true,
+      "equal": true,
+      "seconds": 0.028712624916806817
+    },
+    {
+      "kind": "intact",
+      "case": "Patiria_pectinifera/ppect_mg025/TSK000001",
+      "ok": true,
+      "equal": true,
+      "seconds": 0.022800785023719072
+    },
+    {
+      "kind": "intact",
+      "case": "Patiria_pectinifera/ppect_mg026/TSK000001",
+      "ok": true,
+      "equal": true,
+      "seconds": 0.08124685904476792
+    },
+    {
+      "kind": "intact",
+      "case": "Patiria_pectinifera/ppect_mg027/TSK000001",
+      "ok": true,
+      "equal": true,
+      "seconds": 0.024057136033661664
+    },
+    {
+      "kind": "intact",
+      "case": "Patiria_pectinifera/ppect_mg028/TSK000001",
+      "ok": true,
+      "equal": true,
+      "seconds": 0.02404822106473148
+    },
+    {
+      "kind": "intact",
+      "case": "Patiria_pectinifera/ppect_mg029/TSK000001",
+      "ok": true,
+      "equal": true,
+      "seconds": 0.034652586095035076
+    },
+    {
+      "kind": "intact",
+      "case": "Patiria_pectinifera/ppect_mg030/TSK000001",
+      "ok": true,
+      "equal": true,
+      "seconds": 0.02508323104120791
+    },
+    {
+      "kind": "intact",
+      "case": "Patiria_pectinifera/ppect_mg031/TSK000001",
+      "ok": true,
+      "equal": true,
+      "seconds": 0.01798208395484835
+    },
+    {
+      "kind": "intact",
+      "case": "Patiria_pectinifera/ppect_mg032/TSK000001",
+      "ok": true,
+      "equal": true,
+      "seconds": 0.007452606922015548
+    },
+    {
+      "kind": "intact",
+      "case": "Patiria_pectinifera/ppect_mg033/TSK000001",
+      "ok": true,
+      "equal": true,
+      "seconds": 0.02034847589675337
+    },
+    {
+      "kind": "intact",
+      "case": "Patiria_pectinifera/ppect_mg034/TSK000001",
+      "ok": true,
+      "equal": true,
+      "seconds": 0.005111775011755526
+    },
+    {
+      "kind": "intact",
+      "case": "Patiria_pectinifera/ppect_mg035/TSK000001",
+      "ok": true,
+      "equal": true,
+      "seconds": 0.006650318973697722
+    },
+    {
+      "kind": "intact",
+      "case": "Patiria_pectinifera/ppect_mg036/TSK000001",
+      "ok": true,
+      "equal": true,
+      "seconds": 0.009577790973708034
+    },
+    {
+      "kind": "intact",
+      "case": "Patiria_pectinifera/ppect_mg037/TSK000001",
+      "ok": true,
+      "equal": true,
+      "seconds": 0.014092558063566685
+    },
+    {
+      "kind": "intact",
+      "case": "Patiria_pectinifera/ppect_mg038/TSK000001",
+      "ok": true,
+      "equal": true,
+      "seconds": 0.01635065709706396
+    },
+    {
+      "kind": "intact",
+      "case": "Patiria_pectinifera/ppect_mg039/TSK000001",
+      "ok": true,
+      "equal": true,
+      "seconds": 0.02144357794895768
+    },
+    {
+      "kind": "intact",
+      "case": "Patiria_pectinifera/ppect_mg040/TSK000001",
+      "ok": true,
+      "equal": true,
+      "seconds": 0.005747753893956542
+    },
+    {
+      "kind": "intact",
+      "case": "Patiria_pectinifera/ppect_mg041/TSK000001",
+      "ok": true,
+      "equal": true,
+      "seconds": 0.03188810695428401
+    },
+    {
+      "kind": "intact",
+      "case": "Patiria_pectinifera/ppect_mg042/TSK000001",
+      "ok": true,
+      "equal": true,
+      "seconds": 0.006275655003264546
+    },
+    {
+      "kind": "intact",
+      "case": "Patiria_pectinifera/ppect_mg043/TSK000001",
+      "ok": true,
+      "equal": true,
+      "seconds": 0.025302147027105093
+    },
+    {
+      "kind": "intact",
+      "case": "Patiria_pectinifera/ppect_mg044/TSK000001",
+      "ok": true,
+      "equal": true,
+      "seconds": 0.013616434996947646
+    },
+    {
+      "kind": "intact",
+      "case": "Patiria_pectinifera/ppect_mg045/TSK000001",
+      "ok": true,
+      "equal": true,
+      "seconds": 0.008861280977725983
+    },
+    {
+      "kind": "intact",
+      "case": "Patiria_pectinifera/ppect_mg046/TSK000001",
+      "ok": true,
+      "equal": false,
+      "seconds": 0.017532540950924158
+    },
+    {
+      "kind": "intact",
+      "case": "Patiria_pectinifera/ppect_mg047/TSK000001",
+      "ok": true,
+      "equal": true,
+      "seconds": 0.00892531091812998
+    },
+    {
+      "kind": "intact",
+      "case": "Patiria_pectinifera/ppect_mg048/TSK000001",
+      "ok": true,
+      "equal": true,
+      "seconds": 0.017240077955648303
+    },
+    {
+      "kind": "intact",
+      "case": "Patiria_pectinifera/ppect_mg049/TSK000001",
+      "ok": true,
+      "equal": true,
+      "seconds": 0.02818855200894177
+    },
+    {
+      "kind": "intact",
+      "case": "Patiria_pectinifera/ppect_mg050/TSK000001",
+      "ok": true,
+      "equal": true,
+      "seconds": 0.0251061829039827
+    },
+    {
+      "kind": "intact",
+      "case": "Patiria_pectinifera/ppect_mg051/TSK000001",
+      "ok": true,
+      "equal": true,
+      "seconds": 0.010233086999505758
+    },
+    {
+      "kind": "intact",
+      "case": "Patiria_pectinifera/ppect_mg052/TSK000001",
+      "ok": true,
+      "equal": true,
+      "seconds": 0.014915395993739367
+    },
+    {
+      "kind": "intact",
+      "case": "Patiria_pectinifera/ppect_mg053/TSK000001",
+      "ok": true,
+      "equal": true,
+      "seconds": 0.021916195983067155
+    },
+    {
+      "kind": "intact",
+      "case": "Patiria_pectinifera/ppect_mg054/TSK000001",
+      "ok": true,
+      "equal": true,
+      "seconds": 0.0052170599810779095
+    },
+    {
+      "kind": "intact",
+      "case": "Patiria_pectinifera/ppect_mg055/TSK000001",
+      "ok": true,
+      "equal": true,
+      "seconds": 0.019856503000482917
+    },
+    {
+      "kind": "intact",
+      "case": "Patiria_pectinifera/ppect_mg056/TSK000001",
+      "ok": true,
+      "equal": true,
+      "seconds": 0.015430350904352963
+    },
+    {
+      "kind": "fragmented",
+      "case": "Patiria_pectinifera/ppect_mg001/TSK000001",
+      "ok": true,
+      "equal": true,
+      "seconds": 0.00853146007284522
+    },
+    {
+      "kind": "fragmented",
+      "case": "Patiria_pectinifera/ppect_mg001/TSK000002",
+      "ok": true,
+      "equal": true,
+      "seconds": 0.03392488695681095
+    },
+    {
+      "kind": "fragmented",
+      "case": "Patiria_pectinifera/ppect_mg002/TSK000001",
+      "ok": true,
+      "equal": true,
+      "seconds": 0.0132355090463534
+    },
+    {
+      "kind": "fragmented",
+      "case": "Patiria_pectinifera/ppect_mg002/TSK000002",
+      "ok": true,
+      "equal": true,
+      "seconds": 0.0417013670084998
+    },
+    {
+      "kind": "fragmented",
+      "case": "Patiria_pectinifera/ppect_mg003/TSK000001",
+      "ok": true,
+      "equal": true,
+      "seconds": 0.006502515054307878
+    },
+    {
+      "kind": "fragmented",
+      "case": "Patiria_pectinifera/ppect_mg003/TSK000002",
+      "ok": true,
+      "equal": true,
+      "seconds": 0.01774928392842412
+    },
+    {
+      "kind": "fragmented",
+      "case": "Patiria_pectinifera/ppect_mg004/TSK000001",
+      "ok": true,
+      "equal": true,
+      "seconds": 0.009312148904427886
+    },
+    {
+      "kind": "fragmented",
+      "case": "Patiria_pectinifera/ppect_mg004/TSK000002",
+      "ok": true,
+      "equal": true,
+      "seconds": 0.013645450002513826
+    },
+    {
+      "kind": "fragmented",
+      "case": "Patiria_pectinifera/ppect_mg005/TSK000001",
+      "ok": true,
+      "equal": true,
+      "seconds": 0.004371650982648134
+    },
+    {
+      "kind": "fragmented",
+      "case": "Patiria_pectinifera/ppect_mg005/TSK000002",
+      "ok": true,
+      "equal": true,
+      "seconds": 0.012986436020582914
+    },
+    {
+      "kind": "fragmented",
+      "case": "Patiria_pectinifera/ppect_mg005/TSKPAD001",
+      "ok": true,
+      "equal": true,
+      "seconds": 0.013622416066937149
+    },
+    {
+      "kind": "fragmented",
+      "case": "Patiria_pectinifera/ppect_mg006/TSK000001",
+      "ok": true,
+      "equal": true,
+      "seconds": 0.006383183994330466
+    },
+    {
+      "kind": "fragmented",
+      "case": "Patiria_pectinifera/ppect_mg006/TSK000002",
+      "ok": true,
+      "equal": true,
+      "seconds": 0.010199265088886023
+    },
+    {
+      "kind": "fragmented",
+      "case": "Patiria_pectinifera/ppect_mg007/TSK000001",
+      "ok": true,
+      "equal": true,
+      "seconds": 0.006278158980421722
+    },
+    {
+      "kind": "fragmented",
+      "case": "Patiria_pectinifera/ppect_mg007/TSK000002",
+      "ok": true,
+      "equal": true,
+      "seconds": 0.01194165798369795
+    },
+    {
+      "kind": "fragmented",
+      "case": "Patiria_pectinifera/ppect_mg008/TSK000001",
+      "ok": true,
+      "equal": true,
+      "seconds": 0.012392534990794957
+    },
+    {
+      "kind": "fragmented",
+      "case": "Patiria_pectinifera/ppect_mg008/TSK000002",
+      "ok": true,
+      "equal": true,
+      "seconds": 0.02095506200566888
+    },
+    {
+      "kind": "fragmented",
+      "case": "Patiria_pectinifera/ppect_mg008/TSKPAD001",
+      "ok": true,
+      "equal": true,
+      "seconds": 0.02605386299546808
+    },
+    {
+      "kind": "fragmented",
+      "case": "Patiria_pectinifera/ppect_mg009/TSK000001",
+      "ok": true,
+      "equal": true,
+      "seconds": 0.006997033022344112
+    },
+    {
+      "kind": "fragmented",
+      "case": "Patiria_pectinifera/ppect_mg009/TSK000002",
+      "ok": true,
+      "equal": true,
+      "seconds": 0.009222491993568838
+    },
+    {
+      "kind": "fragmented",
+      "case": "Patiria_pectinifera/ppect_mg009/TSKPAD001",
+      "ok": true,
+      "equal": true,
+      "seconds": 0.010771346045657992
+    },
+    {
+      "kind": "fragmented",
+      "case": "Patiria_pectinifera/ppect_mg010/TSK000001",
+      "ok": true,
+      "equal": true,
+      "seconds": 0.007779544917866588
+    },
+    {
+      "kind": "fragmented",
+      "case": "Patiria_pectinifera/ppect_mg010/TSK000002",
+      "ok": true,
+      "equal": true,
+      "seconds": 0.009203467052429914
+    },
+    {
+      "kind": "fragmented",
+      "case": "Patiria_pectinifera/ppect_mg011/TSK000001",
+      "ok": true,
+      "equal": true,
+      "seconds": 0.014054158004000783
+    },
+    {
+      "kind": "fragmented",
+      "case": "Patiria_pectinifera/ppect_mg011/TSK000002",
+      "ok": true,
+      "equal": true,
+      "seconds": 0.025017159059643745
+    },
+    {
+      "kind": "fragmented",
+      "case": "Patiria_pectinifera/ppect_mg011/TSKPAD001",
+      "ok": true,
+      "equal": true,
+      "seconds": 0.026180297951214015
+    },
+    {
+      "kind": "fragmented",
+      "case": "Patiria_pectinifera/ppect_mg012/TSK000001",
+      "ok": true,
+      "equal": true,
+      "seconds": 0.01143363502342254
+    },
+    {
+      "kind": "fragmented",
+      "case": "Patiria_pectinifera/ppect_mg012/TSK000002",
+      "ok": true,
+      "equal": true,
+      "seconds": 0.01979534002020955
+    },
+    {
+      "kind": "fragmented",
+      "case": "Patiria_pectinifera/ppect_mg013/TSK000001",
+      "ok": true,
+      "equal": true,
+      "seconds": 0.004742630058899522
+    },
+    {
+      "kind": "fragmented",
+      "case": "Patiria_pectinifera/ppect_mg013/TSK000002",
+      "ok": true,
+      "equal": true,
+      "seconds": 0.004228024976328015
+    },
+    {
+      "kind": "fragmented",
+      "case": "Patiria_pectinifera/ppect_mg013/TSKPAD001",
+      "ok": true,
+      "equal": true,
+      "seconds": 0.005601383047178388
+    },
+    {
+      "kind": "fragmented",
+      "case": "Patiria_pectinifera/ppect_mg014/TSK000001",
+      "ok": true,
+      "equal": true,
+      "seconds": 0.008566244971007109
+    },
+    {
+      "kind": "fragmented",
+      "case": "Patiria_pectinifera/ppect_mg014/TSK000002",
+      "ok": true,
+      "equal": true,
+      "seconds": 0.007733269012533128
+    },
+    {
+      "kind": "fragmented",
+      "case": "Patiria_pectinifera/ppect_mg014/TSKPAD001",
+      "ok": true,
+      "equal": true,
+      "seconds": 0.011319302953779697
+    },
+    {
+      "kind": "fragmented",
+      "case": "Patiria_pectinifera/ppect_mg015/TSK000001",
+      "ok": true,
+      "equal": true,
+      "seconds": 0.009933792985975742
+    },
+    {
+      "kind": "fragmented",
+      "case": "Patiria_pectinifera/ppect_mg015/TSK000002",
+      "ok": true,
+      "equal": true,
+      "seconds": 0.01220923406071961
+    },
+    {
+      "kind": "fragmented",
+      "case": "Patiria_pectinifera/ppect_mg016/TSK000001",
+      "ok": true,
+      "equal": true,
+      "seconds": 0.013746045995503664
+    },
+    {
+      "kind": "fragmented",
+      "case": "Patiria_pectinifera/ppect_mg016/TSK000002",
+      "ok": true,
+      "equal": true,
+      "seconds": 0.01651979296002537
+    },
+    {
+      "kind": "fragmented",
+      "case": "Patiria_pectinifera/ppect_mg016/TSKPAD001",
+      "ok": true,
+      "equal": true,
+      "seconds": 0.020766351954080164
+    },
+    {
+      "kind": "fragmented",
+      "case": "Patiria_pectinifera/ppect_mg017/TSK000001",
+      "ok": true,
+      "equal": true,
+      "seconds": 0.0050716400146484375
+    },
+    {
+      "kind": "fragmented",
+      "case": "Patiria_pectinifera/ppect_mg017/TSK000002",
+      "ok": true,
+      "equal": true,
+      "seconds": 0.004253693041391671
+    },
+    {
+      "kind": "fragmented",
+      "case": "Patiria_pectinifera/ppect_mg017/TSKPAD001",
+      "ok": true,
+      "equal": true,
+      "seconds": 0.006467541097663343
+    },
+    {
+      "kind": "fragmented",
+      "case": "Patiria_pectinifera/ppect_mg018/TSK000001",
+      "ok": true,
+      "equal": true,
+      "seconds": 0.0077094039879739285
+    },
+    {
+      "kind": "fragmented",
+      "case": "Patiria_pectinifera/ppect_mg018/TSK000002",
+      "ok": true,
+      "equal": true,
+      "seconds": 0.0051512380596250296
+    },
+    {
+      "kind": "fragmented",
+      "case": "Patiria_pectinifera/ppect_mg018/TSKPAD001",
+      "ok": true,
+      "equal": true,
+      "seconds": 0.009816413978114724
+    },
+    {
+      "kind": "fragmented",
+      "case": "Patiria_pectinifera/ppect_mg019/TSK000001",
+      "ok": true,
+      "equal": true,
+      "seconds": 0.007714212988503277
+    },
+    {
+      "kind": "fragmented",
+      "case": "Patiria_pectinifera/ppect_mg019/TSK000002",
+      "ok": true,
+      "equal": true,
+      "seconds": 0.007337955990806222
+    },
+    {
+      "kind": "fragmented",
+      "case": "Patiria_pectinifera/ppect_mg020/TSK000001",
+      "ok": true,
+      "equal": true,
+      "seconds": 0.011305678053759038
+    },
+    {
+      "kind": "fragmented",
+      "case": "Patiria_pectinifera/ppect_mg020/TSK000002",
+      "ok": true,
+      "equal": true,
+      "seconds": 0.007811994990333915
+    },
+    {
+      "kind": "fragmented",
+      "case": "Patiria_pectinifera/ppect_mg021/TSK000001",
+      "ok": true,
+      "equal": true,
+      "seconds": 0.004235469037666917
+    },
+    {
+      "kind": "fragmented",
+      "case": "Patiria_pectinifera/ppect_mg021/TSK000002",
+      "ok": true,
+      "equal": true,
+      "seconds": 0.0039034829242154956
+    },
+    {
+      "kind": "fragmented",
+      "case": "Patiria_pectinifera/ppect_mg021/TSKPAD001",
+      "ok": true,
+      "equal": true,
+      "seconds": 0.0053210139740258455
+    },
+    {
+      "kind": "fragmented",
+      "case": "Patiria_pectinifera/ppect_mg022/TSK000001",
+      "ok": true,
+      "equal": true,
+      "seconds": 0.010366003960371017
+    },
+    {
+      "kind": "fragmented",
+      "case": "Patiria_pectinifera/ppect_mg022/TSK000002",
+      "ok": true,
+      "equal": true,
+      "seconds": 0.006091332994401455
+    },
+    {
+      "kind": "fragmented",
+      "case": "Patiria_pectinifera/ppect_mg022/TSKPAD001",
+      "ok": true,
+      "equal": true,
+      "seconds": 0.011589774978347123
+    },
+    {
+      "kind": "fragmented",
+      "case": "Patiria_pectinifera/ppect_mg023/TSK000001",
+      "ok": true,
+      "equal": true,
+      "seconds": 0.011981682037003338
+    },
+    {
+      "kind": "fragmented",
+      "case": "Patiria_pectinifera/ppect_mg023/TSK000002",
+      "ok": true,
+      "equal": true,
+      "seconds": 0.006448235013522208
+    },
+    {
+      "kind": "fragmented",
+      "case": "Patiria_pectinifera/ppect_mg023/TSKPAD001",
+      "ok": true,
+      "equal": true,
+      "seconds": 0.012229901971295476
+    },
+    {
+      "kind": "fragmented",
+      "case": "Patiria_pectinifera/ppect_mg024/TSK000001",
+      "ok": true,
+      "equal": true,
+      "seconds": 0.019132450921460986
+    },
+    {
+      "kind": "fragmented",
+      "case": "Patiria_pectinifera/ppect_mg024/TSK000002",
+      "ok": true,
+      "equal": true,
+      "seconds": 0.017857955070212483
+    },
+    {
+      "kind": "fragmented",
+      "case": "Patiria_pectinifera/ppect_mg025/TSK000001",
+      "ok": true,
+      "equal": true,
+      "seconds": 0.021147168008610606
+    },
+    {
+      "kind": "fragmented",
+      "case": "Patiria_pectinifera/ppect_mg025/TSK000002",
+      "ok": true,
+      "equal": true,
+      "seconds": 0.012372967903502285
+    },
+    {
+      "kind": "fragmented",
+      "case": "Patiria_pectinifera/ppect_mg026/TSK000001",
+      "ok": true,
+      "equal": true,
+      "seconds": 0.08239162794779986
+    },
+    {
+      "kind": "fragmented",
+      "case": "Patiria_pectinifera/ppect_mg026/TSK000002",
+      "ok": true,
+      "equal": true,
+      "seconds": 0.00884434103500098
+    },
+    {
+      "kind": "fragmented",
+      "case": "Patiria_pectinifera/ppect_mg027/TSK000001",
+      "ok": true,
+      "equal": true,
+      "seconds": 0.0226520209107548
+    },
+    {
+      "kind": "fragmented",
+      "case": "Patiria_pectinifera/ppect_mg027/TSK000002",
+      "ok": true,
+      "equal": true,
+      "seconds": 0.009622454061172903
+    },
+    {
+      "kind": "fragmented",
+      "case": "Patiria_pectinifera/ppect_mg028/TSK000001",
+      "ok": true,
+      "equal": true,
+      "seconds": 0.022843084996566176
+    },
+    {
+      "kind": "fragmented",
+      "case": "Patiria_pectinifera/ppect_mg028/TSK000002",
+      "ok": true,
+      "equal": true,
+      "seconds": 0.01006237103138119
+    },
+    {
+      "kind": "fragmented",
+      "case": "Patiria_pectinifera/ppect_mg029/TSK000001",
+      "ok": true,
+      "equal": true,
+      "seconds": 0.03081815503537655
+    },
+    {
+      "kind": "fragmented",
+      "case": "Patiria_pectinifera/ppect_mg029/TSK000002",
+      "ok": true,
+      "equal": true,
+      "seconds": 0.01467820699326694
+    },
+    {
+      "kind": "fragmented",
+      "case": "Patiria_pectinifera/ppect_mg030/TSK000001",
+      "ok": true,
+      "equal": true,
+      "seconds": 0.02515819191467017
+    },
+    {
+      "kind": "fragmented",
+      "case": "Patiria_pectinifera/ppect_mg030/TSK000002",
+      "ok": true,
+      "equal": true,
+      "seconds": 0.010004193987697363
+    },
+    {
+      "kind": "fragmented",
+      "case": "Patiria_pectinifera/ppect_mg031/TSK000001",
+      "ok": true,
+      "equal": true,
+      "seconds": 0.017102063982747495
+    },
+    {
+      "kind": "fragmented",
+      "case": "Patiria_pectinifera/ppect_mg031/TSK000002",
+      "ok": true,
+      "equal": true,
+      "seconds": 0.007984956027939916
+    },
+    {
+      "kind": "fragmented",
+      "case": "Patiria_pectinifera/ppect_mg032/TSK000001",
+      "ok": true,
+      "equal": true,
+      "seconds": 0.005496609024703503
+    },
+    {
+      "kind": "fragmented",
+      "case": "Patiria_pectinifera/ppect_mg032/TSK000002",
+      "ok": true,
+      "equal": true,
+      "seconds": 0.0038164419820532203
+    },
+    {
+      "kind": "fragmented",
+      "case": "Patiria_pectinifera/ppect_mg033/TSK000001",
+      "ok": true,
+      "equal": true,
+      "seconds": 0.01557263603899628
+    },
+    {
+      "kind": "fragmented",
+      "case": "Patiria_pectinifera/ppect_mg033/TSK000002",
+      "ok": true,
+      "equal": true,
+      "seconds": 0.009105404955334961
+    },
+    {
+      "kind": "fragmented",
+      "case": "Patiria_pectinifera/ppect_mg034/TSK000001",
+      "ok": true,
+      "equal": true,
+      "seconds": 0.003904394921846688
+    },
+    {
+      "kind": "fragmented",
+      "case": "Patiria_pectinifera/ppect_mg034/TSK000002",
+      "ok": true,
+      "equal": true,
+      "seconds": 0.0030579440062865615
+    },
+    {
+      "kind": "fragmented",
+      "case": "Patiria_pectinifera/ppect_mg034/TSKPAD001",
+      "ok": true,
+      "equal": true,
+      "seconds": 0.0053388470550999045
+    },
+    {
+      "kind": "fragmented",
+      "case": "Patiria_pectinifera/ppect_mg035/TSK000001",
+      "ok": true,
+      "equal": true,
+      "seconds": 0.0050483670784160495
+    },
+    {
+      "kind": "fragmented",
+      "case": "Patiria_pectinifera/ppect_mg035/TSK000002",
+      "ok": true,
+      "equal": true,
+      "seconds": 0.003160133957862854
+    },
+    {
+      "kind": "fragmented",
+      "case": "Patiria_pectinifera/ppect_mg035/TSKPAD001",
+      "ok": true,
+      "equal": true,
+      "seconds": 0.005911728949286044
+    },
+    {
+      "kind": "fragmented",
+      "case": "Patiria_pectinifera/ppect_mg036/TSK000001",
+      "ok": true,
+      "equal": true,
+      "seconds": 0.008714871015399694
+    },
+    {
+      "kind": "fragmented",
+      "case": "Patiria_pectinifera/ppect_mg036/TSK000002",
+      "ok": true,
+      "equal": true,
+      "seconds": 0.004798262962140143
+    },
+    {
+      "kind": "fragmented",
+      "case": "Patiria_pectinifera/ppect_mg037/TSK000001",
+      "ok": true,
+      "equal": true,
+      "seconds": 0.010970515897497535
+    },
+    {
+      "kind": "fragmented",
+      "case": "Patiria_pectinifera/ppect_mg037/TSK000002",
+      "ok": true,
+      "equal": true,
+      "seconds": 0.008849409990943968
+    },
+    {
+      "kind": "fragmented",
+      "case": "Patiria_pectinifera/ppect_mg037/TSKPAD001",
+      "ok": true,
+      "equal": true,
+      "seconds": 0.012773653026670218
+    },
+    {
+      "kind": "fragmented",
+      "case": "Patiria_pectinifera/ppect_mg038/TSK000001",
+      "ok": true,
+      "equal": true,
+      "seconds": 0.01240656094159931
+    },
+    {
+      "kind": "fragmented",
+      "case": "Patiria_pectinifera/ppect_mg038/TSK000002",
+      "ok": true,
+      "equal": true,
+      "seconds": 0.010244037955999374
+    },
+    {
+      "kind": "fragmented",
+      "case": "Patiria_pectinifera/ppect_mg038/TSKPAD001",
+      "ok": true,
+      "equal": true,
+      "seconds": 0.017853569006547332
+    },
+    {
+      "kind": "fragmented",
+      "case": "Patiria_pectinifera/ppect_mg039/TSK000001",
+      "ok": true,
+      "equal": true,
+      "seconds": 0.01610467303544283
+    },
+    {
+      "kind": "fragmented",
+      "case": "Patiria_pectinifera/ppect_mg039/TSK000002",
+      "ok": true,
+      "equal": true,
+      "seconds": 0.011999846086837351
+    },
+    {
+      "kind": "fragmented",
+      "case": "Patiria_pectinifera/ppect_mg039/TSKPAD001",
+      "ok": true,
+      "equal": true,
+      "seconds": 0.02042629208881408
+    },
+    {
+      "kind": "fragmented",
+      "case": "Patiria_pectinifera/ppect_mg040/TSK000001",
+      "ok": true,
+      "equal": true,
+      "seconds": 0.00505267595872283
+    },
+    {
+      "kind": "fragmented",
+      "case": "Patiria_pectinifera/ppect_mg040/TSK000002",
+      "ok": true,
+      "equal": true,
+      "seconds": 0.004220391041599214
+    },
+    {
+      "kind": "fragmented",
+      "case": "Patiria_pectinifera/ppect_mg040/TSKPAD001",
+      "ok": true,
+      "equal": true,
+      "seconds": 0.00554732303135097
+    },
+    {
+      "kind": "fragmented",
+      "case": "Patiria_pectinifera/ppect_mg041/TSK000001",
+      "ok": true,
+      "equal": true,
+      "seconds": 0.02633921499364078
+    },
+    {
+      "kind": "fragmented",
+      "case": "Patiria_pectinifera/ppect_mg041/TSK000002",
+      "ok": true,
+      "equal": true,
+      "seconds": 0.017177853966131806
+    },
+    {
+      "kind": "fragmented",
+      "case": "Patiria_pectinifera/ppect_mg042/TSK000001",
+      "ok": true,
+      "equal": true,
+      "seconds": 0.0048017100198194385
+    },
+    {
+      "kind": "fragmented",
+      "case": "Patiria_pectinifera/ppect_mg042/TSK000002",
+      "ok": true,
+      "equal": true,
+      "seconds": 0.0032921290257945657
+    },
+    {
+      "kind": "fragmented",
+      "case": "Patiria_pectinifera/ppect_mg042/TSKPAD001",
+      "ok": true,
+      "equal": true,
+      "seconds": 0.005395913030952215
+    },
+    {
+      "kind": "fragmented",
+      "case": "Patiria_pectinifera/ppect_mg043/TSK000001",
+      "ok": true,
+      "equal": true,
+      "seconds": 0.017503218026831746
+    },
+    {
+      "kind": "fragmented",
+      "case": "Patiria_pectinifera/ppect_mg043/TSK000002",
+      "ok": true,
+      "equal": true,
+      "seconds": 0.017299921019002795
+    },
+    {
+      "kind": "fragmented",
+      "case": "Patiria_pectinifera/ppect_mg043/TSKPAD001",
+      "ok": true,
+      "equal": true,
+      "seconds": 0.025179362040944397
+    },
+    {
+      "kind": "fragmented",
+      "case": "Patiria_pectinifera/ppect_mg044/TSK000001",
+      "ok": true,
+      "equal": true,
+      "seconds": 0.009782843058928847
+    },
+    {
+      "kind": "fragmented",
+      "case": "Patiria_pectinifera/ppect_mg044/TSK000002",
+      "ok": true,
+      "equal": true,
+      "seconds": 0.009140430018305779
+    },
+    {
+      "kind": "fragmented",
+      "case": "Patiria_pectinifera/ppect_mg044/TSKPAD001",
+      "ok": true,
+      "equal": true,
+      "seconds": 0.01220297405961901
+    },
+    {
+      "kind": "fragmented",
+      "case": "Patiria_pectinifera/ppect_mg045/TSK000001",
+      "ok": true,
+      "equal": true,
+      "seconds": 0.006480315001681447
+    },
+    {
+      "kind": "fragmented",
+      "case": "Patiria_pectinifera/ppect_mg045/TSK000002",
+      "ok": true,
+      "equal": true,
+      "seconds": 0.007199469022452831
+    },
+    {
+      "kind": "fragmented",
+      "case": "Patiria_pectinifera/ppect_mg046/TSK000001",
+      "ok": true,
+      "equal": true,
+      "seconds": 0.011114854016341269
+    },
+    {
+      "kind": "fragmented",
+      "case": "Patiria_pectinifera/ppect_mg046/TSK000002",
+      "ok": true,
+      "equal": true,
+      "seconds": 0.012828884995542467
+    },
+    {
+      "kind": "fragmented",
+      "case": "Patiria_pectinifera/ppect_mg046/TSKPAD001",
+      "ok": true,
+      "equal": true,
+      "seconds": 0.015491646016016603
+    },
+    {
+      "kind": "fragmented",
+      "case": "Patiria_pectinifera/ppect_mg047/TSK000001",
+      "ok": true,
+      "equal": true,
+      "seconds": 0.0052829430205747485
+    },
+    {
+      "kind": "fragmented",
+      "case": "Patiria_pectinifera/ppect_mg047/TSK000002",
+      "ok": true,
+      "equal": true,
+      "seconds": 0.008236824069172144
+    },
+    {
+      "kind": "fragmented",
+      "case": "Patiria_pectinifera/ppect_mg048/TSK000001",
+      "ok": true,
+      "equal": true,
+      "seconds": 0.011916502029635012
+    },
+    {
+      "kind": "fragmented",
+      "case": "Patiria_pectinifera/ppect_mg048/TSK000002",
+      "ok": true,
+      "equal": true,
+      "seconds": 0.011249022907577455
+    },
+    {
+      "kind": "fragmented",
+      "case": "Patiria_pectinifera/ppect_mg048/TSKPAD001",
+      "ok": true,
+      "equal": true,
+      "seconds": 0.016127896960824728
+    },
+    {
+      "kind": "fragmented",
+      "case": "Patiria_pectinifera/ppect_mg049/TSK000001",
+      "ok": true,
+      "equal": true,
+      "seconds": 0.013253152021206915
+    },
+    {
+      "kind": "fragmented",
+      "case": "Patiria_pectinifera/ppect_mg049/TSK000002",
+      "ok": true,
+      "equal": true,
+      "seconds": 0.023158272029832006
+    },
+    {
+      "kind": "fragmented",
+      "case": "Patiria_pectinifera/ppect_mg050/TSK000001",
+      "ok": true,
+      "equal": true,
+      "seconds": 0.009400903945788741
+    },
+    {
+      "kind": "fragmented",
+      "case": "Patiria_pectinifera/ppect_mg050/TSK000002",
+      "ok": true,
+      "equal": true,
+      "seconds": 0.02478150394745171
+    },
+    {
+      "kind": "fragmented",
+      "case": "Patiria_pectinifera/ppect_mg051/TSK000001",
+      "ok": true,
+      "equal": true,
+      "seconds": 0.005617804010398686
+    },
+    {
+      "kind": "fragmented",
+      "case": "Patiria_pectinifera/ppect_mg051/TSK000002",
+      "ok": true,
+      "equal": true,
+      "seconds": 0.00796023104339838
+    },
+    {
+      "kind": "fragmented",
+      "case": "Patiria_pectinifera/ppect_mg051/TSKPAD001",
+      "ok": true,
+      "equal": true,
+      "seconds": 0.009258109028451145
+    },
+    {
+      "kind": "fragmented",
+      "case": "Patiria_pectinifera/ppect_mg052/TSK000001",
+      "ok": true,
+      "equal": true,
+      "seconds": 0.0076721059158444405
+    },
+    {
+      "kind": "fragmented",
+      "case": "Patiria_pectinifera/ppect_mg052/TSK000002",
+      "ok": true,
+      "equal": true,
+      "seconds": 0.012924722977913916
+    },
+    {
+      "kind": "fragmented",
+      "case": "Patiria_pectinifera/ppect_mg053/TSK000001",
+      "ok": true,
+      "equal": true,
+      "seconds": 0.010696318000555038
+    },
+    {
+      "kind": "fragmented",
+      "case": "Patiria_pectinifera/ppect_mg053/TSK000002",
+      "ok": true,
+      "equal": true,
+      "seconds": 0.020696694031357765
+    },
+    {
+      "kind": "fragmented",
+      "case": "Patiria_pectinifera/ppect_mg054/TSK000001",
+      "ok": true,
+      "equal": true,
+      "seconds": 0.002638665959239006
+    },
+    {
+      "kind": "fragmented",
+      "case": "Patiria_pectinifera/ppect_mg054/TSK000002",
+      "ok": true,
+      "equal": true,
+      "seconds": 0.004399342928081751
+    },
+    {
+      "kind": "fragmented",
+      "case": "Patiria_pectinifera/ppect_mg055/TSK000001",
+      "ok": true,
+      "equal": true,
+      "seconds": 0.009533940930850804
+    },
+    {
+      "kind": "fragmented",
+      "case": "Patiria_pectinifera/ppect_mg055/TSK000002",
+      "ok": true,
+      "equal": true,
+      "seconds": 0.01766604103613645
+    },
+    {
+      "kind": "fragmented",
+      "case": "Patiria_pectinifera/ppect_mg056/TSK000001",
+      "ok": true,
+      "equal": true,
+      "seconds": 0.010312785976566374
+    },
+    {
+      "kind": "fragmented",
+      "case": "Patiria_pectinifera/ppect_mg056/TSK000002",
+      "ok": true,
+      "equal": true,
+      "seconds": 0.014174151001498103
+    }
+  ]
+}

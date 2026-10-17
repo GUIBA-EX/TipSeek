@@ -309,6 +309,8 @@ The tables below list the main public options and current defaults. Run `cli/tip
 | --- | --- |
 | `--gene-protein-reference DIR` | Optional per-family `.faa` overrides; matching stems replace automatic translation while other families remain auto-derived |
 | `--gene-miniprot PATH` | miniprot executable; default `miniprot`, version 0.18 or later required |
+| `--gene-exon-backend NAME` | Independent exon annotation backend: `miniprot` (default) or `exonerate-rs`; Exonerate is resolved through PATH without a path argument |
+| `--gene-exonerate-shadow` | Optional exonerate-rs comparison using the current environment’s PATH, with no path argument; miniprot remains authoritative; disabled by default |
 | `--gene-max-intron INT` | Maximum intron accepted by miniprot; default `50000` |
 | `--gene-min-model-coverage FLOAT` | Minimum protein coverage for a normal partial model; default `0.20`. Padding trials alone allow a one-residue discretization margin. |
 | `--gene-complete-coverage FLOAT` | Minimum complete-model coverage; default `0.80`, with both protein termini also required |
@@ -376,3 +378,7 @@ Padding candidates remain unresolved unless reannotation yields one unique compl
 | `--stats-count-input-reads` | Count input FASTQ reads for `InputReads` and `PctFiltered`; slow on large datasets |
 
 Fractional thresholds use decimals from `0` to `1`. Before changing filters on a full dataset, run a small test with defaults and inspect intermediate VCFs, mapping QC, and locus occupancy.
+
+Exon annotation audits recruited paired reads under the workflow output; `--gene-reads-root DIR` selects another workflow root. `-p` controls SCO-level task-queue concurrency (up to 64), with one thread per candidate. See [exon mode](../../docs/exon_EN.md).
+
+`--gene-sco-reference ID`: select the within-SCO reference coordinate backbone. `exon/sco/<SCO>.fasta` has one composite sequence per sample, with missing/conflicting bases masked as N; it is not a validated complete or single-copy CDS.

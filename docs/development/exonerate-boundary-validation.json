@@ -1,0 +1,207 @@
+{
+  "resolved_exonerate": "/home/yasuda2/exonerate/target/release/exonerate-rs",
+  "output_root": "/tmp/tipseek-exonerate-shadow-0a8uzvjn",
+  "sha256": {
+    "/home/yasuda2/TipSeek/target/release/gene_workflow": "de35e9fa32da9349ee71618d481f7c40c0d36df501e4d4a0ce483e85b4ce9101",
+    "/home/yasuda2/exonerate/target/release/exonerate-rs": "08b051473541dc7711055e218d13334bb868517acc62e60bb9e5118b94a6ee46",
+    "/home/yasuda2/miniforge3/pkgs/miniprot-0.18-h577a1d6_0/bin/miniprot": "f8822f41eceb53a6ca611bd6606faf035aeb913030d1dede7fd7889ab37d4f52"
+  },
+  "datasets": [
+    {
+      "kind": "intact",
+      "runs": {
+        "baseline": {
+          "command": [
+            "/home/yasuda2/TipSeek/target/release/gene_workflow",
+            "annotate",
+            "--input",
+            "/home/yasuda2/tipseek_starfish_multigene_test_20260921/intact/gene",
+            "--nucleotide-reference",
+            "/home/yasuda2/tipseek_starfish_multigene_test_20260921/references",
+            "--out",
+            "/tmp/tipseek-exonerate-shadow-0a8uzvjn/intact-baseline",
+            "--miniprot",
+            "/home/yasuda2/miniforge3/pkgs/miniprot-0.18-h577a1d6_0/bin/miniprot",
+            "--threads",
+            "1",
+            "--max-intron",
+            "50000",
+            "--minimum-coverage",
+            "0.20",
+            "--complete-coverage",
+            "0.80",
+            "--flank",
+            "0",
+            "--fragment-padding",
+            "100"
+          ],
+          "returncode": 0,
+          "seconds": 1.5660149240866303
+        },
+        "shadow": {
+          "command": [
+            "/home/yasuda2/TipSeek/target/release/gene_workflow",
+            "annotate",
+            "--input",
+            "/home/yasuda2/tipseek_starfish_multigene_test_20260921/intact/gene",
+            "--nucleotide-reference",
+            "/home/yasuda2/tipseek_starfish_multigene_test_20260921/references",
+            "--out",
+            "/tmp/tipseek-exonerate-shadow-0a8uzvjn/intact-shadow",
+            "--miniprot",
+            "/home/yasuda2/miniforge3/pkgs/miniprot-0.18-h577a1d6_0/bin/miniprot",
+            "--threads",
+            "1",
+            "--max-intron",
+            "50000",
+            "--minimum-coverage",
+            "0.20",
+            "--complete-coverage",
+            "0.80",
+            "--flank",
+            "0",
+            "--fragment-padding",
+            "100",
+            "--exonerate-shadow"
+          ],
+          "returncode": 0,
+          "seconds": 2.568135844077915
+        }
+      },
+      "compared_files": 392,
+      "changed_authoritative_outputs": [],
+      "report_rows": 86,
+      "status_counts": {
+        "coordinate_difference": 86
+      },
+      "stage_counts": {
+        "candidate": 86
+      },
+      "before_model_states": {
+        "complete": 52,
+        "frameshifted": 3,
+        "internal_stop": 1
+      },
+      "before_padding_states": {},
+      "after_model_states": {
+        "complete": 39,
+        "terminal_partial": 13,
+        "frameshifted": 3,
+        "internal_stop": 1
+      },
+      "after_padding_states": {},
+      "miniprot_raw_outputs_unchanged": true
+    },
+    {
+      "kind": "fragmented",
+      "runs": {
+        "baseline": {
+          "command": [
+            "/home/yasuda2/TipSeek/target/release/gene_workflow",
+            "annotate",
+            "--input",
+            "/home/yasuda2/tipseek_starfish_multigene_test_20260921/fragmented/gene",
+            "--nucleotide-reference",
+            "/home/yasuda2/tipseek_starfish_multigene_test_20260921/references",
+            "--out",
+            "/tmp/tipseek-exonerate-shadow-0a8uzvjn/fragmented-baseline",
+            "--miniprot",
+            "/home/yasuda2/miniforge3/pkgs/miniprot-0.18-h577a1d6_0/bin/miniprot",
+            "--threads",
+            "1",
+            "--max-intron",
+            "50000",
+            "--minimum-coverage",
+            "0.20",
+            "--complete-coverage",
+            "0.80",
+            "--flank",
+            "0",
+            "--fragment-padding",
+            "100"
+          ],
+          "returncode": 0,
+          "seconds": 3.8698625180404633
+        },
+        "shadow": {
+          "command": [
+            "/home/yasuda2/TipSeek/target/release/gene_workflow",
+            "annotate",
+            "--input",
+            "/home/yasuda2/tipseek_starfish_multigene_test_20260921/fragmented/gene",
+            "--nucleotide-reference",
+            "/home/yasuda2/tipseek_starfish_multigene_test_20260921/references",
+            "--out",
+            "/tmp/tipseek-exonerate-shadow-0a8uzvjn/fragmented-shadow",
+            "--miniprot",
+            "/home/yasuda2/miniforge3/pkgs/miniprot-0.18-h577a1d6_0/bin/miniprot",
+            "--threads",
+            "1",
+            "--max-intron",
+            "50000",
+            "--minimum-coverage",
+            "0.20",
+            "--complete-coverage",
+            "0.80",
+            "--flank",
+            "0",
+            "--fragment-padding",
+            "100",
+            "--exonerate-shadow"
+          ],
+          "returncode": 0,
+          "seconds": 6.022931456100196
+        }
+      },
+      "compared_files": 488,
+      "changed_authoritative_outputs": [],
+      "report_rows": 179,
+      "status_counts": {
+        "exonerate_only": 5,
+        "coordinate_difference": 139,
+        "both_no_hit": 5,
+        "reported_hits_match": 30
+      },
+      "stage_counts": {
+        "candidate": 137,
+        "padded_join": 42
+      },
+      "before_model_states": {
+        "terminal_partial": 81,
+        "complete": 34,
+        "low_coverage": 13,
+        "frameshifted": 2,
+        "internal_stop": 1
+      },
+      "before_padding_states": {
+        "padded_validated": 29,
+        "padded_validation_failed": 1
+      },
+      "after_model_states": {
+        "terminal_partial": 84,
+        "complete": 25,
+        "low_coverage": 13,
+        "frameshifted": 2,
+        "internal_stop": 1
+      },
+      "after_padding_states": {
+        "padded_validated": 23,
+        "padded_validation_failed": 7
+      },
+      "miniprot_raw_outputs_unchanged": true
+    }
+  ],
+  "passed": true,
+  "scope": "Reference boundary QC changes, raw original-Exonerate parity, and shadow non-interference. Source GFF/CDS agreement is reference concordance, not biological ground truth or evidence of independent model accuracy. Microexon recovery remains unresolved.",
+  "workspace_tests_passed": 293,
+  "original_exonerate_parity": {
+    "calls": 198,
+    "exact_stdout_matches": 197,
+    "binary_sha256": "c0534f18eaf0d83c919507ae5345a0651933019438cb83213099c9abd7f39d08",
+    "raw_outputs": "/tmp/tipseek-original-audit",
+    "different_cases": [
+      "intact-shadow/raw_exonerate_shadow/Patiria_pectinifera/ppect_mg046/TSK000001"
+    ],
+    "note": "mg046 differs only in a rejected, low-coverage opposite-strand hit. Main source-strand path agrees. Original exhaustive search produces yet another higher-scoring opposite-strand hit, demonstrating a heuristic search difference, not proof that either heuristic found an optimum."
+  }
+}

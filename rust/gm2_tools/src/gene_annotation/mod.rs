@@ -10,11 +10,21 @@ use std::fs::File;
 use std::io::{self, BufRead, BufReader};
 use std::path::Path;
 
+pub mod chain;
+mod contig_equivalence;
+pub mod evidence;
+pub mod exon_recovery;
+pub mod exonerate;
 mod model;
+pub mod protein_projection;
+pub mod reads;
+pub mod screen;
 mod select;
+pub mod shadow;
 
 pub use model::{
-    build_gene_model, ExonSequence, GeneModel, IntronSequence, ModelConfig, ModelState, SpliceClass,
+    build_gene_model, build_gene_model_with_evidence, ExonSequence, GeneModel, IntronSequence,
+    ModelConfig, ModelState, SpliceClass,
 };
 pub use select::select_competing_models;
 
@@ -163,6 +173,7 @@ pub struct RawGeneModel {
     pub rank: Option<usize>,
     pub cdss: Vec<CdsFeature>,
     pub paf: Option<PafRecord>,
+    pub evidence: Option<evidence::AlignmentEvidence>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -245,25 +256,38 @@ pub fn parse_paf_line(line: &str) -> Result<PafRecord, String> {
         fields[8].parse().map_err(|_| "invalid PAF target end")?,
     )
     .ok_or_else(|| "invalid PAF target interval".to_owned())?;
+    let query_len = fields[1].parse().map_err(|_| "invalid PAF query length")?;
+    let target_len = fields[6].parse().map_err(|_| "invalid PAF target length")?;
+    if query_interval.end > query_len || target_interval.end > target_len {
+        return Err("PAF interval exceeds sequence length".into());
+    }
     let tags = &fields[12..];
+    let count_tag = |key| -> Result<usize, String> {
+        paf_tag(tags.iter().copied(), key)
+            .map(|value| {
+                value
+                    .parse::<usize>()
+                    .map_err(|_| format!("invalid PAF {key} count"))
+            })
+            .transpose()
+            .map(|value| value.unwrap_or(0))
+    };
     Ok(PafRecord {
         query_id: fields[0].to_owned(),
-        query_len: fields[1].parse().map_err(|_| "invalid PAF query length")?,
+        query_len,
         query_interval,
         strand: Strand::parse(fields[4]).ok_or_else(|| "invalid PAF strand".to_owned())?,
         target_id: fields[5].to_owned(),
-        target_len: fields[6].parse().map_err(|_| "invalid PAF target length")?,
+        target_len,
         target_interval,
         matches_nt: fields[9].parse().map_err(|_| "invalid PAF matches")?,
         block_len_nt: fields[10].parse().map_err(|_| "invalid PAF block length")?,
         mapq: fields[11].parse().map_err(|_| "invalid PAF mapq")?,
-        alignment_score: paf_tag(tags.iter().copied(), "AS").and_then(|value| value.parse().ok()),
-        frameshifts: paf_tag(tags.iter().copied(), "fs")
-            .and_then(|value| value.parse().ok())
-            .unwrap_or(0),
-        inframe_stops: paf_tag(tags.iter().copied(), "st")
-            .and_then(|value| value.parse().ok())
-            .unwrap_or(0),
+        alignment_score: paf_tag(tags.iter().copied(), "AS")
+            .map(|value| value.parse().map_err(|_| "invalid PAF alignment score"))
+            .transpose()?,
+        frameshifts: count_tag("fs")?,
+        inframe_stops: count_tag("st")?,
         cigar: paf_tag(tags.iter().copied(), "cg").map(str::to_owned),
         cs: paf_tag(tags.iter().copied(), "cs").map(str::to_owned),
     })
@@ -402,6 +426,7 @@ pub fn parse_miniprot_output(output: &str) -> ParseReport {
             rank: mrna.rank,
             cdss: cds_by_parent.remove(&mrna.id).unwrap_or_default(),
             paf: best_paf.map(|index| pafs[index].clone()),
+            evidence: None,
         });
     }
     ParseReport {
@@ -584,5 +609,33 @@ mod tests {
             translate_cds("ATGA"),
             Err(TranslationError::NonTripletLength(4))
         );
+    }
+    #[test]
+    fn malformed_paf_evidence_is_not_silently_treated_as_clean() {
+        let valid = "p\t4\t0\t4\t+\tc\t12\t0\t12\t12\t12\t60";
+        for tag in ["fs:i:bad", "st:i:-1", "AS:i:bad"] {
+            assert!(parse_paf_line(&format!("{valid}\t{tag}")).is_err(), "{tag}");
+        }
+        assert!(parse_paf_line("p\t3\t0\t4\t+\tc\t12\t0\t12\t12\t12\t60").is_err());
+        assert!(parse_paf_line("p\t4\t0\t4\t+\tc\t11\t0\t12\t12\t12\t60").is_err());
+        assert!(parse_paf_line(valid).is_ok());
+    }
+    #[test]
+    fn invalid_paf_cannot_supply_acceptance_evidence_to_valid_gff() {
+        let text = "##PAF\tp\t4\t0\t4\t+\tc\t12\t0\t12\t12\t12\t60\tfs:i:bad\n\
+                    c\tminiprot\tmRNA\t1\t12\t100\t+\t.\tID=m;Target=p 1 4\n\
+                    c\tminiprot\tCDS\t1\t12\t100\t+\t0\tParent=m\n";
+        let report = parse_miniprot_output(text);
+        assert!(!report.warnings.is_empty());
+        assert_eq!(report.models.len(), 1);
+        let model = build_gene_model(
+            &report.models[0],
+            "ATGAAATTTCCC",
+            Some(4),
+            ModelConfig::default(),
+        )
+        .unwrap();
+        assert!(!model.eligible_for_resolve);
+        assert!(model.qc_flags.iter().any(|f| f == "missing_paf"));
     }
 }

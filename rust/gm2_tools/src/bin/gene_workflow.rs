@@ -22,6 +22,11 @@ use gm2_tools::gene_annotation::{
 
 const FASTA_EXTENSIONS: &[&str] = &["fa", "fas", "fasta"];
 
+#[path = "../gene_annotation/family_scheduler.rs"]
+mod family_scheduler;
+#[path = "../gene_annotation/sco_rebuild.rs"]
+mod sco_rebuild;
+
 // Protein intervals are discrete; allow a one-residue rounding margin only
 // when deciding whether a padded reannotation is worth attempting.
 fn meets_padding_minimum(residue_count: usize, protein_len: usize, minimum_coverage: f64) -> bool {
@@ -89,17 +94,42 @@ fn padding_source_eligible(model: &GeneModel, minimum_coverage: f64) -> bool {
             .protein
             .as_ref()
             .is_some_and(|protein| !protein.contains('X'))
-        && !model
-            .qc_flags
-            .iter()
-            .any(|flag| flag == "missing_paf" || flag == "noncanonical_splice")
+        && !model.qc_flags.iter().any(|flag| {
+            flag == "missing_paf"
+                || flag == "noncanonical_splice"
+                || flag == "invalid_splice_length"
+        })
 }
 
-fn oriented_candidate(sequence: &str, strand: Strand) -> String {
-    match strand {
-        Strand::Forward => sequence.to_owned(),
-        Strand::Reverse => reverse_complement_iupac(sequence),
+// Keep every failed gate visible; selection and structural rejection can coexist.
+fn padded_model_rejections(model: &GeneModel, padding: Interval) -> Vec<&'static str> {
+    let mut reasons = Vec::new();
+    if !model.selected {
+        reasons.push("not_selected");
     }
+    if !model.eligible_for_resolve {
+        reasons.push("structurally_ineligible");
+    }
+    if model.state != ModelState::Complete {
+        reasons.push("not_complete");
+    }
+    if model.strand != Strand::Forward {
+        reasons.push("reverse_join");
+    }
+    if model.genomic_interval.start > padding.start || model.genomic_interval.end < padding.end {
+        reasons.push("does_not_span_padding");
+    }
+    if !model
+        .introns
+        .iter()
+        .any(|i| i.interval.start <= padding.start && i.interval.end >= padding.end)
+    {
+        reasons.push("padding_not_in_single_intron");
+    }
+    if model.exons.iter().any(|e| e.interval.overlap(padding) > 0) {
+        reasons.push("coding_overlaps_padding");
+    }
+    reasons
 }
 
 fn run_miniprot(
@@ -111,7 +141,7 @@ fn run_miniprot(
 ) -> io::Result<(Output, String)> {
     let max_intron = max_intron.to_string();
     let command = format!(
-        "{executable} --gff -j 1 -G {max_intron} --outc 0.10 --outs 0.20 -N 32 --outn 32 -t {threads} {} {}",
+        "{executable} --gff -j 1 -G {max_intron} -L 10 -n 2 --outc 0 --outs 0.20 -N 32 --outn 32 -t {threads} {} {}",
         target.display(),
         proteins.display()
     );
@@ -122,8 +152,12 @@ fn run_miniprot(
             "1",
             "-G",
             &max_intron,
+            "-L",
+            "10",
+            "-n",
+            "2",
             "--outc",
-            "0.10",
+            "0",
             "--outs",
             "0.20",
             "-N",
@@ -164,7 +198,7 @@ struct Call {
 
 fn usage() -> ! {
     eprintln!(
-        "Usage:\n  gene_workflow classify --reference DIR --contigs DIR --sample NAME --out DIR\n  gene_workflow cohort --reference DIR --out DIR --sample NAME [--sample NAME ...]\n  gene_workflow annotate --input DIR --nucleotide-reference DIR [--protein-reference DIR] --out DIR --miniprot FILE [--threads N] [--max-intron N] [--minimum-coverage F] [--complete-coverage F] [--flank N] [--fragment-padding N]\n  gene_workflow resolve --input DIR --out DIR --mafft FILE --iqtree FILE --min-taxa N [--threads N] [--outgroup FILE] [--ufboot N] [--min-aa-length N] [--min-effective-codon-sites N] [--taper-script FILE --julia FILE]"
+        "Usage:\n  gene_workflow classify --reference DIR --contigs DIR --sample NAME --out DIR\n  gene_workflow cohort --reference DIR --out DIR --sample NAME [--sample NAME ...]\n  gene_workflow annotate --input DIR --nucleotide-reference DIR [--protein-reference DIR] --out DIR [--backend miniprot|exonerate-rs] [--miniprot FILE] [--threads N] [--max-intron N] [--minimum-coverage F] [--complete-coverage F] [--flank N] [--fragment-padding N] [--reads-root WORKFLOW_DIR] [--sco-reference ID] [--exonerate-shadow]\n  gene_workflow recover-sco --annotation DIR --input DIR --out DIR [--threads N] [--sco-reference ID] [--sco-backbone-manifest TSV] [--reads-root WORKFLOW_DIR]\n  gene_workflow resolve --input DIR --out DIR --mafft FILE --iqtree FILE --min-taxa N [--threads N] [--outgroup FILE] [--ufboot N] [--min-aa-length N] [--min-effective-codon-sites N] [--taper-script FILE --julia FILE]"
     );
     std::process::exit(2);
 }
@@ -185,6 +219,14 @@ fn parse_options(args: &[String]) -> HashMap<String, Vec<String>> {
         if !flag.starts_with("--") {
             eprintln!("Unexpected argument: {flag}");
             usage();
+        }
+        if matches!(
+            flag.as_str(),
+            "--exonerate-shadow" | "--retain-exon-fragments"
+        ) {
+            options.entry(flag.clone()).or_default();
+            index += 1;
+            continue;
         }
         let value = take_value(args, &mut index, flag);
         options.entry(flag.clone()).or_default().push(value);
@@ -584,6 +626,7 @@ fn prepare_annotation_references(
     external_proteins: Option<&Path>,
     derived_dir: &Path,
     manifest: &mut impl Write,
+    wanted: Option<&BTreeSet<String>>,
 ) -> io::Result<BTreeMap<String, PathBuf>> {
     fs::create_dir_all(derived_dir)?;
     writeln!(manifest, "family_id\treference_sequence\tprotein_id\tsource\tstrand\tframe\tnucleotide_length\tamino_acid_length\tinternal_stops\tambiguous_amino_acids\tstarts_with_methionine\tterminal_stop\tselection_score\tselected\tstatus")?;
@@ -592,6 +635,9 @@ fn prepare_annotation_references(
         let Some(family) = family_id(&nucleotide_path) else {
             continue;
         };
+        if wanted.is_some_and(|families| !families.contains(&family)) {
+            continue;
+        }
         let external_path =
             external_proteins.map(|directory| directory.join(format!("{family}.faa")));
         if let Some(path) = external_path.filter(|path| path.is_file()) {
@@ -615,7 +661,9 @@ fn prepare_annotation_references(
                     sequence.matches('X').count()
                 )?;
             }
-            family_proteins.insert(family, path);
+            let cached = derived_dir.join(format!("{family}.faa"));
+            fs::copy(&path, &cached)?;
+            family_proteins.insert(family, cached);
             continue;
         }
 
@@ -790,12 +838,20 @@ fn is_strict_path_prefix(longer: &Candidate, shorter: &Candidate) -> bool {
     longer.key.len() > shorter.key.len() && longer.key.starts_with(&shorter.key)
 }
 
-fn unique_candidates(path: &Path, reference_length: usize) -> io::Result<(Vec<Candidate>, String)> {
+fn unique_candidates(
+    path: &Path,
+    reference_length: usize,
+    retain_exon_fragments: bool,
+) -> io::Result<(Vec<Candidate>, String)> {
     if !path.is_file() {
         return Ok((Vec::new(), "no_candidates".to_owned()));
     }
     let raw = read_fasta(path)?;
-    let minimum_length = (reference_length / 3).max(40);
+    let minimum_length = if retain_exon_fragments {
+        30
+    } else {
+        (reference_length / 3).max(40)
+    };
     let mut flags = BTreeSet::new();
     if raw.is_empty() {
         flags.insert("empty_candidates");
@@ -871,7 +927,13 @@ fn write_candidates(
     Ok(())
 }
 
-fn classify(reference: PathBuf, contigs: PathBuf, sample: String, out: PathBuf) -> io::Result<()> {
+fn classify(
+    reference: PathBuf,
+    contigs: PathBuf,
+    sample: String,
+    out: PathBuf,
+    retain_exon_fragments: bool,
+) -> io::Result<()> {
     let families = family_lengths(&reference)?;
     let sample_root = out.join("samples").join(&sample);
     let candidate_dir = sample_root.join("candidates");
@@ -883,7 +945,8 @@ fn classify(reference: PathBuf, contigs: PathBuf, sample: String, out: PathBuf) 
 
     for (family, reference_length) in families {
         let input = contigs.join(format!("{family}.fasta"));
-        let (candidates, flags) = unique_candidates(&input, reference_length)?;
+        let (candidates, flags) =
+            unique_candidates(&input, reference_length, retain_exon_fragments)?;
         let state = if !input.is_file() {
             "not_recovered"
         } else if candidates.is_empty() {
@@ -1064,37 +1127,27 @@ fn prospective_canonical_path(path: &Path) -> io::Result<PathBuf> {
     } else {
         env::current_dir()?.join(path)
     };
-    let mut normalized = PathBuf::new();
+    let mut resolved = PathBuf::new();
     for component in absolute.components() {
         match component {
             std::path::Component::CurDir => {}
             std::path::Component::ParentDir => {
-                normalized.pop();
+                // Resolve symlinks before applying .., matching filesystem
+                // traversal rather than lexical path normalization.
+                resolved.pop();
             }
-            _ => normalized.push(component.as_os_str()),
+            std::path::Component::Prefix(_) | std::path::Component::RootDir => {
+                resolved.push(component.as_os_str());
+            }
+            std::path::Component::Normal(_) => {
+                resolved.push(component.as_os_str());
+                match fs::symlink_metadata(&resolved) {
+                    Ok(_) => resolved = fs::canonicalize(&resolved)?,
+                    Err(error) if error.kind() == io::ErrorKind::NotFound => {}
+                    Err(error) => return Err(error),
+                }
+            }
         }
-    }
-    let mut existing = normalized.clone();
-    let mut suffix = Vec::new();
-    while !existing.exists() {
-        let Some(name) = existing.file_name() else {
-            return Err(io::Error::new(
-                io::ErrorKind::NotFound,
-                "path has no existing ancestor",
-            ));
-        };
-        suffix.push(name.to_os_string());
-        let Some(parent) = existing.parent() else {
-            return Err(io::Error::new(
-                io::ErrorKind::NotFound,
-                "path has no existing ancestor",
-            ));
-        };
-        existing = parent.to_path_buf();
-    }
-    let mut resolved = fs::canonicalize(existing)?;
-    for name in suffix.iter().rev() {
-        resolved.push(name);
     }
     Ok(resolved)
 }
@@ -1121,9 +1174,24 @@ fn sorted_directory_paths(path: &Path) -> io::Result<Vec<PathBuf>> {
     Ok(paths)
 }
 
-fn append_fasta(path: &Path, header: &str, sequence: &str) -> io::Result<()> {
+fn append_fasta_records<'a, H: AsRef<str>>(
+    path: &Path,
+    records: impl IntoIterator<Item = (H, &'a str)>,
+) -> io::Result<()> {
+    let mut records = records.into_iter().peekable();
+    if records.peek().is_none() {
+        return Ok(());
+    }
     let mut writer = BufWriter::new(File::options().create(true).append(true).open(path)?);
-    writeln!(writer, ">{header}\n{sequence}")
+    for (header, sequence) in records {
+        writeln!(writer, ">{}\n{sequence}", header.as_ref())?;
+    }
+    // BufWriter::drop discards flush errors; propagate them before reporting success.
+    writer.flush()
+}
+
+fn append_fasta(path: &Path, header: &str, sequence: &str) -> io::Result<()> {
+    append_fasta_records(path, std::iter::once((header, sequence)))
 }
 
 fn safe_identifier(value: &str) -> String {
@@ -1202,7 +1270,7 @@ fn write_normalized_gff(
             intron.splice_class.as_str()
         )?;
     }
-    Ok(())
+    writer.flush()
 }
 
 fn manifest_header() -> &'static str {
@@ -1244,7 +1312,11 @@ fn model_manifest_fields(
         format!("{:.6}", model.coverage()),
         model.alignment_score.to_string(),
         format!("{:.6}", model.identity()),
-        format!("{:.6}", model.positive_fraction()),
+        if model.engine == Some(gm2_tools::gene_annotation::evidence::AlignmentEngine::Exonerate) {
+            ".".into()
+        } else {
+            format!("{:.6}", model.positive_fraction())
+        },
         model.strand.as_char().to_string(),
         (model.genomic_interval.start + 1).to_string(),
         model.genomic_interval.end.to_string(),
@@ -1322,23 +1394,278 @@ fn validated_miniprot_version(executable: &str) -> io::Result<String> {
     Ok(version.to_owned())
 }
 
+#[derive(Clone, Debug)]
+enum AnnotationBackend {
+    Miniprot(String),
+    Exonerate,
+}
+impl From<String> for AnnotationBackend {
+    fn from(value: String) -> Self {
+        Self::Miniprot(value)
+    }
+}
+struct AnnotationOutput {
+    stdout: Vec<u8>,
+    stderr: Vec<u8>,
+    ok: bool,
+}
+impl AnnotationOutput {
+    fn success(&self) -> bool {
+        self.ok
+    }
+}
+impl AnnotationBackend {
+    fn name(&self) -> &'static str {
+        match self {
+            Self::Miniprot(_) => "miniprot",
+            Self::Exonerate => "exonerate-rs",
+        }
+    }
+    fn raw_name(&self) -> &'static str {
+        match self {
+            Self::Miniprot(_) => "raw_miniprot",
+            Self::Exonerate => "raw_exonerate",
+        }
+    }
+    fn extension(&self) -> &'static str {
+        match self {
+            Self::Miniprot(_) => "gff3",
+            Self::Exonerate => "vulgar",
+        }
+    }
+    fn failed(&self) -> &'static str {
+        match self {
+            Self::Miniprot(_) => "miniprot_failed",
+            Self::Exonerate => "exonerate_failed",
+        }
+    }
+    fn no_model(&self) -> &'static str {
+        match self {
+            Self::Miniprot(_) => "no_miniprot_model",
+            Self::Exonerate => "no_exonerate_model",
+        }
+    }
+    fn version(&self) -> io::Result<String> {
+        if let Self::Miniprot(executable) = self {
+            return validated_miniprot_version(executable);
+        }
+        let directory = env::temp_dir().join(format!(
+            "tipseek-exonerate-version-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        let result = (|| {
+            let status = gm2_tools::gene_annotation::shadow::execute(
+                Path::new("exonerate-rs"),
+                &["--version".into()],
+                &directory,
+                std::time::Duration::from_secs(10),
+            )?;
+            if status != "ok" {
+                return Err(io::Error::other(format!(
+                    "exonerate-rs --version failed: {status}; ensure exonerate-rs is in PATH"
+                )));
+            }
+            let version = fs::read_to_string(directory.join("stdout.txt"))?;
+            if version.trim().is_empty() {
+                return Err(io::Error::other("exonerate-rs returned an empty version"));
+            }
+            Ok(version.trim().replace(['\n', '\r', '\t'], " "))
+        })();
+        let _ = fs::remove_dir_all(directory);
+        result
+    }
+    fn run(
+        &self,
+        target: &Path,
+        proteins: &Path,
+        threads: &str,
+        max_intron: usize,
+        directory: &Path,
+    ) -> io::Result<(AnnotationOutput, String)> {
+        if let Self::Miniprot(executable) = self {
+            let (output, command) =
+                run_miniprot(executable, target, proteins, threads, max_intron)?;
+            return Ok((
+                AnnotationOutput {
+                    ok: output.status.success(),
+                    stdout: output.stdout,
+                    stderr: output.stderr,
+                },
+                command,
+            ));
+        }
+        fs::create_dir_all(directory)?;
+        let saved_target = directory.join("target.fasta");
+        let saved_proteins = directory.join("proteins.faa");
+        fs::copy(target, &saved_target)?;
+        fs::copy(proteins, &saved_proteins)?;
+        let args = gm2_tools::gene_annotation::shadow::command_arguments(
+            &saved_proteins,
+            &saved_target,
+            max_intron,
+        );
+        let status = gm2_tools::gene_annotation::shadow::execute(
+            Path::new("exonerate-rs"),
+            &args,
+            directory,
+            std::time::Duration::from_secs(60),
+        )?;
+        Ok((
+            AnnotationOutput {
+                ok: status == "ok",
+                stdout: fs::read(directory.join("stdout.txt"))?,
+                stderr: fs::read(directory.join("stderr.txt"))?,
+            },
+            format!("exonerate-rs {}", args.join(" ")),
+        ))
+    }
+    fn parse(
+        &self,
+        text: &str,
+        candidate: &str,
+        sequence: &str,
+        proteins: &BTreeMap<String, String>,
+    ) -> io::Result<gm2_tools::gene_annotation::ParseReport> {
+        if matches!(self, Self::Miniprot(_)) {
+            return Ok(gm2_tools::gene_annotation::parse_miniprot_output(text));
+        }
+        let lengths = proteins
+            .iter()
+            .map(|(id, seq)| (id.clone(), seq.len()))
+            .collect();
+        let hits = gm2_tools::gene_annotation::exonerate::parse_vulgar(
+            text,
+            candidate,
+            sequence.len(),
+            &lengths,
+        )
+        .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
+        let mut models = Vec::new();
+        for (index, hit) in hits.iter().enumerate() {
+            let mut adapted = hit
+                .normalize(candidate, sequence, &proteins[&hit.protein])
+                .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
+            adapted.raw.gff_id = format!("EXO{}", index + 1);
+            adapted.raw.evidence = Some(adapted.evidence);
+            models.push(adapted.raw);
+        }
+        Ok(gm2_tools::gene_annotation::ParseReport {
+            models,
+            warnings: Vec::new(),
+            unassigned_paf: 0,
+        })
+    }
+}
+
+fn selected_backend(options: &HashMap<String, Vec<String>>) -> AnnotationBackend {
+    match options
+        .get("--backend")
+        .and_then(|v| v.first())
+        .map(String::as_str)
+        .unwrap_or("miniprot")
+    {
+        "miniprot" => AnnotationBackend::Miniprot(
+            options
+                .get("--miniprot")
+                .and_then(|v| v.first())
+                .cloned()
+                .unwrap_or_else(|| "miniprot".into()),
+        ),
+        "exonerate-rs" => AnnotationBackend::Exonerate,
+        _ => {
+            eprintln!("--backend must be miniprot or exonerate-rs");
+            usage()
+        }
+    }
+}
+
+#[cfg(test)]
 #[allow(clippy::too_many_arguments)]
 fn annotate(
     input: PathBuf,
     nucleotide_references: PathBuf,
     external_proteins: Option<PathBuf>,
     out: PathBuf,
-    miniprot: String,
+    backend: impl Into<AnnotationBackend>,
     threads: String,
     max_intron: usize,
     minimum_coverage: f64,
     complete_coverage: f64,
     flank: usize,
     fragment_padding: usize,
+    shadow_executable: Option<PathBuf>,
 ) -> io::Result<()> {
+    annotate_with_reads(
+        input,
+        nucleotide_references,
+        external_proteins,
+        out,
+        backend,
+        threads,
+        max_intron,
+        minimum_coverage,
+        complete_coverage,
+        flank,
+        fragment_padding,
+        shadow_executable,
+        None,
+        None,
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+fn annotate_with_reads(
+    input: PathBuf,
+    nucleotide_references: PathBuf,
+    external_proteins: Option<PathBuf>,
+    out: PathBuf,
+    backend: impl Into<AnnotationBackend>,
+    threads: String,
+    max_intron: usize,
+    minimum_coverage: f64,
+    complete_coverage: f64,
+    flank: usize,
+    fragment_padding: usize,
+    shadow_executable: Option<PathBuf>,
+    reads_root: Option<PathBuf>,
+    sco_reference: Option<String>,
+) -> io::Result<()> {
+    let workers = threads
+        .parse::<usize>()
+        .ok()
+        .filter(|n| *n > 0)
+        .ok_or_else(|| {
+            io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "--threads must be a positive integer",
+            )
+        })?
+        .min(64);
     let mut inputs = vec![input.as_path(), nucleotide_references.as_path()];
     if let Some(proteins) = external_proteins.as_deref() {
         inputs.push(proteins);
+    }
+    if let Some(root) = reads_root.as_deref() {
+        if !root.is_dir() {
+            return Err(io::Error::new(
+                io::ErrorKind::NotFound,
+                "exon reads root is not a directory",
+            ));
+        }
+        // The shared root may contain the annotation output, but never delete
+        // the actual recruited reads when replacing an annotation directory.
+        for sample in sorted_directory_paths(&input.join("samples"))? {
+            if let Some(name) = sample.file_name() {
+                let reads = root.join(name).join("filtered_pe");
+                if reads.exists() {
+                    ensure_nonoverlapping_paths(&[reads.as_path()], &out)?;
+                }
+            }
+        }
     }
     ensure_nonoverlapping_paths(&inputs, &out)?;
     if !(0.0..=1.0).contains(&minimum_coverage)
@@ -1350,17 +1677,43 @@ fn annotate(
             "gene model coverage thresholds must satisfy 0 <= minimum <= complete <= 1",
         ));
     }
-    let miniprot_version = validated_miniprot_version(&miniprot)?;
+    let backend = backend.into();
+    if matches!(backend, AnnotationBackend::Exonerate) && shadow_executable.is_some() {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "exonerate shadow requires the miniprot backend",
+        ));
+    }
+    let backend_version = backend.version()?;
+    if workers > 1 {
+        return family_scheduler::annotate(
+            &input,
+            &nucleotide_references,
+            external_proteins.as_deref(),
+            &out,
+            &backend,
+            workers,
+            max_intron,
+            minimum_coverage,
+            complete_coverage,
+            flank,
+            fragment_padding,
+            shadow_executable.as_deref(),
+            reads_root.as_deref(),
+            sco_reference.as_deref(),
+        );
+    }
     if out.exists() {
         fs::remove_dir_all(&out)?;
     }
     let manifest_dir = out.join("manifest");
     let models_dir = out.join("models");
-    let raw_dir = out.join("raw_miniprot");
+    let raw_dir = out.join(backend.raw_name());
     let gff_dir = out.join("gff3");
     let cds_dir = out.join("cds");
     let protein_dir = out.join("proteins");
     let exon_dir = out.join("exons");
+    let sco_dir = out.join("sco");
     let intron_dir = out.join("introns");
     let gene_dir = out.join("genes");
     let flanked_dir = out.join("genes_flanked");
@@ -1376,6 +1729,7 @@ fn annotate(
         &cds_dir,
         &protein_dir,
         &exon_dir,
+        &sco_dir,
         &intron_dir,
         &gene_dir,
         &flanked_dir,
@@ -1386,24 +1740,82 @@ fn annotate(
     ] {
         fs::create_dir_all(directory)?;
     }
+    fs::write(
+        manifest_dir.join("execution.tsv"),
+        format!("candidate_workers\tthreads_per_candidate\n{workers}\t1\n"),
+    )?;
     let mut candidate_manifest =
         BufWriter::new(File::create(manifest_dir.join("candidate_manifest.tsv"))?);
     let mut gene_models = BufWriter::new(File::create(models_dir.join("gene_models.tsv"))?);
     let mut gene_segments = BufWriter::new(File::create(models_dir.join("gene_segments.tsv"))?);
+    let mut sco_manifest = BufWriter::new(File::create(manifest_dir.join("sco_recovery.tsv"))?);
+    writeln!(sco_manifest, "{}", sco_rebuild::header())?;
+    let mut projection_manifest =
+        BufWriter::new(File::create(manifest_dir.join("reference_projection.tsv"))?);
+    writeln!(projection_manifest, "sample\tfamily_id\tprotein_reference\tsource_reference\tstatus\talignment_cost\tmapped_residues\tsource_residues")?;
+    let mut recovered_exons =
+        BufWriter::new(File::create(manifest_dir.join("exon_candidates.tsv"))?);
+    writeln!(recovered_exons, "sample\tfamily_id\texon_candidate\tcandidate\tstart_0\tend_0\tstrand\tlength_nt\tunique_mapped_reads\tmapped_read_covered_nt\treads_available")?;
+    let mut exon_sources = BufWriter::new(File::create(
+        manifest_dir.join("exon_candidate_sources.tsv"),
+    )?);
+    writeln!(exon_sources, "sample\tfamily_id\texon_candidate\tmodel\tprotein_reference\texon_index\tfive_prime_boundary\tthree_prime_boundary\tmodel_state\tmodel_selected\tqc_flags")?;
     let mut id_map = BufWriter::new(File::create(manifest_dir.join("id_map.tsv"))?);
     let mut warnings = BufWriter::new(File::create(manifest_dir.join("annotation_warnings.tsv"))?);
     let mut fragments = BufWriter::new(File::create(manifest_dir.join("fragment_groups.tsv"))?);
+    let mut read_manifest = BufWriter::new(File::create(
+        manifest_dir.join("fragment_read_support.tsv"),
+    )?);
+    writeln!(read_manifest, "sample\tfamily_id\tchain\tleft_candidate\tright_candidate\tconcordant_pairs\tdiscordant_pairs\torientation_conflicts\tstatus")?;
+    let mut join_sources = BufWriter::new(File::create(manifest_dir.join("join_sources.tsv"))?);
+    writeln!(join_sources, "sample\tfamily_id\tcandidate\tstrand\tretained_start_0\tretained_end_0\toriented_anchor_start_0\toriented_anchor_end_0")?;
+    let mut read_summary = BufWriter::new(File::create(manifest_dir.join("read_audit.tsv"))?);
+    writeln!(read_summary, "sample\tfamily_id\tavailable\ttotal_pairs\tunique_mapped_pairs\tdistinct_cross_contig_pairs\tinputs")?;
+    let mut completion = BufWriter::new(File::create(manifest_dir.join("completion_audit.tsv"))?);
+    let mut graph_audit = BufWriter::new(File::create(manifest_dir.join("chain_graph_audit.tsv"))?);
+    writeln!(graph_audit, "sample\tfamily_id\tprotein_reference\teligible_sources\tordered_edges\tcompatible_edges\tcoding_overlap_conflicts\tcoding_coordinate_map_missing\tother_rejected_edges\tread_vetoed_edges")?;
+    writeln!(completion, "sample\tfamily_id\tprotein_reference\tprotein_length_aa\tspan_union_upper_bound_aa\tbest_chain_covered_aa\tpreselection_complete_models\tblockers")?;
+    let mut chain_manifest =
+        BufWriter::new(File::create(manifest_dir.join("fragment_chains.tsv"))?);
+    writeln!(chain_manifest, "sample\tfamily_id\tchain\tprotein_reference\tmembers\tcontigs\tcovered_aa\tcoding_gap_aa\toverlap_trim_nt\tstatus\tphysical_linkage\tquery_length_aa\tquery_start_aa\tquery_end_aa")?;
+    let mut padded_audit = BufWriter::new(File::create(manifest_dir.join("padded_models.tsv"))?);
+    writeln!(padded_audit, "sample\tfamily_id\tbackend\tmodel\tprotein_reference\tquery_start_aa\tquery_end_aa\tstate\tselected\teligible_for_resolve\tqc_flags\trejection_reasons")?;
     let mut provenance = BufWriter::new(File::create(manifest_dir.join("command_provenance.tsv"))?);
     let mut reference_translations = BufWriter::new(File::create(
         manifest_dir.join("reference_translation.tsv"),
     )?);
+    let mut shadow = shadow_executable
+        .map(|exe| gm2_tools::gene_annotation::shadow::ShadowAudit::new(exe, &out))
+        .transpose()?;
+    let mut wanted = BTreeSet::new();
+    for sample in sorted_directory_paths(&input.join("samples"))? {
+        let directory = sample.join("candidates");
+        if directory.is_dir() {
+            wanted.extend(
+                sorted_directory_paths(&directory)?
+                    .iter()
+                    .filter_map(|path| family_id(path)),
+            );
+        }
+    }
     let family_proteins = prepare_annotation_references(
         &nucleotide_references,
         external_proteins.as_deref(),
         &derived_reference_dir,
         &mut reference_translations,
+        Some(&wanted),
     )?;
     reference_translations.flush()?;
+    let mut reference_stops = BTreeSet::new();
+    let mut translations = csv::ReaderBuilder::new()
+        .delimiter(b'\t')
+        .from_path(manifest_dir.join("reference_translation.tsv"))?;
+    for row in translations.records() {
+        let row = row?;
+        if row.get(11) == Some("1") && row.get(13) == Some("1") {
+            reference_stops.insert((row[0].to_owned(), row[2].to_owned()));
+        }
+    }
     writeln!(candidate_manifest, "{}", manifest_header())?;
     writeln!(gene_models, "{}", manifest_header())?;
     writeln!(gene_segments, "sample\tfamily_id\tcandidate\tmodel\tsegment_index\tkind\ttarget_start\ttarget_end\tstrand\tphase\tlength\tdonor\tacceptor\tsplice_class\tobserved")?;
@@ -1415,8 +1827,16 @@ fn annotate(
     writeln!(fragments, "sample\tfamily_id\tcandidate_a\tmodel_a\tcandidate_b\tmodel_b\tprotein_reference\tcovered_union_fraction\tpadding_nt\tderived_candidate\tstatus\treason")?;
     writeln!(
         provenance,
-        "sample\tfamily_id\tcandidate\tminiprot_version\tcommand"
+        "sample\tfamily_id\tcandidate\t{}\tcommand",
+        if matches!(backend, AnnotationBackend::Miniprot(_)) {
+            "miniprot_version"
+        } else {
+            "exonerate_version"
+        }
     )?;
+    if matches!(backend, AnnotationBackend::Exonerate) {
+        fs::write(manifest_dir.join("backend.tsv"), format!("engine\tversion\tidentity_basis\tpositive_basis\n{}\t{}\taligned_M_S_pairs\tunavailable\n", backend.name(), backend_version))?;
+    }
     let config = ModelConfig {
         minimum_coverage,
         complete_coverage,
@@ -1435,6 +1855,24 @@ fn annotate(
         let candidates_dir = sample_path.join("candidates");
         if !candidates_dir.is_dir() {
             continue;
+        }
+        let assembly = sample_path.join("candidate_assembly.tsv");
+        let mut unanchored = BTreeSet::new();
+        if assembly.exists() {
+            let mut table = csv::ReaderBuilder::new()
+                .delimiter(b'\t')
+                .from_path(&assembly)?;
+            let headers = table.headers()?.clone();
+            let columns = ["family_id", "candidate", "assembler_seed_position"]
+                .map(|name| headers.iter().position(|h| h == name));
+            if let [Some(f), Some(c), Some(p)] = columns {
+                for row in table.records() {
+                    let row = row?;
+                    if row.get(p) == Some("-2") {
+                        unanchored.insert((row[f].to_owned(), row[c].to_owned()));
+                    }
+                }
+            }
         }
         for fasta in sorted_directory_paths(&candidates_dir)? {
             let Some(family) = family_id(&fasta) else {
@@ -1462,7 +1900,7 @@ fn annotate(
                 }
                 continue;
             };
-            let protein_lengths: BTreeMap<String, usize> = read_raw_fasta(&protein_path)?
+            let protein_sequences: BTreeMap<String, String> = read_raw_fasta(&protein_path)?
                 .into_iter()
                 .map(|(header, sequence)| {
                     (
@@ -1471,9 +1909,13 @@ fn annotate(
                             .next()
                             .unwrap_or(&header)
                             .to_owned(),
-                        sequence.len(),
+                        sequence,
                     )
                 })
+                .collect();
+            let protein_lengths: BTreeMap<String, usize> = protein_sequences
+                .iter()
+                .map(|(id, seq)| (id.clone(), seq.len()))
                 .collect();
             let family_work = work_dir.join(&sample).join(&family);
             fs::create_dir_all(&family_work)?;
@@ -1495,104 +1937,185 @@ fn annotate(
             }
             let family_raw = raw_dir.join(&sample).join(&family);
             fs::create_dir_all(&family_raw)?;
+            let reads = gm2_tools::gene_annotation::reads::PairAudit::load(
+                reads_root.as_deref(),
+                &sample,
+                &family,
+                &candidate_map,
+            )?;
+            let protein_screen = gm2_tools::gene_annotation::screen::ProteinScreen::new(
+                protein_sequences.values().map(String::as_str),
+            );
             let mut built_models = Vec::new();
             let mut handled_candidates = BTreeSet::new();
-            for (internal, (candidate, sequence)) in &candidate_map {
+            let jobs: Vec<_> = candidate_map.iter().collect();
+            let prepare = |(internal, (candidate, sequence)): &(&String, &(String,String))| -> io::Result<Option<(AnnotationOutput,String)>> {
+                if unanchored.contains(&(family.clone(), candidate.clone())) && !protein_screen.supports(sequence) {
+                    let short_supported = (30..60).contains(&sequence.len()) && {
+                        let (count, covered) = reads.segment_support(candidate, gm2_tools::gene_annotation::Interval::new(0, sequence.len()).unwrap());
+                        protein_screen.supports_read_backed_short(sequence, count, covered)
+                    };
+                    if !short_supported { return Ok(None); }
+                }
                 let targets_path = family_work.join(format!("{internal}.targets.fasta"));
-                {
-                    let mut target_writer = BufWriter::new(File::create(&targets_path)?);
-                    writeln!(target_writer, ">{internal}\n{sequence}")?;
-                }
-                let (result, command_text) = run_miniprot(
-                    &miniprot,
-                    &targets_path,
-                    &protein_path,
-                    &threads,
-                    max_intron,
-                )?;
-                writeln!(
-                    provenance,
-                    "{sample}\t{family}\t{candidate}\t{miniprot_version}\t{command_text}"
-                )?;
-                fs::write(family_raw.join(format!("{internal}.gff3")), &result.stdout)?;
-                fs::write(
-                    family_raw.join(format!("{internal}.stderr.txt")),
-                    &result.stderr,
-                )?;
-                if !result.status.success() {
-                    handled_candidates.insert(candidate.clone());
-                    write_status_row(
-                        &mut candidate_manifest,
-                        &sample,
-                        &family,
-                        candidate,
-                        "miniprot_failed",
-                        "miniprot_failed",
-                    )?;
-                    write_unresolved_sequence(
-                        &unresolved_dir,
-                        &family,
-                        "miniprot_failed",
-                        &format!("{sample}|{family}|{candidate}"),
-                        sequence,
-                    )?;
-                    continue;
-                }
-                let raw_text = String::from_utf8_lossy(&result.stdout);
-                let report = gm2_tools::gene_annotation::parse_miniprot_output(&raw_text);
-                for warning in &report.warnings {
+                fs::write(&targets_path, format!(">{internal}\n{sequence}\n"))?;
+                backend.run(&targets_path, &protein_path, "1", max_intron, &family_raw.join(internal)).map(Some)
+            };
+            // Bound both subprocess concurrency and retained output memory. Each
+            // worker owns its candidate directory; model/export order is stable.
+            let mut next_candidate = 0;
+            while next_candidate < jobs.len() {
+                let end =
+                    (next_candidate + family_scheduler::candidate_width(workers)).min(jobs.len());
+                let batch = &jobs[next_candidate..end];
+                next_candidate = end;
+                let outputs = if batch.len() == 1 {
+                    vec![prepare(&batch[0])?]
+                } else {
+                    std::thread::scope(|scope| {
+                        let handles: Vec<_> = batch
+                            .iter()
+                            .map(|job| scope.spawn(|| prepare(job)))
+                            .collect();
+                        handles
+                            .into_iter()
+                            .map(|handle| {
+                                handle
+                                    .join()
+                                    .map_err(|_| io::Error::other("annotation worker panicked"))?
+                            })
+                            .collect::<io::Result<Vec<_>>>()
+                    })?
+                };
+                for (&(internal, (candidate, sequence)), output) in batch.iter().zip(outputs) {
+                    let Some((result, command_text)) = output else {
+                        handled_candidates.insert(candidate.clone());
+                        write_status_row(
+                            &mut candidate_manifest,
+                            &sample,
+                            &family,
+                            candidate,
+                            "protein_screen_rejected",
+                            "unanchored_component_without_informative_10aa_80pct_window",
+                        )?;
+                        continue;
+                    };
+                    let targets_path = family_work.join(format!("{internal}.targets.fasta"));
+                    if let Some(audit) = &mut shadow {
+                        audit.compare(
+                            &sample,
+                            &family,
+                            candidate,
+                            internal,
+                            "candidate",
+                            &targets_path,
+                            sequence,
+                            &protein_path,
+                            &protein_sequences,
+                            config,
+                            max_intron,
+                            &String::from_utf8_lossy(&result.stdout),
+                            result.success(),
+                        )?;
+                    }
                     writeln!(
-                        warnings,
-                        "{sample}\t{family}\t{candidate}\tparse\t{warning}"
+                        provenance,
+                        "{sample}\t{family}\t{candidate}\t{backend_version}\t{command_text}"
                     )?;
-                }
-                if report.unassigned_paf > 0 {
-                    writeln!(
-                        warnings,
-                        "{sample}\t{family}\t{candidate}\tparse\tunassigned_paf={}",
-                        report.unassigned_paf
+                    fs::write(
+                        family_raw.join(format!("{internal}.{}", backend.extension())),
+                        &result.stdout,
                     )?;
-                }
-                if !report.models.is_empty() {
-                    handled_candidates.insert(candidate.clone());
-                }
-                for mut raw_model in report.models {
-                    if raw_model.candidate_id != *internal {
+                    fs::write(
+                        family_raw.join(format!("{internal}.stderr.txt")),
+                        &result.stderr,
+                    )?;
+                    if !result.success() {
+                        handled_candidates.insert(candidate.clone());
+                        write_status_row(
+                            &mut candidate_manifest,
+                            &sample,
+                            &family,
+                            candidate,
+                            backend.failed(),
+                            backend.failed(),
+                        )?;
+                        write_unresolved_sequence(
+                            &unresolved_dir,
+                            &family,
+                            backend.failed(),
+                            &format!("{sample}|{family}|{candidate}"),
+                            sequence,
+                        )?;
+                        continue;
+                    }
+                    let raw_text = String::from_utf8_lossy(&result.stdout);
+                    let report =
+                        backend.parse(&raw_text, internal, sequence, &protein_sequences)?;
+                    for warning in &report.warnings {
                         writeln!(
+                            warnings,
+                            "{sample}\t{family}\t{candidate}\tparse\t{warning}"
+                        )?;
+                    }
+                    if report.unassigned_paf > 0 {
+                        writeln!(
+                            warnings,
+                            "{sample}\t{family}\t{candidate}\tparse\tunassigned_paf={}",
+                            report.unassigned_paf
+                        )?;
+                    }
+                    if !report.models.is_empty() {
+                        handled_candidates.insert(candidate.clone());
+                    }
+                    for mut raw_model in report.models {
+                        if raw_model.candidate_id != *internal {
+                            writeln!(
                             warnings,
                             "{sample}\t{family}\t{candidate}\tbuild\tunknown_internal_candidate={}",
                             raw_model.candidate_id
                         )?;
-                        continue;
-                    }
-                    raw_model.candidate_id = candidate.clone();
-                    match build_gene_model(
-                        &raw_model,
-                        sequence,
-                        protein_lengths.get(&raw_model.protein_id).copied(),
-                        config,
-                    ) {
-                        Ok(model) => built_models.push(model),
-                        Err(error) => {
-                            writeln!(warnings, "{sample}\t{family}\t{candidate}\tbuild\t{error}")?;
-                            write_status_row(
-                                &mut candidate_manifest,
-                                &sample,
-                                &family,
-                                candidate,
-                                "model_build_failed",
-                                &error,
-                            )?;
-                            write_unresolved_sequence(
-                                &unresolved_dir,
-                                &family,
-                                "model_build_failed",
-                                &format!(
-                                    "{sample}|{family}|{candidate}|{}",
-                                    safe_identifier(&raw_model.gff_id)
-                                ),
-                                sequence,
-                            )?;
+                            continue;
+                        }
+                        raw_model.candidate_id = candidate.clone();
+                        match build_gene_model(
+                            &raw_model,
+                            sequence,
+                            protein_lengths.get(&raw_model.protein_id).copied(),
+                            config,
+                        ) {
+                            Ok(mut model) => {
+                                model.check_reference_start(
+                                    protein_sequences
+                                        .get(&raw_model.protein_id)
+                                        .and_then(|p| p.bytes().next()),
+                                );
+                                built_models.push(model);
+                            }
+                            Err(error) => {
+                                writeln!(
+                                    warnings,
+                                    "{sample}\t{family}\t{candidate}\tbuild\t{error}"
+                                )?;
+                                write_status_row(
+                                    &mut candidate_manifest,
+                                    &sample,
+                                    &family,
+                                    candidate,
+                                    "model_build_failed",
+                                    &error,
+                                )?;
+                                write_unresolved_sequence(
+                                    &unresolved_dir,
+                                    &family,
+                                    "model_build_failed",
+                                    &format!(
+                                        "{sample}|{family}|{candidate}|{}",
+                                        safe_identifier(&raw_model.gff_id)
+                                    ),
+                                    sequence,
+                                )?;
+                            }
                         }
                     }
                 }
@@ -1605,7 +2128,7 @@ fn annotate(
                         &family,
                         candidate,
                         "protein_unsupported",
-                        "no_miniprot_model",
+                        backend.no_model(),
                     )?;
                     write_unresolved_sequence(
                         &unresolved_dir,
@@ -1627,7 +2150,177 @@ fn annotate(
                     .then_with(|| left.protein_id.cmp(&right.protein_id))
                     .then_with(|| left.gff_id.cmp(&right.gff_id))
             });
+            let planned_chains =
+                gm2_tools::gene_annotation::chain::plan_chains_with_veto(&built_models, |a, b| {
+                    reads.edge(a, b).warning()
+                });
+            writeln!(
+                read_summary,
+                "{sample}\t{family}\t{}\t{}\t{}\t{}\t{}",
+                reads.available,
+                reads.total_pairs,
+                reads.unique_mapped_pairs,
+                reads.distinct_cross_contig_pairs,
+                reads
+                    .inputs
+                    .iter()
+                    .map(|p| p.display().to_string())
+                    .collect::<Vec<_>>()
+                    .join(";")
+            )?;
+            let mut read_warnings = BTreeSet::new();
+            for (number, chain) in planned_chains.iter().enumerate() {
+                for edge in chain.models.windows(2) {
+                    let a = &built_models[edge[0]];
+                    let b = &built_models[edge[1]];
+                    let evidence = reads.edge(a, b);
+                    writeln!(
+                        read_manifest,
+                        "{sample}\t{family}\tfragment_chain_{}\t{}\t{}\t{}\t{}\t{}\t{}",
+                        number + 1,
+                        a.candidate_id,
+                        b.candidate_id,
+                        evidence.concordant,
+                        evidence.discordant,
+                        evidence.orientation_conflicts,
+                        evidence.status(reads.available)
+                    )?;
+                    if evidence.warning() {
+                        read_warnings.insert(number);
+                    }
+                }
+            }
+            for (protein, &length) in &protein_lengths {
+                let sources: Vec<_> = built_models
+                    .iter()
+                    .filter(|m| {
+                        &m.protein_id == protein
+                            && gm2_tools::gene_annotation::chain::source_eligible(m)
+                    })
+                    .collect();
+                let mut counts = BTreeMap::<&str, usize>::new();
+                let mut ordered = 0;
+                let mut vetoed = 0;
+                for a in &sources {
+                    for b in &sources {
+                        if a.query_interval_aa.start >= b.query_interval_aa.start
+                            || a.query_interval_aa.end >= b.query_interval_aa.end
+                        {
+                            continue;
+                        }
+                        ordered += 1;
+                        let status = gm2_tools::gene_annotation::chain::connection_status(a, b);
+                        *counts.entry(status).or_default() += 1;
+                        if status == "compatible" && reads.edge(a, b).warning() {
+                            vetoed += 1;
+                        }
+                    }
+                }
+                let count = |key| counts.get(key).copied().unwrap_or(0);
+                writeln!(
+                    graph_audit,
+                    "{sample}\t{family}\t{protein}\t{}\t{ordered}\t{}\t{}\t{}\t{}\t{vetoed}",
+                    sources.len(),
+                    count("compatible"),
+                    count("coding_overlap_conflict"),
+                    count("coding_coordinate_map_missing"),
+                    count("order_contig_or_identity")
+                )?;
+                let mut spans: Vec<_> = built_models
+                    .iter()
+                    .filter(|m| &m.protein_id == protein && m.identity_millionths >= 800_000)
+                    .map(|m| m.query_interval_aa)
+                    .collect();
+                spans.sort();
+                let mut end = 0;
+                let mut union = 0;
+                for span in &spans {
+                    union += span.end.saturating_sub(span.start.max(end));
+                    end = end.max(span.end);
+                }
+                let relevant: Vec<_> = planned_chains
+                    .iter()
+                    .filter(|c| &c.protein == protein)
+                    .collect();
+                let best = relevant.iter().map(|c| c.covered_aa).max().unwrap_or(0);
+                let complete = built_models
+                    .iter()
+                    .filter(|m| {
+                        &m.protein_id == protein
+                            && m.eligible_for_resolve
+                            && m.state == ModelState::Complete
+                    })
+                    .count();
+                let mut reasons = Vec::new();
+                if union as f64 / (length as f64) < complete_coverage {
+                    reasons.push("insufficient_span_union");
+                }
+                let tolerance = 3usize.max((length as f64 * 0.02).ceil() as usize);
+                if spans.first().is_none_or(|s| s.start > tolerance) {
+                    reasons.push("missing_reference_start");
+                }
+                if length.saturating_sub(end) > tolerance {
+                    reasons.push("missing_reference_end");
+                }
+                if relevant.iter().any(|c| c.search_limited) {
+                    reasons.push("chain_search_limit");
+                }
+                if relevant.iter().any(|c| c.ambiguous) {
+                    reasons.push("competing_chains");
+                }
+                if best as f64 / (length as f64) < complete_coverage {
+                    reasons.push("insufficient_clean_chain");
+                }
+                writeln!(
+                    completion,
+                    "{sample}\t{family}\t{protein}\t{length}\t{union}\t{best}\t{complete}\t{}",
+                    reasons.join(";")
+                )?;
+            }
+
             select_competing_models(&mut built_models);
+            for (number, chain) in planned_chains.iter().enumerate() {
+                let chain_id = format!("fragment_chain_{}", number + 1);
+                let members = chain
+                    .models
+                    .iter()
+                    .map(|&i| {
+                        format!(
+                            "{}:{}",
+                            built_models[i].candidate_id, built_models[i].gff_id
+                        )
+                    })
+                    .collect::<Vec<_>>()
+                    .join(";");
+                let status = if read_warnings.contains(&number) {
+                    "discordant_read_warning"
+                } else if chain.search_limited {
+                    "search_limit"
+                } else if chain.ambiguous {
+                    "ambiguous"
+                } else {
+                    "reference_ordered_unvalidated"
+                };
+                let stitched = if fragment_padding > 0 && !read_warnings.contains(&number) {
+                    gm2_tools::gene_annotation::chain::stitch_cds(chain, &built_models)
+                } else {
+                    None
+                };
+                let (gaps, trim) = stitched
+                    .as_ref()
+                    .map(|(_, g, t)| (g.to_string(), t.to_string()))
+                    .unwrap_or((".".into(), ".".into()));
+                writeln!(chain_manifest, "{sample}\t{family}\t{chain_id}\t{}\t{members}\t{}\t{}\t{gaps}\t{trim}\t{status}\tunverified\t{}\t{}\t{}", chain.protein, chain.models.len(), chain.covered_aa, chain.models.first().map(|&i| built_models[i].protein_len_aa).unwrap_or(0), chain.models.first().map(|&i| built_models[i].query_interval_aa.start).unwrap_or(0), chain.models.last().map(|&i| built_models[i].query_interval_aa.end).unwrap_or(0))?;
+                if let Some((cds, _, _)) = stitched {
+                    let directory = out.join("fragment_cds");
+                    fs::create_dir_all(&directory)?;
+                    append_fasta(
+                        &directory.join(format!("{family}.fasta")),
+                        &format!("{sample}|{family}|{chain_id}|reference_ordered_unvalidated"),
+                        &cds,
+                    )?;
+                }
+            }
             let complete_proteins: BTreeSet<String> = built_models
                 .iter()
                 .filter(|model| {
@@ -1669,6 +2362,44 @@ fn annotate(
                     }
                 }
             }
+            let mut extended_sources = None;
+            let unambiguous: Vec<_> = planned_chains
+                .iter()
+                .filter(|c| !c.ambiguous && c.models.len() >= 2)
+                .collect();
+            if planned_chains.iter().any(|c| c.ambiguous) {
+                // Do not let an older two-fragment fallback bypass a competing copy.
+                compatible_pairs.clear();
+            } else if unambiguous.len() == 1 {
+                let chain = unambiguous[0];
+                let left = chain.models[0];
+                let right = *chain.models.last().unwrap();
+                let protein_len = built_models[left].protein_len_aa;
+                let tolerance = 3usize.max((protein_len as f64 * 0.02).ceil() as usize);
+                if chain.covered_aa as f64 / protein_len as f64 >= complete_coverage
+                    && built_models[left].query_interval_aa.start <= tolerance
+                    && protein_len.saturating_sub(built_models[right].query_interval_aa.end)
+                        <= tolerance
+                {
+                    compatible_pairs =
+                        vec![(left, right, chain.covered_aa as f64 / protein_len as f64)];
+                    extended_sources = Some(chain.models.clone());
+                }
+            } else if unambiguous.len() > 1 {
+                compatible_pairs.clear();
+            }
+            // The legacy two-source fallback must obey the same reads gate.
+            compatible_pairs
+                .retain(|&(a, b, _)| !reads.edge(&built_models[a], &built_models[b]).warning());
+            if extended_sources.as_ref().is_some_and(|sources| {
+                sources.windows(2).any(|e| {
+                    reads
+                        .edge(&built_models[e[0]], &built_models[e[1]])
+                        .warning()
+                })
+            }) {
+                compatible_pairs.clear();
+            }
             let mut fragment_outcomes = Vec::new();
             if compatible_pairs.len() > 1 {
                 for (left, right, fraction) in compatible_pairs {
@@ -1695,59 +2426,112 @@ fn annotate(
                     });
                 } else {
                     let left_model = built_models[left].clone();
-                    let right_model = built_models[right].clone();
-                    let left_sequence = candidate_map
-                        .values()
-                        .find(|(candidate, _)| candidate == &left_model.candidate_id)
-                        .map(|(_, sequence)| oriented_candidate(sequence, left_model.strand));
-                    let right_sequence = candidate_map
-                        .values()
-                        .find(|(candidate, _)| candidate == &right_model.candidate_id)
-                        .map(|(_, sequence)| oriented_candidate(sequence, right_model.strand));
+                    let sources = extended_sources.unwrap_or_else(|| vec![left, right]);
+                    let source_sequences: Option<Vec<_>> = sources
+                        .iter()
+                        .enumerate()
+                        .map(|(part, &index)| {
+                            let model = &built_models[index];
+                            candidate_map
+                                .values()
+                                .find(|(candidate, _)| candidate == &model.candidate_id)
+                                .map(|(_, sequence)| {
+                                    gm2_tools::gene_annotation::chain::join_source(
+                                        sequence,
+                                        model,
+                                        part == 0,
+                                        part + 1 == sources.len(),
+                                    )
+                                })
+                        })
+                        .collect();
                     let derived_candidate = "padded_join_1".to_owned();
                     let derived_internal = "TSKPAD001".to_owned();
                     let mut accepted_model = None;
                     let mut failure_reason = "source_candidate_missing".to_owned();
-                    if let (Some(left_sequence), Some(right_sequence)) =
-                        (left_sequence, right_sequence)
-                    {
-                        let padding_start = left_sequence.len();
-                        let padding_end = padding_start + fragment_padding;
-                        let mut padded_sequence = String::with_capacity(
-                            left_sequence.len() + fragment_padding + right_sequence.len(),
-                        );
-                        padded_sequence.push_str(&left_sequence);
-                        padded_sequence.push_str(&"N".repeat(fragment_padding));
-                        padded_sequence.push_str(&right_sequence);
+                    if let Some(source_sequences) = source_sequences {
+                        let mut padded_sequence = String::new();
+                        let mut paddings = Vec::new();
+                        let mut anchors = Vec::new();
+                        for (part, ((sequence, interval, retained), &index)) in
+                            source_sequences.iter().zip(&sources).enumerate()
+                        {
+                            if part > 0 {
+                                let start = padded_sequence.len();
+                                padded_sequence.push_str(&"N".repeat(fragment_padding));
+                                paddings.push(Interval {
+                                    start,
+                                    end: padded_sequence.len(),
+                                });
+                            }
+                            let m = &built_models[index];
+                            let offset = padded_sequence.len();
+                            writeln!(
+                                join_sources,
+                                "{sample}\t{family}\t{}\t{}\t{}\t{}\t{}\t{}",
+                                m.candidate_id,
+                                m.strand.as_char(),
+                                retained.start,
+                                retained.end,
+                                interval.start,
+                                interval.end
+                            )?;
+                            anchors.push(Interval {
+                                start: offset + interval.start,
+                                end: offset + interval.end,
+                            });
+                            padded_sequence.push_str(sequence);
+                        }
                         let target_path =
                             family_work.join(format!("{derived_internal}.targets.fasta"));
                         {
                             let mut writer = BufWriter::new(File::create(&target_path)?);
                             writeln!(writer, ">{derived_internal}\n{padded_sequence}")?;
                         }
-                        let (result, command_text) = run_miniprot(
-                            &miniprot,
+                        let (result, command_text) = backend.run(
                             &target_path,
                             &protein_path,
                             &threads,
                             max_intron,
+                            &family_raw.join(&derived_internal),
                         )?;
+                        if let Some(audit) = &mut shadow {
+                            audit.compare(
+                                &sample,
+                                &family,
+                                &derived_candidate,
+                                &derived_internal,
+                                "padded_join",
+                                &target_path,
+                                &padded_sequence,
+                                &protein_path,
+                                &protein_sequences,
+                                config,
+                                max_intron,
+                                &String::from_utf8_lossy(&result.stdout),
+                                result.success(),
+                            )?;
+                        }
                         writeln!(
                             provenance,
-                            "{sample}\t{family}\t{derived_candidate}\t{miniprot_version}\t{command_text}"
+                            "{sample}\t{family}\t{derived_candidate}\t{backend_version}\t{command_text}"
                         )?;
                         fs::write(
-                            family_raw.join(format!("{derived_internal}.gff3")),
+                            family_raw.join(format!("{derived_internal}.{}", backend.extension())),
                             &result.stdout,
                         )?;
                         fs::write(
                             family_raw.join(format!("{derived_internal}.stderr.txt")),
                             &result.stderr,
                         )?;
-                        if result.status.success() {
+                        if result.success() {
                             let raw_text = String::from_utf8_lossy(&result.stdout);
-                            let report =
-                                gm2_tools::gene_annotation::parse_miniprot_output(&raw_text);
+                            let report = backend.parse(
+                                &raw_text,
+                                &derived_internal,
+                                &padded_sequence,
+                                &protein_sequences,
+                            )?;
                             for warning in &report.warnings {
                                 writeln!(
                                     warnings,
@@ -1766,31 +2550,57 @@ fn annotate(
                                     protein_lengths.get(&raw_model.protein_id).copied(),
                                     config,
                                 ) {
-                                    Ok(model) => padded_models.push(model),
+                                    Ok(mut model) => {
+                                        model.check_reference_start(
+                                            protein_sequences
+                                                .get(&raw_model.protein_id)
+                                                .and_then(|p| p.bytes().next()),
+                                        );
+                                        padded_models.push(model);
+                                    }
                                     Err(error) => {
                                         writeln!(warnings, "{sample}\t{family}\t{derived_candidate}\tbuild\t{error}")?;
                                     }
                                 }
                             }
                             select_competing_models(&mut padded_models);
-                            let mut valid = padded_models.into_iter().filter(|model| {
-                                model.selected
-                                    && model.eligible_for_resolve
-                                    && model.state == ModelState::Complete
-                                    && model.strand == Strand::Forward
-                                    && model.genomic_interval.start <= padding_start
-                                    && model.genomic_interval.end >= padding_end
-                                    && model.introns.iter().any(|intron| {
-                                        intron.interval.start <= padding_start
-                                            && intron.interval.end >= padding_end
-                                    })
-                                    && model.exons.iter().all(|exon| {
-                                        exon.interval.overlap(Interval {
-                                            start: padding_start,
-                                            end: padding_end,
-                                        }) == 0
-                                    })
-                            });
+                            let mut valid_models = Vec::new();
+                            for model in padded_models {
+                                let mut reasons: Vec<_> = paddings
+                                    .iter()
+                                    .flat_map(|&p| padded_model_rejections(&model, p))
+                                    .collect();
+                                if anchors.iter().any(|a| {
+                                    model
+                                        .exons
+                                        .iter()
+                                        .map(|e| e.interval.overlap(*a))
+                                        .sum::<usize>()
+                                        < a.len().min(30)
+                                }) {
+                                    reasons.push("source_fragment_not_recovered");
+                                }
+                                let mut seen = HashSet::new();
+                                reasons.retain(|r| seen.insert(*r));
+                                writeln!(
+                                    padded_audit,
+                                    "{sample}\t{family}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}",
+                                    backend.name(),
+                                    model.gff_id,
+                                    model.protein_id,
+                                    model.query_interval_aa.start,
+                                    model.query_interval_aa.end,
+                                    model.state.as_str(),
+                                    u8::from(model.selected),
+                                    u8::from(model.eligible_for_resolve),
+                                    model.qc_flags.join(";"),
+                                    reasons.join(";")
+                                )?;
+                                if reasons.is_empty() {
+                                    valid_models.push(model);
+                                }
+                            }
+                            let mut valid = valid_models.into_iter();
                             if let Some(mut model) = valid.next() {
                                 if valid.next().is_none() {
                                     model.qc_flags.push("padded_fragment_join".to_owned());
@@ -1803,20 +2613,17 @@ fn annotate(
                                 failure_reason = "padded_model_not_validated".to_owned();
                             }
                         } else {
-                            failure_reason = "padded_miniprot_failed".to_owned();
+                            failure_reason = format!("padded_{}", backend.failed());
                         }
                     }
                     if let Some((mut model, padded_sequence)) = accepted_model {
-                        built_models[left].selected = false;
-                        built_models[left].eligible_for_resolve = false;
-                        built_models[left]
-                            .qc_flags
-                            .push("superseded_by_padded_join".to_owned());
-                        built_models[right].selected = false;
-                        built_models[right].eligible_for_resolve = false;
-                        built_models[right]
-                            .qc_flags
-                            .push("superseded_by_padded_join".to_owned());
+                        for &index in &sources {
+                            built_models[index].selected = false;
+                            built_models[index].eligible_for_resolve = false;
+                            built_models[index]
+                                .qc_flags
+                                .push("superseded_by_padded_join".to_owned());
+                        }
                         model.competition_group = built_models
                             .iter()
                             .map(|model| model.competition_group)
@@ -1832,6 +2639,8 @@ fn annotate(
                             "{sample}\t{family}\t{derived_internal}\t{derived_candidate}\t{}",
                             padded_sequence.len()
                         )?;
+                        writeln!(chain_manifest, "{sample}\t{family}\t{derived_candidate}\t{}\t{}\t{}\t{}\t0\t0\tpadded_validated\tunverified\t{}\t{}\t{}", model.protein_id,
+                            sources.iter().map(|&i| format!("{}:{}", built_models[i].candidate_id, built_models[i].gff_id)).collect::<Vec<_>>().join(";"), sources.len(), model.query_interval_aa.len(), model.protein_len_aa, model.query_interval_aa.start, model.query_interval_aa.end)?;
                         built_models.push(model);
                         fragment_outcomes.push(FragmentOutcome {
                             left_model: left,
@@ -1882,8 +2691,78 @@ fn annotate(
                     outcome.reason,
                 )?;
             }
+            let observed_candidates = candidate_map
+                .values()
+                .map(|(id, dna)| (id.clone(), dna.clone()))
+                .collect();
+            let mut recovered =
+                gm2_tools::gene_annotation::exon_recovery::reconstruct_with_candidates(
+                    &built_models,
+                    &protein_sequences,
+                    sco_reference.as_deref(),
+                    &observed_candidates,
+                )
+                .map_err(|message| {
+                    io::Error::new(io::ErrorKind::InvalidInput, format!("{family}: {message}"))
+                })?;
+            if reference_stops.contains(&(family.clone(), recovered.reference.clone())) {
+                recovered.append_terminal_stop(&built_models);
+            }
+            append_fasta(
+                &sco_dir.join(format!("{family}.fasta")),
+                &format!(
+                    "{sample}|{family} reference={} status=reference_coordinate_composite",
+                    recovered.reference
+                ),
+                &recovered.sequence,
+            )?;
+            sco_manifest.write_all(sco_rebuild::row(&sample, &family, &recovered).as_bytes())?;
+            sco_rebuild::write_masks(&out, &family, &sample, &recovered)?;
+            for (source, map) in &recovered.maps {
+                writeln!(
+                    projection_manifest,
+                    "{sample}\t{family}\t{}\t{source}\t{}\t{}\t{}\t{}",
+                    recovered.reference,
+                    map.status,
+                    map.cost
+                        .map(|x| x.to_string())
+                        .unwrap_or_else(|| "NA".into()),
+                    map.positions.iter().flatten().count(),
+                    map.positions.len()
+                )?;
+            }
+            let mut exon_ids = BTreeMap::new();
             for (model, model_name) in built_models.into_iter().zip(model_names) {
                 let header = format!("{sample}|{family}|{}|{model_name}", model.candidate_id);
+                // Exon evidence is independent of whole-gene coverage/selection.
+                // Keep competing coordinates and their provenance, without
+                // synthesizing sequence or calling the individual exon complete.
+                if gm2_tools::gene_annotation::exon_recovery::eligible(&model) {
+                    for (position, exon) in model.exons.iter().enumerate() {
+                        if !exon.sequence.bytes().all(|b| b"ACGT".contains(&b)) {
+                            continue;
+                        }
+                        let key = (
+                            model.candidate_id.clone(),
+                            model.strand,
+                            exon.interval,
+                            exon.sequence.clone(),
+                        );
+                        let next = exon_ids.len() + 1;
+                        let id = if let Some(id) = exon_ids.get(&key) {
+                            *id
+                        } else {
+                            exon_ids.insert(key, next);
+                            let (count, covered) =
+                                reads.segment_support(&model.candidate_id, exon.interval);
+                            writeln!(recovered_exons, "{sample}\t{family}\texon_candidate_{next}\t{}\t{}\t{}\t{}\t{}\t{count}\t{covered}\t{}", model.candidate_id, exon.interval.start, exon.interval.end, model.strand.as_char(), exon.sequence.len(), reads.available)?;
+                            next
+                        };
+                        let (left, right) =
+                            gm2_tools::gene_annotation::exon_recovery::boundaries(&model, position);
+                        writeln!(exon_sources, "{sample}\t{family}\texon_candidate_{id}\t{model_name}\t{}\t{}\t{left}\t{right}\t{}\t{}\t{}", model.protein_id, exon.index, model.state.as_str(), usize::from(model.selected), model.qc_flags.join(";"))?;
+                    }
+                }
                 let fields = model_manifest_fields(
                     &sample,
                     &family,
@@ -1925,20 +2804,24 @@ fn annotate(
                     &model,
                 )?;
                 if model.selected {
-                    for exon in &model.exons {
-                        append_fasta(
-                            &exon_dir.join(format!("{family}.fasta")),
-                            &format!("{header}|exon_{}", exon.index),
-                            &exon.sequence,
-                        )?;
-                    }
-                    for intron in &model.introns {
-                        append_fasta(
-                            &intron_dir.join(format!("{family}.fasta")),
-                            &format!("{header}|intron_{}", intron.index),
-                            &intron.sequence,
-                        )?;
-                    }
+                    append_fasta_records(
+                        &exon_dir.join(format!("{family}.fasta")),
+                        model.exons.iter().map(|exon| {
+                            (
+                                format!("{header}|exon_{}", exon.index),
+                                exon.sequence.as_str(),
+                            )
+                        }),
+                    )?;
+                    append_fasta_records(
+                        &intron_dir.join(format!("{family}.fasta")),
+                        model.introns.iter().map(|intron| {
+                            (
+                                format!("{header}|intron_{}", intron.index),
+                                intron.sequence.as_str(),
+                            )
+                        }),
+                    )?;
                     if !model
                         .qc_flags
                         .iter()
@@ -2026,6 +2909,40 @@ fn annotate(
         if count > 1 {
             writeln!(multi, "{sample}\t{family}\t{count}")?;
         }
+    }
+    candidate_manifest.flush()?;
+    gene_models.flush()?;
+    gene_segments.flush()?;
+    id_map.flush()?;
+    warnings.flush()?;
+    fragments.flush()?;
+    provenance.flush()?;
+    multi.flush()?;
+    padded_audit.flush()?;
+    chain_manifest.flush()?;
+    read_manifest.flush()?;
+    join_sources.flush()?;
+    read_summary.flush()?;
+    completion.flush()?;
+    sco_manifest.flush()?;
+    drop(sco_manifest);
+    projection_manifest.flush()?;
+    drop(projection_manifest);
+    if sorted_directory_paths(&input.join("samples"))?
+        .iter()
+        .filter(|p| p.join("candidates").is_dir())
+        .count()
+        > 1
+    {
+        sco_rebuild::recover(
+            &out,
+            &input,
+            &out,
+            workers,
+            sco_reference.as_deref(),
+            None,
+            config,
+        )?;
     }
     fs::remove_dir_all(&work_dir)?;
     Ok(())
@@ -2517,6 +3434,7 @@ fn main() -> io::Result<()> {
             option_path(&options, "--contigs"),
             option_string(&options, "--sample"),
             option_path(&options, "--out"),
+            options.contains_key("--retain-exon-fragments"),
         ),
         "cohort" => cohort(
             option_path(&options, "--reference"),
@@ -2573,12 +3491,28 @@ fn main() -> io::Result<()> {
                 .cloned()
                 .unwrap_or_else(|| "julia".into()),
         ),
-        "annotate" => annotate(
+        "recover-sco" => sco_rebuild::recover_with_reads(
+            &option_path(&options, "--annotation"),
+            &option_path(&options, "--input"),
+            &option_path(&options, "--out"),
+            option_positive_usize(&options, "--threads", 1),
+            options
+                .get("--sco-reference")
+                .and_then(|v| v.first())
+                .map(String::as_str),
+            optional_path(&options, "--sco-backbone-manifest").as_deref(),
+            ModelConfig {
+                minimum_coverage: option_fraction(&options, "--minimum-coverage", 0.20),
+                complete_coverage: option_fraction(&options, "--complete-coverage", 0.80),
+            },
+            optional_path(&options, "--reads-root").as_deref(),
+        ),
+        "annotate" => annotate_with_reads(
             option_path(&options, "--input"),
             option_path(&options, "--nucleotide-reference"),
             optional_path(&options, "--protein-reference"),
             option_path(&options, "--out"),
-            option_string(&options, "--miniprot"),
+            selected_backend(&options),
             options
                 .get("--threads")
                 .and_then(|v| v.first())
@@ -2589,6 +3523,14 @@ fn main() -> io::Result<()> {
             option_fraction(&options, "--complete-coverage", 0.80),
             option_usize(&options, "--flank", 0),
             option_usize(&options, "--fragment-padding", 100),
+            options
+                .contains_key("--exonerate-shadow")
+                .then(|| PathBuf::from("exonerate-rs")),
+            optional_path(&options, "--reads-root"),
+            options
+                .get("--sco-reference")
+                .and_then(|v| v.first())
+                .cloned(),
         ),
         _ => usage(),
     }
@@ -2596,9 +3538,17 @@ fn main() -> io::Result<()> {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn shadow_flag_does_not_consume_following_option() {
+        let options =
+            super::parse_options(&["--exonerate-shadow".into(), "--threads".into(), "2".into()]);
+        assert!(options.contains_key("--exonerate-shadow"));
+        assert_eq!(options["--threads"], vec!["2"]);
+    }
+
     use super::*;
 
-    fn temporary_test_directory(name: &str) -> PathBuf {
+    pub(super) fn temporary_test_directory(name: &str) -> PathBuf {
         let nonce = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap()
@@ -2698,6 +3648,23 @@ mod tests {
             codon_backtranslate(&protein, alignment_cds).as_deref(),
             Some("ATGAAATTT")
         );
+    }
+
+    #[test]
+    fn exon_classification_retains_short_candidates_without_lowering_gene_threshold() {
+        let root = temporary_test_directory("short_exon_classify");
+        fs::create_dir_all(&root).unwrap();
+        let path = root.join("f.fasta");
+        fs::write(&path, format!(">short\n{}\n", "GCT".repeat(15))).unwrap();
+        assert!(unique_candidates(&path, 3000, false).unwrap().0.is_empty());
+        assert_eq!(unique_candidates(&path, 3000, true).unwrap().0.len(), 1);
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    #[cfg(target_os = "linux")]
+    fn fasta_append_reports_buffered_write_failure() {
+        assert!(append_fasta(Path::new("/dev/full"), "record", "ATG").is_err());
     }
 
     #[test]
@@ -2823,13 +3790,22 @@ mod tests {
         fs::write(proteins.join("fam1.faa"), ">external\nMKFP\n").unwrap();
         let mut manifest = Vec::new();
 
-        let selected =
-            prepare_annotation_references(&references, Some(&proteins), &derived, &mut manifest)
-                .unwrap();
+        let selected = prepare_annotation_references(
+            &references,
+            Some(&proteins),
+            &derived,
+            &mut manifest,
+            None,
+        )
+        .unwrap();
 
-        assert_eq!(selected["fam1"], proteins.join("fam1.faa"));
+        assert_eq!(selected["fam1"], derived.join("fam1.faa"));
+        assert_eq!(
+            fs::read(&selected["fam1"]).unwrap(),
+            fs::read(proteins.join("fam1.faa")).unwrap()
+        );
         assert_eq!(selected["fam2"], derived.join("fam2.faa"));
-        assert!(!derived.join("fam1.faa").exists());
+        assert!(derived.join("fam1.faa").is_file());
         assert!(derived.join("fam2.faa").is_file());
         let manifest = String::from_utf8(manifest).unwrap();
         assert!(manifest.contains("fam1\t.\texternal\texternal_faa"));
@@ -2847,7 +3823,8 @@ mod tests {
         let mut manifest = Vec::new();
 
         let selected =
-            prepare_annotation_references(&references, None, &derived, &mut manifest).unwrap();
+            prepare_annotation_references(&references, None, &derived, &mut manifest, None)
+                .unwrap();
 
         assert!(!selected.contains_key("fam1"));
         assert!(!derived.join("fam1.faa").exists());
@@ -2872,6 +3849,54 @@ mod tests {
     }
 
     #[cfg(unix)]
+    #[test]
+    fn output_overlap_resolves_symlinks_before_parent_components() {
+        let root = temporary_test_directory("symlink_parent_overlap");
+        let input = root.join("data/reads");
+        fs::create_dir_all(&input).unwrap();
+        fs::create_dir_all(root.join("data/nested")).unwrap();
+        std::os::unix::fs::symlink(root.join("data/nested"), root.join("alias")).unwrap();
+        let disguised = root.join("alias/../reads");
+        assert_eq!(
+            prospective_canonical_path(&disguised).unwrap(),
+            fs::canonicalize(&input).unwrap()
+        );
+        assert!(ensure_nonoverlapping_paths(&[&input], &disguised).is_err());
+        assert!(ensure_nonoverlapping_paths(&[&input], &disguised.join("new-output")).is_err());
+        assert!(ensure_nonoverlapping_paths(&[&input], &root.join("separate/new-output")).is_ok());
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn annotation_cannot_replace_recruited_read_directory() {
+        let root = temporary_test_directory("reads_overlap");
+        let input = root.join("gene");
+        fs::create_dir_all(input.join("samples/s/candidates")).unwrap();
+        let reads = root.join("s/filtered_pe");
+        fs::create_dir_all(&reads).unwrap();
+        let marker = reads.join("f_1.fq");
+        fs::write(&marker, "protected").unwrap();
+        let result = annotate_with_reads(
+            input,
+            root.join("refs"),
+            None,
+            reads,
+            "unused-miniprot".to_owned(),
+            "1".into(),
+            50000,
+            0.2,
+            0.8,
+            0,
+            100,
+            None,
+            Some(root.clone()),
+            None,
+        );
+        assert!(result.is_err());
+        assert_eq!(fs::read_to_string(marker).unwrap(), "protected");
+        fs::remove_dir_all(root).unwrap();
+    }
     #[test]
     fn annotation_writes_structured_coordinate_preserving_outputs() {
         use std::os::unix::fs::PermissionsExt;
@@ -2902,9 +3927,9 @@ mod tests {
         fs::set_permissions(&fake_miniprot, permissions).unwrap();
 
         annotate(
-            input,
-            references,
-            Some(proteins),
+            input.clone(),
+            references.clone(),
+            Some(proteins.clone()),
             output.clone(),
             fake_miniprot.to_string_lossy().to_string(),
             "1".into(),
@@ -2913,6 +3938,7 @@ mod tests {
             0.80,
             0,
             100,
+            None,
         )
         .unwrap();
 
@@ -2923,6 +3949,10 @@ mod tests {
             fs::read_to_string(output.join("raw_miniprot/sampleA/fam1/TSK000001.gff3")).unwrap();
         assert!(cds.contains("sampleA|fam1|candidate_1|model_1"));
         assert!(cds.contains("ATGAAATTTCCC"));
+        let sco = fs::read_to_string(output.join("sco/fam1.fasta")).unwrap();
+        assert_eq!(sco.lines().filter(|line| line.starts_with('>')).count(), 1);
+        assert!(sco.contains("ATGAAATTTCCC"));
+        assert!(!output.join("exon_candidates").exists());
         assert!(introns.contains("GTAG"));
         assert!(models.contains("\tcomplete\t"));
         assert!(models.lines().nth(1).unwrap().ends_with("\t1\t1"));
@@ -2933,6 +3963,137 @@ mod tests {
             fs::read_to_string(output.join("manifest/reference_translation.tsv")).unwrap();
         assert!(translations.contains("fam1\t.\tp1\texternal_faa"));
         assert!(!output.join(".work").exists());
+        assert!(!output.join("manifest/exonerate_shadow.tsv").exists());
+        // Two samples and two SCOs share no writers under family scheduling.
+        // Verify ordered exports and one reference-translation audit per SCO.
+        fs::copy(
+            input.join("samples/sampleA/candidates/fam1.fasta"),
+            input.join("samples/sampleA/candidates/fam2.fasta"),
+        )
+        .unwrap();
+        fs::copy(references.join("fam1.fasta"), references.join("fam2.fasta")).unwrap();
+        fs::copy(proteins.join("fam1.faa"), proteins.join("fam2.faa")).unwrap();
+        fs::create_dir_all(input.join("samples/sampleB/candidates")).unwrap();
+        for family in ["fam1", "fam2"] {
+            fs::copy(
+                input.join(format!("samples/sampleA/candidates/{family}.fasta")),
+                input.join(format!("samples/sampleB/candidates/{family}.fasta")),
+            )
+            .unwrap();
+        }
+        let serial = root.join("family_serial");
+        let parallel = root.join("family_parallel");
+        for (destination, threads) in [(&serial, "1"), (&parallel, "3")] {
+            annotate(
+                input.clone(),
+                references.clone(),
+                Some(proteins.clone()),
+                destination.clone(),
+                fake_miniprot.to_string_lossy().to_string(),
+                threads.into(),
+                50_000,
+                0.20,
+                0.80,
+                0,
+                100,
+                None,
+            )
+            .unwrap();
+        }
+        for name in [
+            "models/gene_models.tsv",
+            "models/gene_segments.tsv",
+            "manifest/reference_translation.tsv",
+            "manifest/id_map.tsv",
+            "manifest/sco_recovery.tsv",
+            "manifest/exon_candidates.tsv",
+            "manifest/exon_candidate_sources.tsv",
+            "sco/fam1.fasta",
+            "sco/fam2.fasta",
+            "cds/fam1.fasta",
+            "cds/fam2.fasta",
+        ] {
+            assert_eq!(
+                fs::read(serial.join(name)).unwrap(),
+                fs::read(parallel.join(name)).unwrap(),
+                "family scheduling changed {name}"
+            );
+        }
+        assert!(!parallel.join(".family_workers").exists());
+        assert!(fs::read_to_string(parallel.join("manifest/execution.tsv"))
+            .unwrap()
+            .contains("geneminer2_family_queue"));
+        // Restore this fixture before the independent shadow checks below.
+        fs::remove_dir_all(input.join("samples/sampleB")).unwrap();
+        fs::remove_file(input.join("samples/sampleA/candidates/fam2.fasta")).unwrap();
+        fs::remove_file(references.join("fam2.fasta")).unwrap();
+        fs::remove_file(proteins.join("fam2.faa")).unwrap();
+        let fake_exonerate = root.join("exonerate-rs");
+        fs::write(&fake_exonerate, "#!/bin/sh\nif [ \"$1\" = \"--version\" ]; then echo exonerate-rs-test; exit 0; fi\necho 'vulgar: p1 0 4 . TSK000001 0 12 + 20 M 4 12'\n").unwrap();
+        let mut permissions = fs::metadata(&fake_exonerate).unwrap().permissions();
+        permissions.set_mode(0o755);
+        fs::set_permissions(&fake_exonerate, permissions).unwrap();
+        for (label, executable, expected) in [
+            ("shadow", fake_exonerate, "coordinate_difference"),
+            (
+                "failed",
+                root.join("missing-executable"),
+                "exonerate_failed",
+            ),
+        ] {
+            let compared = root.join(label);
+            annotate(
+                input.clone(),
+                references.clone(),
+                Some(proteins.clone()),
+                compared.clone(),
+                fake_miniprot.to_string_lossy().to_string(),
+                "1".into(),
+                50_000,
+                0.20,
+                0.80,
+                0,
+                100,
+                Some(executable),
+            )
+            .unwrap();
+            for file in [
+                "cds/fam1.fasta",
+                "proteins/fam1.fasta",
+                "models/gene_models.tsv",
+                "models/gene_segments.tsv",
+                "manifest/fragment_groups.tsv",
+            ] {
+                assert_eq!(
+                    fs::read(output.join(file)).unwrap(),
+                    fs::read(compared.join(file)).unwrap(),
+                    "{label}: {file}"
+                );
+            }
+            let report =
+                fs::read_to_string(compared.join("manifest/exonerate_shadow.tsv")).unwrap();
+            assert!(report.contains(expected), "{report}");
+            assert!(report.lines().all(|line| line.split('\t').count() == 18));
+            let normalized = fs::read_to_string(
+                compared.join("raw_exonerate_shadow/sampleA/fam1/TSK000001/normalized_models.tsv"),
+            )
+            .unwrap();
+            assert!(normalized
+                .lines()
+                .all(|line| line.split('\t').count() == 15));
+            if label == "shadow" {
+                assert!(normalized
+                    .lines()
+                    .skip(1)
+                    .any(|line| line.starts_with("exonerate\t") && line.contains("\tok\t")));
+            } else {
+                assert_eq!(normalized.lines().count(), 1);
+            }
+
+            assert!(compared
+                .join("raw_exonerate_shadow/sampleA/fam1/TSK000001/target.fasta")
+                .exists());
+        }
         fs::remove_dir_all(root).unwrap();
     }
 
@@ -2975,6 +4136,7 @@ mod tests {
             0.80,
             0,
             100,
+            None,
         )
         .unwrap();
 
@@ -3051,6 +4213,7 @@ fi
             0.80,
             0,
             100,
+            None,
         )
         .unwrap();
 

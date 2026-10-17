@@ -1,0 +1,2058 @@
+{
+  "sample": "HX50",
+  "species": "Choriaster granulatus",
+  "input": "/tmp/tipseek-hx50-multicontig/samples.tsv",
+  "reference_species": "Patiria pectinifera",
+  "metric_scope": "Reference-relative proxy on real HX50 reads. 80% query-residue recovery per annotated P. pectinifera exon; CDS completeness excludes query gaps. This is not same-individual biological truth. Multi-contig coverage is a union of evidence, not proof all pieces belong to one copy.",
+  "before": {
+    "output": "/tmp/tipseek-hx50-multicontig/before/exon",
+    "backend": "miniprot",
+    "families": [
+      {
+        "family": "SCO_AST_001422_OG0005442",
+        "source_annotation_max_intron_nt": 71062,
+        "retained_candidates": 9,
+        "reference_exons": 15,
+        "exons_with_at_least_80_percent_aligned_residues": 0,
+        "aligned_reference_aa": 0,
+        "reference_length_aa": 1184,
+        "cds_union_coverage": 0.0,
+        "longest_single_alignment_coverage": 0.0
+      },
+      {
+        "family": "SCO_AST_006612_OG0011917",
+        "source_annotation_max_intron_nt": 48514,
+        "retained_candidates": 0,
+        "reference_exons": 15,
+        "exons_with_at_least_80_percent_aligned_residues": 0,
+        "aligned_reference_aa": 0,
+        "reference_length_aa": 665,
+        "cds_union_coverage": 0.0,
+        "longest_single_alignment_coverage": 0.0
+      },
+      {
+        "family": "SCO_AST_004354_OG0008914",
+        "source_annotation_max_intron_nt": 27200,
+        "retained_candidates": 0,
+        "reference_exons": 17,
+        "exons_with_at_least_80_percent_aligned_residues": 0,
+        "aligned_reference_aa": 0,
+        "reference_length_aa": 696,
+        "cds_union_coverage": 0.0,
+        "longest_single_alignment_coverage": 0.0
+      },
+      {
+        "family": "SCO_AST_002204_OG0006437",
+        "source_annotation_max_intron_nt": 47524,
+        "retained_candidates": 10,
+        "reference_exons": 7,
+        "exons_with_at_least_80_percent_aligned_residues": 0,
+        "aligned_reference_aa": 557,
+        "reference_length_aa": 1263,
+        "cds_union_coverage": 0.4410134600158353,
+        "longest_single_alignment_coverage": 0.4410134600158353
+      },
+      {
+        "family": "SCO_AST_005492_OG0010381",
+        "source_annotation_max_intron_nt": 38587,
+        "retained_candidates": 2,
+        "reference_exons": 9,
+        "exons_with_at_least_80_percent_aligned_residues": 1,
+        "aligned_reference_aa": 68,
+        "reference_length_aa": 379,
+        "cds_union_coverage": 0.17941952506596306,
+        "longest_single_alignment_coverage": 0.17941952506596306
+      },
+      {
+        "family": "SCO_AST_001156_OG0004992",
+        "source_annotation_max_intron_nt": 33015,
+        "retained_candidates": 0,
+        "reference_exons": 32,
+        "exons_with_at_least_80_percent_aligned_residues": 0,
+        "aligned_reference_aa": 0,
+        "reference_length_aa": 1241,
+        "cds_union_coverage": 0.0,
+        "longest_single_alignment_coverage": 0.0
+      },
+      {
+        "family": "SCO_AST_001993_OG0006160",
+        "source_annotation_max_intron_nt": 30954,
+        "retained_candidates": 0,
+        "reference_exons": 15,
+        "exons_with_at_least_80_percent_aligned_residues": 0,
+        "aligned_reference_aa": 0,
+        "reference_length_aa": 899,
+        "cds_union_coverage": 0.0,
+        "longest_single_alignment_coverage": 0.0
+      },
+      {
+        "family": "SCO_AST_004694_OG0009269",
+        "source_annotation_max_intron_nt": 28529,
+        "retained_candidates": 0,
+        "reference_exons": 14,
+        "exons_with_at_least_80_percent_aligned_residues": 0,
+        "aligned_reference_aa": 0,
+        "reference_length_aa": 1326,
+        "cds_union_coverage": 0.0,
+        "longest_single_alignment_coverage": 0.0
+      },
+      {
+        "family": "SCO_AST_004850_OG0009433",
+        "source_annotation_max_intron_nt": 28013,
+        "retained_candidates": 0,
+        "reference_exons": 16,
+        "exons_with_at_least_80_percent_aligned_residues": 0,
+        "aligned_reference_aa": 0,
+        "reference_length_aa": 944,
+        "cds_union_coverage": 0.0,
+        "longest_single_alignment_coverage": 0.0
+      },
+      {
+        "family": "SCO_AST_006503_OG0011634",
+        "source_annotation_max_intron_nt": 27307,
+        "retained_candidates": 1,
+        "reference_exons": 4,
+        "exons_with_at_least_80_percent_aligned_residues": 0,
+        "aligned_reference_aa": 0,
+        "reference_length_aa": 387,
+        "cds_union_coverage": 0.0,
+        "longest_single_alignment_coverage": 0.0
+      },
+      {
+        "family": "SCO_AST_000633_OG0004164",
+        "source_annotation_max_intron_nt": 26815,
+        "retained_candidates": 0,
+        "reference_exons": 31,
+        "exons_with_at_least_80_percent_aligned_residues": 0,
+        "aligned_reference_aa": 0,
+        "reference_length_aa": 1285,
+        "cds_union_coverage": 0.0,
+        "longest_single_alignment_coverage": 0.0
+      },
+      {
+        "family": "SCO_AST_001530_OG0005593",
+        "source_annotation_max_intron_nt": 25915,
+        "retained_candidates": 0,
+        "reference_exons": 10,
+        "exons_with_at_least_80_percent_aligned_residues": 0,
+        "aligned_reference_aa": 0,
+        "reference_length_aa": 485,
+        "cds_union_coverage": 0.0,
+        "longest_single_alignment_coverage": 0.0
+      }
+    ],
+    "reference_exon_recovery_fraction": 0.005405405405405406,
+    "mean_cds_union_coverage": 0.05170274875681653,
+    "accepted_models": 3,
+    "complete_models": 0,
+    "chain_states": {},
+    "exported_reference_guided_cds": 0,
+    "biological_wrong_merge_rate": null,
+    "wrong_merge_rate_reason": "No same-individual genome or validated linkage truth for HX50; ambiguity rejection is not a measured false-merge rate."
+  },
+  "after": {
+    "output": "/tmp/tipseek-hx50-multicontig/verified-miniprot",
+    "backend": "miniprot",
+    "families": [
+      {
+        "family": "SCO_AST_001422_OG0005442",
+        "source_annotation_max_intron_nt": 71062,
+        "retained_candidates": 32,
+        "reference_exons": 15,
+        "exons_with_at_least_80_percent_aligned_residues": 4,
+        "aligned_reference_aa": 555,
+        "reference_length_aa": 1184,
+        "cds_union_coverage": 0.46875,
+        "longest_single_alignment_coverage": 0.30489864864864863
+      },
+      {
+        "family": "SCO_AST_006612_OG0011917",
+        "source_annotation_max_intron_nt": 48514,
+        "retained_candidates": 6,
+        "reference_exons": 15,
+        "exons_with_at_least_80_percent_aligned_residues": 3,
+        "aligned_reference_aa": 174,
+        "reference_length_aa": 665,
+        "cds_union_coverage": 0.26165413533834586,
+        "longest_single_alignment_coverage": 0.13533834586466165
+      },
+      {
+        "family": "SCO_AST_004354_OG0008914",
+        "source_annotation_max_intron_nt": 27200,
+        "retained_candidates": 13,
+        "reference_exons": 17,
+        "exons_with_at_least_80_percent_aligned_residues": 3,
+        "aligned_reference_aa": 149,
+        "reference_length_aa": 696,
+        "cds_union_coverage": 0.21408045977011494,
+        "longest_single_alignment_coverage": 0.10201149425287356
+      },
+      {
+        "family": "SCO_AST_002204_OG0006437",
+        "source_annotation_max_intron_nt": 47524,
+        "retained_candidates": 18,
+        "reference_exons": 7,
+        "exons_with_at_least_80_percent_aligned_residues": 1,
+        "aligned_reference_aa": 773,
+        "reference_length_aa": 1263,
+        "cds_union_coverage": 0.6120348376880443,
+        "longest_single_alignment_coverage": 0.4410134600158353
+      },
+      {
+        "family": "SCO_AST_005492_OG0010381",
+        "source_annotation_max_intron_nt": 38587,
+        "retained_candidates": 3,
+        "reference_exons": 9,
+        "exons_with_at_least_80_percent_aligned_residues": 2,
+        "aligned_reference_aa": 102,
+        "reference_length_aa": 379,
+        "cds_union_coverage": 0.2691292875989446,
+        "longest_single_alignment_coverage": 0.17941952506596306
+      },
+      {
+        "family": "SCO_AST_001156_OG0004992",
+        "source_annotation_max_intron_nt": 33015,
+        "retained_candidates": 31,
+        "reference_exons": 32,
+        "exons_with_at_least_80_percent_aligned_residues": 11,
+        "aligned_reference_aa": 617,
+        "reference_length_aa": 1241,
+        "cds_union_coverage": 0.49717969379532634,
+        "longest_single_alignment_coverage": 0.05801772763900081
+      },
+      {
+        "family": "SCO_AST_001993_OG0006160",
+        "source_annotation_max_intron_nt": 30954,
+        "retained_candidates": 16,
+        "reference_exons": 15,
+        "exons_with_at_least_80_percent_aligned_residues": 5,
+        "aligned_reference_aa": 445,
+        "reference_length_aa": 899,
+        "cds_union_coverage": 0.4949944382647386,
+        "longest_single_alignment_coverage": 0.21134593993325917
+      },
+      {
+        "family": "SCO_AST_004694_OG0009269",
+        "source_annotation_max_intron_nt": 28529,
+        "retained_candidates": 19,
+        "reference_exons": 14,
+        "exons_with_at_least_80_percent_aligned_residues": 7,
+        "aligned_reference_aa": 799,
+        "reference_length_aa": 1326,
+        "cds_union_coverage": 0.6025641025641025,
+        "longest_single_alignment_coverage": 0.22021116138763197
+      },
+      {
+        "family": "SCO_AST_004850_OG0009433",
+        "source_annotation_max_intron_nt": 28013,
+        "retained_candidates": 34,
+        "reference_exons": 16,
+        "exons_with_at_least_80_percent_aligned_residues": 11,
+        "aligned_reference_aa": 622,
+        "reference_length_aa": 944,
+        "cds_union_coverage": 0.6588983050847458,
+        "longest_single_alignment_coverage": 0.11440677966101695
+      },
+      {
+        "family": "SCO_AST_006503_OG0011634",
+        "source_annotation_max_intron_nt": 27307,
+        "retained_candidates": 5,
+        "reference_exons": 4,
+        "exons_with_at_least_80_percent_aligned_residues": 2,
+        "aligned_reference_aa": 210,
+        "reference_length_aa": 387,
+        "cds_union_coverage": 0.5426356589147286,
+        "longest_single_alignment_coverage": 0.3462532299741602
+      },
+      {
+        "family": "SCO_AST_000633_OG0004164",
+        "source_annotation_max_intron_nt": 26815,
+        "retained_candidates": 33,
+        "reference_exons": 31,
+        "exons_with_at_least_80_percent_aligned_residues": 4,
+        "aligned_reference_aa": 162,
+        "reference_length_aa": 1285,
+        "cds_union_coverage": 0.12607003891050583,
+        "longest_single_alignment_coverage": 0.03268482490272374
+      },
+      {
+        "family": "SCO_AST_001530_OG0005593",
+        "source_annotation_max_intron_nt": 25915,
+        "retained_candidates": 5,
+        "reference_exons": 10,
+        "exons_with_at_least_80_percent_aligned_residues": 3,
+        "aligned_reference_aa": 189,
+        "reference_length_aa": 485,
+        "cds_union_coverage": 0.38969072164948454,
+        "longest_single_alignment_coverage": 0.19175257731958764
+      }
+    ],
+    "reference_exon_recovery_fraction": 0.3027027027027027,
+    "mean_cds_union_coverage": 0.4281401399649235,
+    "accepted_models": 19,
+    "complete_models": 0,
+    "chain_states": {
+      "ambiguous": 117,
+      "reference_ordered_unvalidated": 14,
+      "search_limit": 20
+    },
+    "exported_reference_guided_cds": 14,
+    "biological_wrong_merge_rate": null,
+    "wrong_merge_rate_reason": "No same-individual genome or validated linkage truth for HX50; ambiguity rejection is not a measured false-merge rate."
+  },
+  "exonerate": {
+    "output": "/tmp/tipseek-hx50-multicontig/verified-exonerate",
+    "backend": "exonerate-rs",
+    "families": [
+      {
+        "family": "SCO_AST_001422_OG0005442",
+        "source_annotation_max_intron_nt": 71062,
+        "retained_candidates": 32,
+        "reference_exons": 15,
+        "exons_with_at_least_80_percent_aligned_residues": 4,
+        "aligned_reference_aa": 566,
+        "reference_length_aa": 1184,
+        "cds_union_coverage": 0.4780405405405405,
+        "longest_single_alignment_coverage": 0.30574324324324326
+      },
+      {
+        "family": "SCO_AST_006612_OG0011917",
+        "source_annotation_max_intron_nt": 48514,
+        "retained_candidates": 6,
+        "reference_exons": 15,
+        "exons_with_at_least_80_percent_aligned_residues": 3,
+        "aligned_reference_aa": 173,
+        "reference_length_aa": 665,
+        "cds_union_coverage": 0.26015037593984963,
+        "longest_single_alignment_coverage": 0.13533834586466165
+      },
+      {
+        "family": "SCO_AST_004354_OG0008914",
+        "source_annotation_max_intron_nt": 27200,
+        "retained_candidates": 13,
+        "reference_exons": 17,
+        "exons_with_at_least_80_percent_aligned_residues": 3,
+        "aligned_reference_aa": 232,
+        "reference_length_aa": 696,
+        "cds_union_coverage": 0.3333333333333333,
+        "longest_single_alignment_coverage": 0.13649425287356323
+      },
+      {
+        "family": "SCO_AST_002204_OG0006437",
+        "source_annotation_max_intron_nt": 47524,
+        "retained_candidates": 18,
+        "reference_exons": 7,
+        "exons_with_at_least_80_percent_aligned_residues": 1,
+        "aligned_reference_aa": 774,
+        "reference_length_aa": 1263,
+        "cds_union_coverage": 0.6128266033254157,
+        "longest_single_alignment_coverage": 0.4418052256532066
+      },
+      {
+        "family": "SCO_AST_005492_OG0010381",
+        "source_annotation_max_intron_nt": 38587,
+        "retained_candidates": 3,
+        "reference_exons": 9,
+        "exons_with_at_least_80_percent_aligned_residues": 2,
+        "aligned_reference_aa": 102,
+        "reference_length_aa": 379,
+        "cds_union_coverage": 0.2691292875989446,
+        "longest_single_alignment_coverage": 0.17941952506596306
+      },
+      {
+        "family": "SCO_AST_001156_OG0004992",
+        "source_annotation_max_intron_nt": 33015,
+        "retained_candidates": 31,
+        "reference_exons": 32,
+        "exons_with_at_least_80_percent_aligned_residues": 10,
+        "aligned_reference_aa": 506,
+        "reference_length_aa": 1241,
+        "cds_union_coverage": 0.40773569701853346,
+        "longest_single_alignment_coverage": 0.057211925866236905
+      },
+      {
+        "family": "SCO_AST_001993_OG0006160",
+        "source_annotation_max_intron_nt": 30954,
+        "retained_candidates": 16,
+        "reference_exons": 15,
+        "exons_with_at_least_80_percent_aligned_residues": 5,
+        "aligned_reference_aa": 446,
+        "reference_length_aa": 899,
+        "cds_union_coverage": 0.4961067853170189,
+        "longest_single_alignment_coverage": 0.21134593993325917
+      },
+      {
+        "family": "SCO_AST_004694_OG0009269",
+        "source_annotation_max_intron_nt": 28529,
+        "retained_candidates": 19,
+        "reference_exons": 14,
+        "exons_with_at_least_80_percent_aligned_residues": 8,
+        "aligned_reference_aa": 974,
+        "reference_length_aa": 1326,
+        "cds_union_coverage": 0.7345399698340875,
+        "longest_single_alignment_coverage": 0.222473604826546
+      },
+      {
+        "family": "SCO_AST_004850_OG0009433",
+        "source_annotation_max_intron_nt": 28013,
+        "retained_candidates": 34,
+        "reference_exons": 16,
+        "exons_with_at_least_80_percent_aligned_residues": 11,
+        "aligned_reference_aa": 623,
+        "reference_length_aa": 944,
+        "cds_union_coverage": 0.659957627118644,
+        "longest_single_alignment_coverage": 0.11546610169491525
+      },
+      {
+        "family": "SCO_AST_006503_OG0011634",
+        "source_annotation_max_intron_nt": 27307,
+        "retained_candidates": 5,
+        "reference_exons": 4,
+        "exons_with_at_least_80_percent_aligned_residues": 2,
+        "aligned_reference_aa": 178,
+        "reference_length_aa": 387,
+        "cds_union_coverage": 0.4599483204134367,
+        "longest_single_alignment_coverage": 0.3462532299741602
+      },
+      {
+        "family": "SCO_AST_000633_OG0004164",
+        "source_annotation_max_intron_nt": 26815,
+        "retained_candidates": 33,
+        "reference_exons": 31,
+        "exons_with_at_least_80_percent_aligned_residues": 4,
+        "aligned_reference_aa": 163,
+        "reference_length_aa": 1285,
+        "cds_union_coverage": 0.12684824902723735,
+        "longest_single_alignment_coverage": 0.03268482490272374
+      },
+      {
+        "family": "SCO_AST_001530_OG0005593",
+        "source_annotation_max_intron_nt": 25915,
+        "retained_candidates": 5,
+        "reference_exons": 10,
+        "exons_with_at_least_80_percent_aligned_residues": 4,
+        "aligned_reference_aa": 243,
+        "reference_length_aa": 485,
+        "cds_union_coverage": 0.5010309278350515,
+        "longest_single_alignment_coverage": 0.19381443298969073
+      }
+    ],
+    "reference_exon_recovery_fraction": 0.3081081081081081,
+    "mean_cds_union_coverage": 0.44497064310850776,
+    "accepted_models": 23,
+    "complete_models": 0,
+    "chain_states": {
+      "ambiguous": 119,
+      "reference_ordered_unvalidated": 12,
+      "search_limit": 24
+    },
+    "exported_reference_guided_cds": 12,
+    "biological_wrong_merge_rate": null,
+    "wrong_merge_rate_reason": "No same-individual genome or validated linkage truth for HX50; ambiguity rejection is not a measured false-merge rate."
+  },
+  "baseline_runs": {
+    "shared_recruitment": "/tmp/tipseek-hx50-multicontig/after/1_Hx50/filtered",
+    "runs": [
+      {
+        "command": [
+          "/tmp/tipseek-before-exon-seeds",
+          "-r",
+          "/tmp/tipseek-hx50-multicontig/references",
+          "-o",
+          "/tmp/tipseek-hx50-multicontig/before/1_Hx50",
+          "-ka",
+          "0",
+          "-k_min",
+          "21",
+          "-k_max",
+          "51",
+          "-limit_count",
+          "2",
+          "-iteration",
+          "4096",
+          "-sb",
+          "10000",
+          "-cov_min",
+          "0",
+          "-p",
+          "1"
+        ],
+        "seconds": 0.8646729208994657
+      },
+      {
+        "command": [
+          "/tmp/tipseek-before-multicontig",
+          "classify",
+          "--reference",
+          "/tmp/tipseek-hx50-multicontig/references",
+          "--contigs",
+          "/tmp/tipseek-hx50-multicontig/before/1_Hx50/contigs_all",
+          "--sample",
+          "Hx50",
+          "--out",
+          "/tmp/tipseek-hx50-multicontig/before/gene"
+        ],
+        "seconds": 0.003600421012379229
+      },
+      {
+        "command": [
+          "/tmp/tipseek-before-multicontig",
+          "cohort",
+          "--reference",
+          "/tmp/tipseek-hx50-multicontig/references",
+          "--out",
+          "/tmp/tipseek-hx50-multicontig/before/gene",
+          "--sample",
+          "Hx50"
+        ],
+        "seconds": 0.0032468619756400585
+      },
+      {
+        "command": [
+          "/tmp/tipseek-before-multicontig",
+          "annotate",
+          "--input",
+          "/tmp/tipseek-hx50-multicontig/before/gene",
+          "--nucleotide-reference",
+          "/tmp/tipseek-hx50-multicontig/references",
+          "--out",
+          "/tmp/tipseek-hx50-multicontig/before/exon",
+          "--miniprot",
+          "/home/yasuda2/miniforge3/pkgs/miniprot-0.18-h577a1d6_0/bin/miniprot",
+          "--threads",
+          "8"
+        ],
+        "seconds": 0.7144759959774092
+      }
+    ]
+  },
+  "panel": {
+    "sample": "HX50",
+    "species": "Choriaster granulatus",
+    "reads_kind": "real fastp-cleaned paired-end sequencing reads",
+    "reference_annotation_species": "Patiria pectinifera",
+    "reference_is_sample_truth": false,
+    "selection": "first 12 by long intron count, maximum intron length, family ID; CDS 300\u20134500 nt and >=3 exons",
+    "families": [
+      {
+        "family": "SCO_AST_001422_OG0005442",
+        "transcript": "CM057147.1-g287.t1",
+        "max_intron": 71062,
+        "long_introns": 3,
+        "exons": [
+          [
+            "CM057147.1",
+            15173701,
+            15173989,
+            "+",
+            "0"
+          ],
+          [
+            "CM057147.1",
+            15245051,
+            15245150,
+            "+",
+            "0"
+          ],
+          [
+            "CM057147.1",
+            15302425,
+            15302530,
+            "+",
+            "0"
+          ],
+          [
+            "CM057147.1",
+            15361402,
+            15361448,
+            "+",
+            "0"
+          ],
+          [
+            "CM057147.1",
+            15377117,
+            15377502,
+            "+",
+            "2"
+          ],
+          [
+            "CM057147.1",
+            15380582,
+            15381016,
+            "+",
+            "1"
+          ],
+          [
+            "CM057147.1",
+            15383141,
+            15383350,
+            "+",
+            "2"
+          ],
+          [
+            "CM057147.1",
+            15387815,
+            15387860,
+            "+",
+            "0"
+          ],
+          [
+            "CM057147.1",
+            15393045,
+            15393141,
+            "+",
+            "0"
+          ],
+          [
+            "CM057147.1",
+            15393847,
+            15393952,
+            "+",
+            "0"
+          ],
+          [
+            "CM057147.1",
+            15395579,
+            15395645,
+            "+",
+            "0"
+          ],
+          [
+            "CM057147.1",
+            15396395,
+            15396522,
+            "+",
+            "0"
+          ],
+          [
+            "CM057147.1",
+            15397776,
+            15397923,
+            "+",
+            "2"
+          ],
+          [
+            "CM057147.1",
+            15398189,
+            15398499,
+            "+",
+            "2"
+          ],
+          [
+            "CM057147.1",
+            15398706,
+            15399799,
+            "+",
+            "1"
+          ]
+        ],
+        "cds_nt": 3555,
+        "shortest_exon": 45,
+        "reference": "/home/yasuda2/starsco/geneminer_sco_refs/fasta/SCO_AST_001422_OG0005442.fasta"
+      },
+      {
+        "family": "SCO_AST_006612_OG0011917",
+        "transcript": "CM057146.1-g715.t1",
+        "max_intron": 48514,
+        "long_introns": 3,
+        "exons": [
+          [
+            "CM057146.1",
+            5596572,
+            5596722,
+            "-",
+            "0"
+          ],
+          [
+            "CM057146.1",
+            5605313,
+            5605454,
+            "-",
+            "0"
+          ],
+          [
+            "CM057146.1",
+            5605898,
+            5606006,
+            "-",
+            "0"
+          ],
+          [
+            "CM057146.1",
+            5607781,
+            5607862,
+            "-",
+            "0"
+          ],
+          [
+            "CM057146.1",
+            5609284,
+            5609486,
+            "-",
+            "1"
+          ],
+          [
+            "CM057146.1",
+            5610413,
+            5610679,
+            "-",
+            "0"
+          ],
+          [
+            "CM057146.1",
+            5612222,
+            5612357,
+            "-",
+            "0"
+          ],
+          [
+            "CM057146.1",
+            5613102,
+            5613331,
+            "-",
+            "1"
+          ],
+          [
+            "CM057146.1",
+            5614239,
+            5614396,
+            "-",
+            "2"
+          ],
+          [
+            "CM057146.1",
+            5616876,
+            5617005,
+            "-",
+            "2"
+          ],
+          [
+            "CM057146.1",
+            5665519,
+            5665631,
+            "-",
+            "0"
+          ],
+          [
+            "CM057146.1",
+            5686573,
+            5686656,
+            "-",
+            "2"
+          ],
+          [
+            "CM057146.1",
+            5716607,
+            5716631,
+            "-",
+            "2"
+          ],
+          [
+            "CM057146.1",
+            5720284,
+            5720286,
+            "-",
+            "1"
+          ],
+          [
+            "CM057146.1",
+            5720323,
+            5720502,
+            "-",
+            "0"
+          ]
+        ],
+        "cds_nt": 1998,
+        "shortest_exon": 2,
+        "reference": "/home/yasuda2/starsco/geneminer_sco_refs/fasta/SCO_AST_006612_OG0011917.fasta"
+      },
+      {
+        "family": "SCO_AST_004354_OG0008914",
+        "transcript": "CM057131.1-g748.t1",
+        "max_intron": 27200,
+        "long_introns": 3,
+        "exons": [
+          [
+            "CM057131.1",
+            12657113,
+            12657527,
+            "-",
+            "0"
+          ],
+          [
+            "CM057131.1",
+            12658822,
+            12659005,
+            "-",
+            "0"
+          ],
+          [
+            "CM057131.1",
+            12659835,
+            12659958,
+            "-",
+            "0"
+          ],
+          [
+            "CM057131.1",
+            12662078,
+            12662233,
+            "-",
+            "2"
+          ],
+          [
+            "CM057131.1",
+            12662354,
+            12662454,
+            "-",
+            "0"
+          ],
+          [
+            "CM057131.1",
+            12663327,
+            12663492,
+            "-",
+            "0"
+          ],
+          [
+            "CM057131.1",
+            12664138,
+            12664237,
+            "-",
+            "0"
+          ],
+          [
+            "CM057131.1",
+            12665199,
+            12665450,
+            "-",
+            "2"
+          ],
+          [
+            "CM057131.1",
+            12667700,
+            12667794,
+            "-",
+            "0"
+          ],
+          [
+            "CM057131.1",
+            12669763,
+            12669876,
+            "-",
+            "2"
+          ],
+          [
+            "CM057131.1",
+            12671089,
+            12671142,
+            "-",
+            "1"
+          ],
+          [
+            "CM057131.1",
+            12675680,
+            12675791,
+            "-",
+            "1"
+          ],
+          [
+            "CM057131.1",
+            12678135,
+            12678321,
+            "-",
+            "1"
+          ],
+          [
+            "CM057131.1",
+            12700217,
+            12700237,
+            "-",
+            "0"
+          ],
+          [
+            "CM057131.1",
+            12700336,
+            12700340,
+            "-",
+            "1"
+          ],
+          [
+            "CM057131.1",
+            12727540,
+            12727553,
+            "-",
+            "2"
+          ],
+          [
+            "CM057131.1",
+            12748825,
+            12748832,
+            "-",
+            "0"
+          ]
+        ],
+        "cds_nt": 2091,
+        "shortest_exon": 4,
+        "reference": "/home/yasuda2/starsco/geneminer_sco_refs/fasta/SCO_AST_004354_OG0008914.fasta"
+      },
+      {
+        "family": "SCO_AST_002204_OG0006437",
+        "transcript": "CM057134.1-g499.t1",
+        "max_intron": 47524,
+        "long_introns": 2,
+        "exons": [
+          [
+            "CM057134.1",
+            20095638,
+            20095647,
+            "+",
+            "0"
+          ],
+          [
+            "CM057134.1",
+            20098125,
+            20098129,
+            "+",
+            "0"
+          ],
+          [
+            "CM057134.1",
+            20123696,
+            20124067,
+            "+",
+            "2"
+          ],
+          [
+            "CM057134.1",
+            20171591,
+            20171726,
+            "+",
+            "0"
+          ],
+          [
+            "CM057134.1",
+            20174545,
+            20174648,
+            "+",
+            "0"
+          ],
+          [
+            "CM057134.1",
+            20180864,
+            20181002,
+            "+",
+            "2"
+          ],
+          [
+            "CM057134.1",
+            20181338,
+            20184370,
+            "+",
+            "2"
+          ]
+        ],
+        "cds_nt": 3792,
+        "shortest_exon": 4,
+        "reference": "/home/yasuda2/starsco/geneminer_sco_refs/fasta/SCO_AST_002204_OG0006437.fasta"
+      },
+      {
+        "family": "SCO_AST_005492_OG0010381",
+        "transcript": "CM057149.1-g365.t1",
+        "max_intron": 38587,
+        "long_introns": 2,
+        "exons": [
+          [
+            "CM057149.1",
+            18358988,
+            18359080,
+            "+",
+            "0"
+          ],
+          [
+            "CM057149.1",
+            18360398,
+            18360530,
+            "+",
+            "1"
+          ],
+          [
+            "CM057149.1",
+            18366909,
+            18366984,
+            "+",
+            "1"
+          ],
+          [
+            "CM057149.1",
+            18393839,
+            18393978,
+            "+",
+            "1"
+          ],
+          [
+            "CM057149.1",
+            18402507,
+            18402707,
+            "+",
+            "0"
+          ],
+          [
+            "CM057149.1",
+            18404266,
+            18404379,
+            "+",
+            "1"
+          ],
+          [
+            "CM057149.1",
+            18417567,
+            18417646,
+            "+",
+            "2"
+          ],
+          [
+            "CM057149.1",
+            18422908,
+            18422999,
+            "+",
+            "1"
+          ],
+          [
+            "CM057149.1",
+            18461586,
+            18461805,
+            "+",
+            "0"
+          ]
+        ],
+        "cds_nt": 1140,
+        "shortest_exon": 75,
+        "reference": "/home/yasuda2/starsco/geneminer_sco_refs/fasta/SCO_AST_005492_OG0010381.fasta"
+      },
+      {
+        "family": "SCO_AST_001156_OG0004992",
+        "transcript": "CM057142.1-g1703.t1",
+        "max_intron": 33015,
+        "long_introns": 2,
+        "exons": [
+          [
+            "CM057142.1",
+            32457929,
+            32458001,
+            "-",
+            "0"
+          ],
+          [
+            "CM057142.1",
+            32459060,
+            32459147,
+            "-",
+            "0"
+          ],
+          [
+            "CM057142.1",
+            32459964,
+            32460022,
+            "-",
+            "1"
+          ],
+          [
+            "CM057142.1",
+            32461596,
+            32461698,
+            "-",
+            "1"
+          ],
+          [
+            "CM057142.1",
+            32462968,
+            32463144,
+            "-",
+            "0"
+          ],
+          [
+            "CM057142.1",
+            32463424,
+            32463500,
+            "-",
+            "1"
+          ],
+          [
+            "CM057142.1",
+            32464502,
+            32464618,
+            "-",
+            "0"
+          ],
+          [
+            "CM057142.1",
+            32465656,
+            32465766,
+            "-",
+            "2"
+          ],
+          [
+            "CM057142.1",
+            32467260,
+            32467390,
+            "-",
+            "0"
+          ],
+          [
+            "CM057142.1",
+            32469024,
+            32469113,
+            "-",
+            "2"
+          ],
+          [
+            "CM057142.1",
+            32469762,
+            32469967,
+            "-",
+            "0"
+          ],
+          [
+            "CM057142.1",
+            32471142,
+            32471307,
+            "-",
+            "0"
+          ],
+          [
+            "CM057142.1",
+            32473229,
+            32473332,
+            "-",
+            "1"
+          ],
+          [
+            "CM057142.1",
+            32474250,
+            32474427,
+            "-",
+            "1"
+          ],
+          [
+            "CM057142.1",
+            32475350,
+            32475435,
+            "-",
+            "2"
+          ],
+          [
+            "CM057142.1",
+            32476492,
+            32476640,
+            "-",
+            "0"
+          ],
+          [
+            "CM057142.1",
+            32480810,
+            32480873,
+            "-",
+            "0"
+          ],
+          [
+            "CM057142.1",
+            32481652,
+            32481891,
+            "-",
+            "2"
+          ],
+          [
+            "CM057142.1",
+            32495871,
+            32495898,
+            "-",
+            "2"
+          ],
+          [
+            "CM057142.1",
+            32504568,
+            32504646,
+            "-",
+            "2"
+          ],
+          [
+            "CM057142.1",
+            32505990,
+            32506081,
+            "-",
+            "0"
+          ],
+          [
+            "CM057142.1",
+            32507136,
+            32507301,
+            "-",
+            "0"
+          ],
+          [
+            "CM057142.1",
+            32507896,
+            32507990,
+            "-",
+            "1"
+          ],
+          [
+            "CM057142.1",
+            32508119,
+            32508330,
+            "-",
+            "2"
+          ],
+          [
+            "CM057142.1",
+            32509898,
+            32510065,
+            "-",
+            "1"
+          ],
+          [
+            "CM057142.1",
+            32510525,
+            32510626,
+            "-",
+            "0"
+          ],
+          [
+            "CM057142.1",
+            32514134,
+            32514270,
+            "-",
+            "1"
+          ],
+          [
+            "CM057142.1",
+            32516960,
+            32517040,
+            "-",
+            "0"
+          ],
+          [
+            "CM057142.1",
+            32522978,
+            32523128,
+            "-",
+            "0"
+          ],
+          [
+            "CM057142.1",
+            32556143,
+            32556203,
+            "-",
+            "0"
+          ],
+          [
+            "CM057142.1",
+            32568812,
+            32568893,
+            "-",
+            "0"
+          ],
+          [
+            "CM057142.1",
+            32592882,
+            32592966,
+            "-",
+            "0"
+          ]
+        ],
+        "cds_nt": 3726,
+        "shortest_exon": 27,
+        "reference": "/home/yasuda2/starsco/geneminer_sco_refs/fasta/SCO_AST_001156_OG0004992.fasta"
+      },
+      {
+        "family": "SCO_AST_001993_OG0006160",
+        "transcript": "CM057140.1-g45.t1",
+        "max_intron": 30954,
+        "long_introns": 2,
+        "exons": [
+          [
+            "CM057140.1",
+            1431602,
+            1431684,
+            "+",
+            "0"
+          ],
+          [
+            "CM057140.1",
+            1462638,
+            1462797,
+            "+",
+            "2"
+          ],
+          [
+            "CM057140.1",
+            1487974,
+            1488229,
+            "+",
+            "2"
+          ],
+          [
+            "CM057140.1",
+            1489183,
+            1489365,
+            "+",
+            "2"
+          ],
+          [
+            "CM057140.1",
+            1492423,
+            1492477,
+            "+",
+            "0"
+          ],
+          [
+            "CM057140.1",
+            1493040,
+            1493202,
+            "+",
+            "0"
+          ],
+          [
+            "CM057140.1",
+            1493865,
+            1493869,
+            "+",
+            "0"
+          ],
+          [
+            "CM057140.1",
+            1493931,
+            1494089,
+            "+",
+            "2"
+          ],
+          [
+            "CM057140.1",
+            1494752,
+            1494863,
+            "+",
+            "0"
+          ],
+          [
+            "CM057140.1",
+            1495147,
+            1495258,
+            "+",
+            "0"
+          ],
+          [
+            "CM057140.1",
+            1496460,
+            1496670,
+            "+",
+            "0"
+          ],
+          [
+            "CM057140.1",
+            1497382,
+            1497943,
+            "+",
+            "0"
+          ],
+          [
+            "CM057140.1",
+            1498403,
+            1498632,
+            "+",
+            "0"
+          ],
+          [
+            "CM057140.1",
+            1499338,
+            1499595,
+            "+",
+            "2"
+          ],
+          [
+            "CM057140.1",
+            1500239,
+            1500404,
+            "+",
+            "0"
+          ]
+        ],
+        "cds_nt": 2700,
+        "shortest_exon": 4,
+        "reference": "/home/yasuda2/starsco/geneminer_sco_refs/fasta/SCO_AST_001993_OG0006160.fasta"
+      },
+      {
+        "family": "SCO_AST_004694_OG0009269",
+        "transcript": "CM057139.1-g737.t1",
+        "max_intron": 28529,
+        "long_introns": 2,
+        "exons": [
+          [
+            "CM057139.1",
+            14892985,
+            14893866,
+            "-",
+            "2"
+          ],
+          [
+            "CM057139.1",
+            14900235,
+            14900517,
+            "-",
+            "2"
+          ],
+          [
+            "CM057139.1",
+            14900794,
+            14900924,
+            "-",
+            "0"
+          ],
+          [
+            "CM057139.1",
+            14901064,
+            14901258,
+            "-",
+            "2"
+          ],
+          [
+            "CM057139.1",
+            14901667,
+            14901920,
+            "-",
+            "0"
+          ],
+          [
+            "CM057139.1",
+            14902650,
+            14902850,
+            "-",
+            "2"
+          ],
+          [
+            "CM057139.1",
+            14903564,
+            14903955,
+            "-",
+            "0"
+          ],
+          [
+            "CM057139.1",
+            14904319,
+            14904585,
+            "-",
+            "2"
+          ],
+          [
+            "CM057139.1",
+            14909563,
+            14909744,
+            "-",
+            "0"
+          ],
+          [
+            "CM057139.1",
+            14938273,
+            14938440,
+            "-",
+            "2"
+          ],
+          [
+            "CM057139.1",
+            14939934,
+            14940456,
+            "-",
+            "2"
+          ],
+          [
+            "CM057139.1",
+            14942217,
+            14942424,
+            "-",
+            "2"
+          ],
+          [
+            "CM057139.1",
+            14964515,
+            14964746,
+            "-",
+            "2"
+          ],
+          [
+            "CM057139.1",
+            14967992,
+            14968068,
+            "-",
+            "0"
+          ]
+        ],
+        "cds_nt": 3981,
+        "shortest_exon": 76,
+        "reference": "/home/yasuda2/starsco/geneminer_sco_refs/fasta/SCO_AST_004694_OG0009269.fasta"
+      },
+      {
+        "family": "SCO_AST_004850_OG0009433",
+        "transcript": "CM057134.1-g920.t1",
+        "max_intron": 28013,
+        "long_introns": 2,
+        "exons": [
+          [
+            "CM057134.1",
+            10241303,
+            10241495,
+            "-",
+            "0"
+          ],
+          [
+            "CM057134.1",
+            10243561,
+            10243728,
+            "-",
+            "2"
+          ],
+          [
+            "CM057134.1",
+            10250600,
+            10250760,
+            "-",
+            "0"
+          ],
+          [
+            "CM057134.1",
+            10251292,
+            10251438,
+            "-",
+            "2"
+          ],
+          [
+            "CM057134.1",
+            10252279,
+            10252450,
+            "-",
+            "2"
+          ],
+          [
+            "CM057134.1",
+            10253567,
+            10253776,
+            "-",
+            "1"
+          ],
+          [
+            "CM057134.1",
+            10254130,
+            10254237,
+            "-",
+            "0"
+          ],
+          [
+            "CM057134.1",
+            10255253,
+            10255444,
+            "-",
+            "2"
+          ],
+          [
+            "CM057134.1",
+            10256576,
+            10256688,
+            "-",
+            "0"
+          ],
+          [
+            "CM057134.1",
+            10259720,
+            10259896,
+            "-",
+            "2"
+          ],
+          [
+            "CM057134.1",
+            10260681,
+            10260936,
+            "-",
+            "2"
+          ],
+          [
+            "CM057134.1",
+            10261354,
+            10261549,
+            "-",
+            "2"
+          ],
+          [
+            "CM057134.1",
+            10262025,
+            10262172,
+            "-",
+            "2"
+          ],
+          [
+            "CM057134.1",
+            10290185,
+            10290403,
+            "-",
+            "1"
+          ],
+          [
+            "CM057134.1",
+            10290854,
+            10291167,
+            "-",
+            "2"
+          ],
+          [
+            "CM057134.1",
+            10312144,
+            10312220,
+            "-",
+            "0"
+          ]
+        ],
+        "cds_nt": 2835,
+        "shortest_exon": 76,
+        "reference": "/home/yasuda2/starsco/geneminer_sco_refs/fasta/SCO_AST_004850_OG0009433.fasta"
+      },
+      {
+        "family": "SCO_AST_006503_OG0011634",
+        "transcript": "CM057148.1-g989.t1",
+        "max_intron": 27307,
+        "long_introns": 2,
+        "exons": [
+          [
+            "CM057148.1",
+            14705706,
+            14706126,
+            "-",
+            "0"
+          ],
+          [
+            "CM057148.1",
+            14708725,
+            14708857,
+            "-",
+            "0"
+          ],
+          [
+            "CM057148.1",
+            14736164,
+            14736547,
+            "-",
+            "2"
+          ],
+          [
+            "CM057148.1",
+            14758096,
+            14758325,
+            "-",
+            "0"
+          ]
+        ],
+        "cds_nt": 1164,
+        "shortest_exon": 132,
+        "reference": "/home/yasuda2/starsco/geneminer_sco_refs/fasta/SCO_AST_006503_OG0011634.fasta"
+      },
+      {
+        "family": "SCO_AST_000633_OG0004164",
+        "transcript": "CM057129.1-g463.t1",
+        "max_intron": 26815,
+        "long_introns": 2,
+        "exons": [
+          [
+            "CM057129.1",
+            21033901,
+            21033980,
+            "+",
+            "0"
+          ],
+          [
+            "CM057129.1",
+            21035282,
+            21035371,
+            "+",
+            "2"
+          ],
+          [
+            "CM057129.1",
+            21036180,
+            21036224,
+            "+",
+            "0"
+          ],
+          [
+            "CM057129.1",
+            21037211,
+            21037277,
+            "+",
+            "1"
+          ],
+          [
+            "CM057129.1",
+            21038287,
+            21038459,
+            "+",
+            "1"
+          ],
+          [
+            "CM057129.1",
+            21040532,
+            21040610,
+            "+",
+            "0"
+          ],
+          [
+            "CM057129.1",
+            21041041,
+            21041249,
+            "+",
+            "0"
+          ],
+          [
+            "CM057129.1",
+            21043450,
+            21043568,
+            "+",
+            "2"
+          ],
+          [
+            "CM057129.1",
+            21044320,
+            21044444,
+            "+",
+            "1"
+          ],
+          [
+            "CM057129.1",
+            21045301,
+            21045403,
+            "+",
+            "0"
+          ],
+          [
+            "CM057129.1",
+            21046200,
+            21046314,
+            "+",
+            "0"
+          ],
+          [
+            "CM057129.1",
+            21047654,
+            21047754,
+            "+",
+            "0"
+          ],
+          [
+            "CM057129.1",
+            21048736,
+            21048759,
+            "+",
+            "2"
+          ],
+          [
+            "CM057129.1",
+            21049983,
+            21050100,
+            "+",
+            "0"
+          ],
+          [
+            "CM057129.1",
+            21050910,
+            21051845,
+            "+",
+            "0"
+          ],
+          [
+            "CM057129.1",
+            21052214,
+            21052285,
+            "+",
+            "1"
+          ],
+          [
+            "CM057129.1",
+            21053488,
+            21053612,
+            "+",
+            "2"
+          ],
+          [
+            "CM057129.1",
+            21053667,
+            21053671,
+            "+",
+            "1"
+          ],
+          [
+            "CM057129.1",
+            21053829,
+            21053963,
+            "+",
+            "0"
+          ],
+          [
+            "CM057129.1",
+            21054404,
+            21054519,
+            "+",
+            "1"
+          ],
+          [
+            "CM057129.1",
+            21055163,
+            21055259,
+            "+",
+            "0"
+          ],
+          [
+            "CM057129.1",
+            21056767,
+            21056872,
+            "+",
+            "0"
+          ],
+          [
+            "CM057129.1",
+            21077051,
+            21077172,
+            "+",
+            "0"
+          ],
+          [
+            "CM057129.1",
+            21078074,
+            21078192,
+            "+",
+            "2"
+          ],
+          [
+            "CM057129.1",
+            21078780,
+            21078934,
+            "+",
+            "1"
+          ],
+          [
+            "CM057129.1",
+            21105749,
+            21105870,
+            "+",
+            "0"
+          ],
+          [
+            "CM057129.1",
+            21106093,
+            21106098,
+            "+",
+            "2"
+          ],
+          [
+            "CM057129.1",
+            21106776,
+            21106898,
+            "+",
+            "0"
+          ],
+          [
+            "CM057129.1",
+            21107353,
+            21107507,
+            "+",
+            "1"
+          ],
+          [
+            "CM057129.1",
+            21108168,
+            21108172,
+            "+",
+            "0"
+          ],
+          [
+            "CM057129.1",
+            21108266,
+            21108307,
+            "+",
+            "2"
+          ]
+        ],
+        "cds_nt": 3858,
+        "shortest_exon": 4,
+        "reference": "/home/yasuda2/starsco/geneminer_sco_refs/fasta/SCO_AST_000633_OG0004164.fasta"
+      },
+      {
+        "family": "SCO_AST_001530_OG0005593",
+        "transcript": "CM057130.1-g912.t1",
+        "max_intron": 25915,
+        "long_introns": 2,
+        "exons": [
+          [
+            "CM057130.1",
+            25285525,
+            25285764,
+            "-",
+            "2"
+          ],
+          [
+            "CM057130.1",
+            25286512,
+            25286738,
+            "-",
+            "0"
+          ],
+          [
+            "CM057130.1",
+            25286917,
+            25287073,
+            "-",
+            "0"
+          ],
+          [
+            "CM057130.1",
+            25287861,
+            25287960,
+            "-",
+            "0"
+          ],
+          [
+            "CM057130.1",
+            25288416,
+            25288446,
+            "-",
+            "0"
+          ],
+          [
+            "CM057130.1",
+            25288844,
+            25289047,
+            "-",
+            "2"
+          ],
+          [
+            "CM057130.1",
+            25289218,
+            25289359,
+            "-",
+            "2"
+          ],
+          [
+            "CM057130.1",
+            25290850,
+            25291126,
+            "-",
+            "2"
+          ],
+          [
+            "CM057130.1",
+            25317041,
+            25317092,
+            "-",
+            "2"
+          ],
+          [
+            "CM057130.1",
+            25338484,
+            25338521,
+            "-",
+            "0"
+          ]
+        ],
+        "cds_nt": 1458,
+        "shortest_exon": 30,
+        "reference": "/home/yasuda2/starsco/geneminer_sco_refs/fasta/SCO_AST_001530_OG0005593.fasta"
+      }
+    ]
+  },
+  "binary_sha256": {
+    "/tmp/tipseek-before-multicontig": "8c351a1071074e2711777dd247e91f4b6d4330a8ac76bcd9e5e8f8853608bfc6",
+    "/tmp/tipseek-before-exon-seeds": "53ea55df571b674fcb4169fccf15bb7f1c2e5456bf41b29739de8742ac4463fe",
+    "/home/yasuda2/TipSeek/target/release/gene_workflow": "70fe426a250ed987818f6f6df28f804deab83c8258e2010a00142b07c247716e",
+    "/home/yasuda2/TipSeek/target/release/main_assembler_original": "555374887505ad2ea88ab74bb266dd78c6d6821cdf997f61d13405792be2b786",
+    "/home/yasuda2/TipSeek/target/release/tipseek": "378842f00a93adcc90f26a0be0de4fa632a51a51f3cf0c22a5a107f7b4c91eb0",
+    "/home/yasuda2/exonerate/target/release/exonerate-rs": "08b051473541dc7711055e218d13334bb868517acc62e60bb9e5118b94a6ee46",
+    "/home/yasuda2/miniforge3/pkgs/miniprot-0.18-h577a1d6_0/bin/miniprot": "f8822f41eceb53a6ca611bd6606faf035aeb913030d1dede7fd7889ab37d4f52"
+  },
+  "input_files": [
+    {
+      "path": "/home/yasuda2/staruce/test/01_fastp/HX50_1.clean.fq.gz",
+      "bytes": 2712699065,
+      "mtime_ns": 1769875714725988251
+    },
+    {
+      "path": "/home/yasuda2/staruce/test/01_fastp/HX50_2.clean.fq.gz",
+      "bytes": 2889556028,
+      "mtime_ns": 1769875717676018673
+    }
+  ],
+  "annotation_timing": {
+    "miniprot": "\tCommand being timed: \"target/release/gene_workflow annotate --backend miniprot --input /tmp/tipseek-hx50-multicontig/after/gene --nucleotide-reference /tmp/tipseek-hx50-multicontig/references --out /tmp/tipseek-hx50-multicontig/verified-miniprot --threads 8 --miniprot /home/yasuda2/miniforge3/pkgs/miniprot-0.18-h577a1d6_0/bin/miniprot\"\n\tUser time (seconds): 3.50\n\tSystem time (seconds): 3.68\n\tPercent of CPU this job got: 116%\n\tElapsed (wall clock) time (h:mm:ss or m:ss): 0:06.15\n\tAverage shared text size (kbytes): 0\n\tAverage unshared data size (kbytes): 0\n\tAverage stack size (kbytes): 0\n\tAverage total size (kbytes): 0\n\tMaximum resident set size (kbytes): 69260\n\tAverage resident set size (kbytes): 0\n\tMajor (requiring I/O) page faults: 0\n\tMinor (reclaiming a frame) page faults: 7068709\n\tVoluntary context switches: 6866\n\tInvoluntary context switches: 652\n\tSwaps: 0\n\tFile system inputs: 0\n\tFile system outputs: 37440\n\tSocket messages sent: 0\n\tSocket messages received: 0\n\tSignals delivered: 0\n\tPage size (bytes): 4096\n\tExit status: 0\n",
+    "exonerate-rs": "\tCommand being timed: \"target/release/gene_workflow annotate --backend exonerate-rs --input /tmp/tipseek-hx50-multicontig/after/gene --nucleotide-reference /tmp/tipseek-hx50-multicontig/references --out /tmp/tipseek-hx50-multicontig/verified-exonerate --threads 1\"\n\tUser time (seconds): 80.29\n\tSystem time (seconds): 0.66\n\tPercent of CPU this job got: 99%\n\tElapsed (wall clock) time (h:mm:ss or m:ss): 1:21.02\n\tAverage shared text size (kbytes): 0\n\tAverage unshared data size (kbytes): 0\n\tAverage stack size (kbytes): 0\n\tAverage total size (kbytes): 0\n\tMaximum resident set size (kbytes): 96628\n\tAverage resident set size (kbytes): 0\n\tMajor (requiring I/O) page faults: 0\n\tMinor (reclaiming a frame) page faults: 877285\n\tVoluntary context switches: 663\n\tInvoluntary context switches: 1209\n\tSwaps: 0\n\tFile system inputs: 440\n\tFile system outputs: 63904\n\tSocket messages sent: 0\n\tSocket messages received: 0\n\tSignals delivered: 0\n\tPage size (bytes): 4096\n\tExit status: 0\n"
+  },
+  "source_sha256": {
+    "rust/build_consensus/src/main.rs": "f150d23723586e2533fd5ee719ef6e5074415848004c519239e3e80fa661810c",
+    "rust/gm2_tools/build.rs": "6efea9376458d519c6d9d50ffd4be6d4638ba76b76bbb7841b6d18c10edf0e0c",
+    "rust/gm2_tools/examples/validate_exonerate_selection.rs": "63d5c321885973f0f75107c7dc27979ff3a0639683480f7a07e9b3002933a9a1",
+    "rust/gm2_tools/src/alignment.rs": "b03e4ae60050575832712a399a928e8c7931564e92a0ee635228c1bdcf33b1a7",
+    "rust/gm2_tools/src/bin/build_trimed.rs": "04f515b9f989ef046bc7a129b82fc78d5e2c612f2fbfc3b425bdf20b82f86854",
+    "rust/gm2_tools/src/bin/fix_alignment.rs": "71236a5bdae5cafc8e9167767a7c07cf6960a6cf902c7537dda08c8ee55504a7",
+    "rust/gm2_tools/src/bin/gene_workflow.rs": "51b2ba5fb068bbf4bc13904c320a34cdfd2fae2424e8e5249f9ff2d03d272d66",
+    "rust/gm2_tools/src/bin/gm2_stats.rs": "069732eef53d58d93df053b653826b7cc7dc63c865a873cbf3fd7107b87ae221",
+    "rust/gm2_tools/src/bin/merge_seq.rs": "ee50d7b7f19f1cc6a7a4cad5f913217bdc0022898e386428e9ea64ada62b83c7",
+    "rust/gm2_tools/src/bin/mito_workflow.rs": "b63fe0e7687e1394ef7127b8b6a0fd3af6cd7729aa661be08dec9e3c2914f82a",
+    "rust/gm2_tools/src/bin/rad_workflow.rs": "d4939fc3a7c0732cea284c172c19cd9f9e9d090785943ba38e8019d584f692c6",
+    "rust/gm2_tools/src/fasta.rs": "10c88597c74bedaa3d66454eecfce0ec2511f5e92f2fa1367d90b5a95abbab25",
+    "rust/gm2_tools/src/fastx.rs": "fbade99a2ace2f4613bd53fea978afe3deafba2efede4e48cd75fe6941232c62",
+    "rust/gm2_tools/src/gene_annotation/chain.rs": "62343a062e59247c5579ea1b5389817269481246e823a98f76e564e6653be3bd",
+    "rust/gm2_tools/src/gene_annotation/evidence.rs": "8e62eb6b0caf4833cbe12618ee65b8c1324cd2b55a4d4f544a2aa283a2048ab1",
+    "rust/gm2_tools/src/gene_annotation/exonerate.rs": "30a4b21e61ad6cb5d3b55f159f8a0e34bc3bc3e41a70327bc70be502bd0765b7",
+    "rust/gm2_tools/src/gene_annotation/mod.rs": "f72182c9cf1109963b548e96034c3c649d934b9c350efb92a71c9a3595c89cfd",
+    "rust/gm2_tools/src/gene_annotation/model.rs": "8bd5558872a793adaf94ac772210333044c115af337fd8508e073f3908dbaad4",
+    "rust/gm2_tools/src/gene_annotation/select.rs": "6060baa1b0157d5919cff432200a74eeaf86fe4cb1e0bd76722147fcfa7cb0a8",
+    "rust/gm2_tools/src/gene_annotation/shadow.rs": "4dd6959c52ab3c51d89082c37798ffaa340fbd5145df6a44463916e58cc05f2f",
+    "rust/gm2_tools/src/lib.rs": "b7a276f3c467f608d1bc41181775396deb3304876956f5d68ca3e6cfd79e00e8",
+    "rust/gm2_tools/src/merge.rs": "fe31114d5c724de7ccc44c97bd008e1fad11d74f4db9b691aeeb4ef905bb0138",
+    "rust/gm2_tools/src/mito_merge.rs": "bd9465bef3059c46368f2b2c7ed2b13094d43526b77ab14fd1c9275b031e1d41",
+    "rust/gm2_tools/src/mito_reads.rs": "bc2d7b2d479fa34b3bf7ea91f72e7148d4162e98494f87058f39e7d7009efac0",
+    "rust/gm2_tools/src/resolve.rs": "b853552ab94e667c3a2ab733866795e6bda9e34592a46bb0b51462d43ad60c8e",
+    "rust/gm2_tools/src/stats.rs": "ace29e4c2d79850d9917575af13fc4d651cab06c4fdfd4d49da4fa731b1ed4e3",
+    "rust/gm2_tools/src/trim.rs": "dff5c7a55ac1fb7b995b0eb315a520f7900b05951f0130c544ca4b867a7bd89c",
+    "rust/gm2_tools/tests/exonerate_backend.rs": "32f849240b3cbe0678c978a7f61099065516873fedb4a3905a4cdc122722129e",
+    "rust/main_assembler/src/assembly.rs": "51c62021c6fd341ecd89612962810bda364382c7b6f8d9c261fe68433b46e671",
+    "rust/main_assembler/src/hash.rs": "6e77e825bf1eed37fce9b22c224e96568f84ea7491a0af3aeba481628c9f97b5",
+    "rust/main_assembler/src/io_utils.rs": "ab97488d25d52f44abdb5233ecb35716d1077bed51d9c54c54199c7c317b7111",
+    "rust/main_assembler/src/main.rs": "b62923edc2523668fae01f24beb7c7a8f4d89b9e922c22914d8d44dfb6c03589",
+    "rust/main_assembler/src/model.rs": "4b66e46b8c4d403b3ecde27f3749fa945668239c7b898871e6db6066c3297823",
+    "rust/main_assembler/src/pipeline.rs": "79f65b24ba3b96b95c75903a545065d3828c53759aaab1254c36585a2d888036",
+    "rust/main_assembler/src/seq.rs": "22f71d2122eb22c530eb61c2d95dce2f9534e70780cf09f0e0133d8d18f908b2",
+    "rust/main_assembler/src/unitig.rs": "54fa7ca7a33d5277129e98912167363ad98a1fc26c421d6f2137eec18fec1341",
+    "rust/main_assembler_original/src/main.rs": "b1e0bb704dfc2028b7c2aed05acc17322e6ef35f586ead3ef8a4fdce188c9335",
+    "rust/main_assembler_original/tests/exon_fragments.rs": "8c764169ac5adf2b55f7765f6a1ce7031c891b215c94e3bd51827c15571710d3",
+    "rust/main_filter_new/build.rs": "41385d6f593d583d5c0d4f3e83e35ce3fe625e15d8741dbc12dcb7c9952fcfae",
+    "rust/main_filter_new/src/main.rs": "2249522a8106e525f2d926e2c3c9165d7b1a436890389c1f70a9a5c458dce9a4",
+    "rust/main_population/src/main.rs": "224d9f72ba423df990b21189ef0332d7c299d281b8e8edb04715995ff3f0401d",
+    "rust/main_population/src/panref/backbone.rs": "3246dc2bbd3015f94569a0f8ba0fca7651981411c1335e4b481f9ea812bdd188",
+    "rust/main_population/src/panref/bait.rs": "c5bcb2d17395443bc5da3e507d2d84d970acb92136daf26d498692b0102df192",
+    "rust/main_population/src/panref/bait_index.rs": "e925a3429b92e610966a373e1d8693abda4fed0fd3a2b4b60683429ef7e19488",
+    "rust/main_population/src/panref/bubble.rs": "b8757102ff1543d0c1142503a49f5473ec8b2a6e97a7e4674982588531061e09",
+    "rust/main_population/src/panref/dbg.rs": "b3307453bbdc9049e064e25665170c4ec016021c0899acab46a6efc01f4b2874",
+    "rust/main_population/src/panref/recruit.rs": "6ccc7d786d5e0829ccd98b3f3ead44b0179880e842a5b5632528deeec311a292",
+    "rust/main_population/src/panref/v2.rs": "44ccff343443c9545be640a5e63108cff51433242ff92d511c0fd6c20d428e28",
+    "rust/main_refilter_new/src/main.rs": "21ffa23066cac36a97e883226667088f8f8071c5b1cc59d1e86b4a52ba0f999d",
+    "rust/main_repeat/src/main.rs": "9283784855c1b609733c65ee33ea9336c2cd9cb91a6b0fd1839e4d8983d1c6a9",
+    "rust/marker_profile/src/main.rs": "e56bc5b68596d3490896f97986b1fc54cec993d1e54fccccc4152d482990a7db",
+    "rust/tipseek_cli/src/bin/compare_outputs.rs": "ff541dbbb8a133021f4022d5dc71995176a72d9b9c3209047b4904eec5b73882",
+    "rust/tipseek_cli/src/main.rs": "17a8151eaafa2db6ed83ffdf74bd0eb653c0104753cefa286c14362eb9b2cb1d",
+    "rust/tipseek_cli/src/rescue_qc.rs": "93bea5b63230cd342293a728bb92298bab2b19b2be9aa1eb256d3fc547b3cff1",
+    "rust/tipseek_cli/src/uce_recruit.rs": "ef7cb0852f702e13e7b8d878bba03ff7a0c3614fbbd8c2f06432376d7c689849",
+    "rust/uce_filter/src/main.rs": "bb78d49bb00688031da9bd16b34a01259d88b891e7d7655d4249e49be9f2ab6b",
+    "rust/uce_filter_core/src/alignment.rs": "755c0580f24bf55dfe7cbd407caf7910bc29b67ac8ba3727ab416e31358d3d0e",
+    "rust/uce_filter_core/src/evidence.rs": "849eb38375bd316cb01cd5985d9ccb895b4bd5b61c02c6bdda4a6bfd7b9278c0",
+    "rust/uce_filter_core/src/index.rs": "b949e8a265450bc5ef461b723dbcfcd2bb347759d65b14d90c676327e84a25df",
+    "rust/uce_filter_core/src/lib.rs": "13e0a641697c280cd884619bf4b5aa22fe8f6b1bc6f2fe3448b62f205b91dc9a",
+    "rust/uce_filter_core/src/mem_index.rs": "6c7a14cb86abe15909e1f77c57315de020e47a487790223075ea33c650c45787",
+    "rust/uce_filter_core/src/model.rs": "beb8651e94ff547fa1d8789a9a578862710425a54017318b2d58dba88a11c7bb",
+    "rust/uce_filter_core/src/pipeline.rs": "712bb964c3efffe68cb7a4a89b81ca225f65a492f6141250018c187cedde8b3e",
+    "rust/uce_filter_core/src/selection.rs": "42f50a543cde2138156b81a36742ca1a7d1ffa7e934dab59edb6dbcd7aada69e",
+    "rust/xtask/src/main.rs": "6d4c07ea6caf9585182f996cf231c3103ec8bb686c90a3950c87ed1a82aceb67"
+  }
+}
