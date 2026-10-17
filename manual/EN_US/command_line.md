@@ -221,7 +221,7 @@ See the [RAD guide](../../docs/rad_EN.md) for probe construction, fallback recru
 cli/tipseek population \
   -f /home/user/project/samples.tsv \
   -r /home/user/project/references -o output -p 8 \
-  --assembly-mode uce --engine panrefv2 \
+  --assembly-mode uce --engine pseudoref \
   --population-admixture-k-min 2 --population-admixture-k-max 6
 ```
 
@@ -348,6 +348,8 @@ Padding candidates remain unresolved unless reannotation yields one unique compl
 | `--population-bcftools PATH` | bcftools executable; default `bcftools` |
 | `--population-plink PATH` | PLINK 1.9 executable; default `plink` |
 | `--population-admixture PATH` | ADMIXTURE executable; default `admixture` |
+
+Cache receipts reject stale or legacy outputs without validated completion records. Restart at `calling` after changing genotype/site filters to reuse raw joint calls; restart at `selection` for panel-only changes. Changing reference inputs requires restarting at `reference`. See the [Population guide](../../docs/population_EN.md) for identity checks and resource budgeting.
 
 ### 7.6 Consensus, trimming, and combining
 

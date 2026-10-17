@@ -221,7 +221,7 @@ probe 构建、fallback 招募、验证与解释见 [RAD 说明](../../docs/rad_
 cli/tipseek population \
   -f /home/user/project/samples.tsv \
   -r /home/user/project/references -o output -p 8 \
-  --assembly-mode uce --engine panrefv2 \
+  --assembly-mode uce --engine pseudoref \
   --population-admixture-k-min 2 --population-admixture-k-max 6
 ```
 
@@ -348,6 +348,8 @@ cli/tipseek stats \
 | `--population-bcftools PATH` | bcftools 可执行文件，默认 `bcftools` |
 | `--population-plink PATH` | PLINK 1.9 可执行文件，默认 `plink` |
 | `--population-admixture PATH` | ADMIXTURE 可执行文件，默认 `admixture` |
+
+阶段恢复通过完成记录拒绝过期或缺少校验记录的旧输出。修改基因型/位点过滤阈值时从 `calling` 开始，可复用原始联合检测结果；仅修改面板参数时从 `selection` 开始。参考输入改变时需从 `reference` 重跑。身份校验和资源预算见 [Population 指南](../../docs/population_ZH.md)。
 
 ### 7.6 Consensus、裁切与合并
 

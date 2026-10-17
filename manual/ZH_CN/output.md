@@ -120,6 +120,8 @@
 `population` 子命令在已有输出目录下创建 `population/`：
 
 - `sample_manifest.tsv`：原始样本名、TipSeek 内部目录名（包括保留的兼容 GeneMiner2 旧名称）、VCF 样本名、reads 路径和 SE/PE 布局的对应关系。
+- `cache/`：成功阶段的依赖与输出校验记录；未完成阶段没有有效完成记录。
+- `mapping/resource_budget.tsv`：样本并发数、比对/排序线程预算、排序内存与串行比对模式。
 - `reference/population_reference.fasta`：所有样本统一 mapping 使用的公共 UCE 参考。使用 `--population-reference-fasta` 时为复制后的外部参考。
 - `reference/population_reference_provenance.tsv`：仅 `pseudoref` 内部构建时，每个 locus 的来源样本、选择策略、候选数、长度及 reads 支持指标。
 - `reference/reference_contribution.tsv`：仅 `pseudoref` 内部构建时，每个样本贡献的参考 loci 数及比例，用于检查公共参考是否由少数样本主导。

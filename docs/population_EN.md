@@ -11,7 +11,7 @@ Each sample needs its completed UCE assembly (`uce_assembly_summary.csv` and acc
 ```bash
 cli/tipseek population \
   -f samples.tsv -r baits_by_locus -o output -p 32 \
-  --assembly-mode uce --engine panrefv2
+  --assembly-mode uce --engine pseudoref
 ```
 
 `baits_by_locus` contains one FASTA per locus. Use `pseudoref` for accepted-contig representative references, or `--population-reference-fasta FILE` with `pseudoref` for a fixed external reference.
@@ -22,7 +22,7 @@ cli/tipseek population \
 | --- | --- |
 | `pseudoref` | Default accepted-contig representative reference; supports `sqcl-longest` and `supported`. |
 | `panref` | Legacy experimental implementation. |
-| `panrefv2` | Recommended streaming local-graph UCE reference builder. |
+| `panrefv2` | Optional streaming local-graph UCE reference builder. |
 
 PanRefV2 builds a frozen paired-read core per locus, then admits only bounded single-mate rescue reads connected to that core. Each input FASTQ is decoded once; strict-core and accepted-rescue evidence remain bounded in memory, while one sequential temporary candidate spool per sample bounds RAM independently of the number of candidate reads. Low-quality bases (Phred < 20) are excluded from graph k-mers and duplicate strict-core or accepted-rescue pairs are collapsed. The temporary spool is removed after rescue selection. PanRefV2.2 also writes sparse per-sample unitig color evidence and conservatively reports a sample backbone path only when that sample supports every canonical node and transition; it writes no per-locus recruited FASTQ and never scaffolds across UCE loci.
 
@@ -53,3 +53,18 @@ Only `pass` loci enter `population_reference.fasta` by default. `short`, `low_sa
 ## QC
 
 Default filters are MAPQ 20, base quality 20, genotype DP 5, GQ 20, site QUAL 20, call rate 0.8, and MAC 2. Check PanRefV2 locus status, mapping QC, variant QC, panel counts, PCA agreement across the three panels, and ADMIXTURE CV error before interpretation. Individual QC is written to `structure/qc/individuals.imiss`, `individuals.het`, and `individuals.genome` (pairwise PI_HAT); use `--skip-relatedness-qc` to omit the quadratic relatedness calculation for large cohorts.
+
+## UCE integration, cache checks and resource budgets
+
+For completed UCE assemblies, the default `pseudoref` engine reuses accepted contigs and their support summaries without recruitment or graph rebuilding. The default selection remains `sqcl-longest`; compare the existing `--population-reference-strategy supported` separately. `panrefv2` remains an optional graph-reference engine.
+
+Successful reference, mapping, calling and filtering stages write completion receipts under `population/cache/`. Restart checks include sample identity/order, raw-read file identity, UCE summary/result contents, reference SHA-256, relevant parameters and external executable fingerprints. Reads and large outputs use canonical path, size, modification time and Unix filesystem identity/ctime, avoiding a full raw-read scan on restart; this is not a cryptographic read-content check. References and reference inputs use content SHA-256. Missing legacy receipts or mismatches reject reuse. Receipts are invalidated before stage mutation and installed atomically only after success.
+
+- Change DP, GQ, QUAL, call rate or MAC: restart at `calling` to reuse validated raw joint calls and rerun filtering.
+- Change MAPQ or base quality: restart at `calling`; joint calling is rerun.
+- Change only structure-panel settings: restart at `selection`, keeping validated alignments and filtered variants.
+- Change the reference, sample set or reads: restart at `reference`; old BAMs are not applied to a new reference.
+
+Thread-count changes do not invalidate biological result caches. The sample queue budgets concurrent mapper and sort threads together; a one-thread run writes a temporary SAM before sorting. Explicit per-thread sort memory and available memory (including Linux cgroup-v2 limits) constrain concurrency, but do not impose a hard bound on all external-process memory. The plan is recorded in `mapping/resource_budget.tsv`. Genotyping still uses original reads rather than the capped graph-building ledger.
+
+Temporary BAMs are uncompressed to reduce repeated compression work; with at least two available pipeline threads, fixmate streams directly into coordinate sorting. Final BAMs remain compressed. This trades additional temporary disk writes for less CPU time; single-thread runs retain sequential spooling. See the [real-read validation](development/population-integration-validation.md) for the measured scope and tradeoff.

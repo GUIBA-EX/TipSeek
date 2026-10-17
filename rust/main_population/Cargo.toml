@@ -8,3 +8,5 @@ license.workspace = true
 [dependencies]
 flate2 = "1.0"
 rayon = "1.10"
+sha2 = "0.10"
+gm2_tools = { path = "../gm2_tools" }

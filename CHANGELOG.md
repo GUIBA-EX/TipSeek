@@ -1,5 +1,14 @@
 # Changelog
 
+## Unreleased
+
+- Keep the UCE-to-population path on accepted-contig `pseudoref` by default, with the existing `supported` strategy available for comparison and PanRefV2 optional.
+- Validate population stage dependencies and completion receipts before reuse; reject changed references, samples, reads or parameters, and reuse raw joint calls when only genotype/site filters change.
+- Budget concurrent mapping and sorting together, limit sort memory, serialize the pipeline for a one-thread budget, and pass the requested thread count to PLINK.
+- Avoid repeated compression of temporary BAMs and pipe fixmate directly into coordinate sorting when the CPU budget permits; final BAMs remain compressed.
+- Fix empty R2 fields, colliding normalized sample IDs, same-file external reference copies (including hard links), executable resolution and failed-consumer cleanup.
+- Add reproducible synthetic and real-read UCE integration checks using alignment, variant-calling and population-analysis tools.
+
 ## v1.6.7 — Independent exon backend and read-supported SCO recovery
 
 Released 2026-10-18.

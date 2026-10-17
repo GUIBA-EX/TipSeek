@@ -1,3 +1,5 @@
+mod cache;
+mod resources;
 mod panref {
     pub(crate) mod backbone;
     pub(crate) mod bait;
@@ -487,17 +489,24 @@ fn read_samples(path: &Path) -> AppResult<Vec<Sample>> {
         if safe.is_empty() {
             return Err(format!("invalid sample name {:?}", fields[0]));
         }
-        let mut vcf_id = sanitize_vcf_id(&fields[0]);
-        if used_vcf_ids.contains(&vcf_id) {
-            vcf_id = format!("{vcf_id}_{number}");
+        let base_id = sanitize_vcf_id(&fields[0]);
+        let mut vcf_id = base_id.clone();
+        let mut suffix = number;
+        while !used_vcf_ids.insert(vcf_id.clone()) {
+            vcf_id = format!("{base_id}_{suffix}");
+            suffix += 1;
         }
-        used_vcf_ids.insert(vcf_id.clone());
         samples.push(Sample {
             original: fields[0].clone(),
             internal: format!("{number}_{safe}"),
             vcf_id,
             read1: PathBuf::from(&fields[1]),
-            read2: PathBuf::from(fields.get(2).unwrap_or(&fields[1])),
+            read2: PathBuf::from(
+                fields
+                    .get(2)
+                    .filter(|value| !value.trim().is_empty())
+                    .unwrap_or(&fields[1]),
+            ),
             population: fields
                 .get(3)
                 .map(|value| value.trim())
@@ -954,6 +963,22 @@ fn write_reference_manifest(reference_dir: &Path, engine: &str, fasta: &Path) ->
     .map_err(|e| e.to_string())
 }
 
+fn same_file(left: &Path, right: &Path) -> bool {
+    if let (Ok(left_path), Ok(right_path)) = (left.canonicalize(), right.canonicalize()) {
+        if left_path == right_path {
+            return true;
+        }
+    }
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::MetadataExt;
+        if let (Ok(left_meta), Ok(right_meta)) = (fs::metadata(left), fs::metadata(right)) {
+            return left_meta.dev() == right_meta.dev() && left_meta.ino() == right_meta.ino();
+        }
+    }
+    false
+}
+
 fn materialize_external_reference(args: &Args, samples: &[Sample]) -> AppResult<PathBuf> {
     let source = args
         .reference_fasta
@@ -969,7 +994,7 @@ fn materialize_external_reference(args: &Args, samples: &[Sample]) -> AppResult<
     fs::create_dir_all(&reference_dir)
         .map_err(|e| format!("unable to create {}: {e}", reference_dir.display()))?;
     let target = reference_dir.join("population_reference.fasta");
-    if source != &target {
+    if !same_file(source, &target) {
         fs::copy(source, &target).map_err(|e| {
             format!(
                 "unable to copy external reference {} to {}: {e}",
@@ -1013,12 +1038,12 @@ fn existing_population_reference(args: &Args) -> AppResult<PathBuf> {
 }
 
 fn prepare_reference(args: &Args, samples: &[Sample]) -> AppResult<PathBuf> {
-    if args.reference_fasta.is_some() {
-        materialize_external_reference(args, samples)
-    } else if args.start_at == Stage::Reference {
-        build_reference(args, samples)
-    } else {
+    if args.start_at != Stage::Reference {
         existing_population_reference(args)
+    } else if args.reference_fasta.is_some() {
+        materialize_external_reference(args, samples)
+    } else {
+        build_reference(args, samples)
     }
 }
 
@@ -1134,11 +1159,19 @@ fn run_pipe(
         .stdout
         .take()
         .ok_or_else(|| format!("unable to capture {left_program} output"))?;
-    let right_status = Command::new(right_program)
+    let right_status = match Command::new(right_program)
         .args(right_args)
         .stdin(Stdio::from(stdout))
         .status()
-        .map_err(|e| format!("unable to run {right_program}: {e}"))?;
+    {
+        Ok(status) => status,
+        Err(error) => {
+            // A failed consumer must not leave a producer blocked on its pipe.
+            let _ = left.kill();
+            let _ = left.wait();
+            return Err(format!("unable to run {right_program}: {error}"));
+        }
+    };
     let left_status = left
         .wait()
         .map_err(|e| format!("unable to wait for {left_program}: {e}"))?;
@@ -1252,10 +1285,15 @@ fn map_samples(args: &Args, samples: &[Sample], reference: &Path) -> AppResult<V
     // full core count on typical UCE-sized references, so several samples
     // are mapped concurrently at a reduced per-sample thread count instead
     // of giving every thread to one sample at a time. The reduce below
-    // writes `qc`/`bams` in the original sample order afterward, so output
-    // is byte-identical to the prior strictly serial version.
-    let worker_count = args.threads.max(1).min(samples.len()).max(1);
-    let per_sample_threads = (args.threads / worker_count).max(1);
+    // writes QC/BAM paths in sample order. BAM headers may differ with
+    // thread options; alignment records and biological results are preserved.
+    let budget = resources::MappingBudget::plan(
+        args.threads,
+        samples.len(),
+        resources::available_memory_mib(),
+    );
+    let worker_count = budget.workers;
+    fs::write(mapping_dir.join("resource_budget.tsv"), format!("workers\tmapper_threads\tsort_extra_threads\tsort_memory_mib\tsequential\n{}\t{}\t{}\t{}\t{}\n", budget.workers, budget.mapper_threads, budget.sort_extra_threads, budget.sort_memory_mib, budget.sequential)).map_err(|e| e.to_string())?;
     let queue: Mutex<VecDeque<(usize, &Sample)>> = Mutex::new(samples.iter().enumerate().collect());
     let (sender, receiver) = mpsc::channel();
     thread::scope(|scope| {
@@ -1268,8 +1306,7 @@ fn map_samples(args: &Args, samples: &[Sample], reference: &Path) -> AppResult<V
                 let Some((index, sample)) = next else {
                     break;
                 };
-                let outcome =
-                    map_one_sample(args, sample, reference, mapping_dir, per_sample_threads);
+                let outcome = map_one_sample(args, sample, reference, mapping_dir, budget);
                 if sender.send((index, outcome)).is_err() {
                     break;
                 }
@@ -1301,51 +1338,92 @@ fn map_samples(args: &Args, samples: &[Sample], reference: &Path) -> AppResult<V
     Ok(bams)
 }
 
+// A one-CPU budget cannot run both pipeline processes concurrently.
+fn run_budgeted_pipe(
+    sequential: bool,
+    temporary: &Path,
+    mapper: &str,
+    mapper_args: &[String],
+    samtools: &str,
+    sort_args: &[String],
+) -> AppResult<()> {
+    if !sequential {
+        return run_pipe(mapper, mapper_args, samtools, sort_args);
+    }
+    let outcome = (|| {
+        let output = File::create(temporary).map_err(|e| e.to_string())?;
+        let status = Command::new(mapper)
+            .args(mapper_args)
+            .stdout(Stdio::from(output))
+            .status()
+            .map_err(|e| e.to_string())?;
+        if !status.success() {
+            return Err(format!("{mapper} failed with {status}"));
+        }
+        let mut argv = sort_args.to_vec();
+        *argv.last_mut().ok_or("missing sort input")? = temporary.display().to_string();
+        run_command(samtools, &argv)
+    })();
+    let _ = fs::remove_file(temporary);
+    outcome
+}
+
 fn map_one_sample(
     args: &Args,
     sample: &Sample,
     reference: &Path,
     mapping_dir: &Path,
-    threads: usize,
+    budget: resources::MappingBudget,
 ) -> AppResult<(PathBuf, String)> {
     let bam = mapping_dir.join(format!("{}.bam", sample.vcf_id));
-    let mapper_args = minibwa_map_args(threads, sample, reference);
+    let mapper_args = minibwa_map_args(budget.mapper_threads, sample, reference);
     if args.mark_duplicates {
         let name_bam = mapping_dir.join(format!("{}.name.bam", sample.vcf_id));
         let fixmate_bam = mapping_dir.join(format!("{}.fixmate.bam", sample.vcf_id));
         let position_bam = mapping_dir.join(format!("{}.positions.bam", sample.vcf_id));
-        run_pipe(
+        run_budgeted_pipe(
+            budget.sequential,
+            &mapping_dir.join(format!("{}.mapping.sam", sample.vcf_id)),
             &args.minibwa,
             &mapper_args,
             &args.samtools,
             &[
                 "sort".into(),
+                "-l".into(),
+                "0".into(),
+                "-m".into(),
+                format!("{}M", budget.sort_memory_mib),
                 "-n".into(),
                 "-@".into(),
-                threads.to_string(),
+                budget.sort_extra_threads.to_string(),
                 "-o".into(),
                 name_bam.display().to_string(),
                 "-".into(),
             ],
         )?;
-        run_command(
+        run_budgeted_pipe(
+            budget.sequential,
+            &fixmate_bam,
             &args.samtools,
             &[
                 "fixmate".into(),
+                "-u".into(),
                 "-m".into(),
                 name_bam.display().to_string(),
-                fixmate_bam.display().to_string(),
+                "-".into(),
             ],
-        )?;
-        run_command(
             &args.samtools,
             &[
                 "sort".into(),
+                "-l".into(),
+                "0".into(),
+                "-m".into(),
+                format!("{}M", budget.sort_memory_mib),
                 "-@".into(),
-                threads.to_string(),
+                budget.sort_extra_threads.to_string(),
                 "-o".into(),
                 position_bam.display().to_string(),
-                fixmate_bam.display().to_string(),
+                "-".into(),
             ],
         )?;
         run_command(
@@ -1360,14 +1438,18 @@ fn map_one_sample(
             let _ = fs::remove_file(temporary);
         }
     } else {
-        run_pipe(
+        run_budgeted_pipe(
+            budget.sequential,
+            &mapping_dir.join(format!("{}.mapping.sam", sample.vcf_id)),
             &args.minibwa,
             &mapper_args,
             &args.samtools,
             &[
                 "sort".into(),
+                "-m".into(),
+                format!("{}M", budget.sort_memory_mib),
                 "-@".into(),
-                threads.to_string(),
+                budget.sort_extra_threads.to_string(),
                 "-o".into(),
                 bam.display().to_string(),
                 "-".into(),
@@ -1383,7 +1465,7 @@ fn map_one_sample(
         &[
             "index".into(),
             "-@".into(),
-            threads.to_string(),
+            budget.sort_extra_threads.to_string(),
             bam.display().to_string(),
         ],
     )?;
@@ -1426,7 +1508,12 @@ fn map_one_sample(
     Ok((bam, qc_line))
 }
 
-fn call_variants(args: &Args, reference: &Path, bams: &[PathBuf]) -> AppResult<PathBuf> {
+fn call_variants_cached(
+    args: &Args,
+    reference: &Path,
+    bams: &[PathBuf],
+    calling_key: &str,
+) -> AppResult<PathBuf> {
     if bams.is_empty() {
         return Err("no BAM files for joint calling".into());
     }
@@ -1439,40 +1526,47 @@ fn call_variants(args: &Args, reference: &Path, bams: &[PathBuf]) -> AppResult<P
         .join("mapping")
         .join("bam.list");
     let raw = variants.join("cohort.raw.bcf");
-    run_pipe(
-        &args.bcftools,
-        &[
-            "mpileup".into(),
-            "-f".into(),
-            reference.display().to_string(),
-            "-b".into(),
-            bam_list.display().to_string(),
-            "-q".into(),
-            args.min_mapq.to_string(),
-            "-Q".into(),
-            args.min_baseq.to_string(),
-            "-a".into(),
-            "FORMAT/DP,FORMAT/AD,FORMAT/ADF,FORMAT/ADR".into(),
-            "-Ou".into(),
-        ],
-        &args.bcftools,
-        &[
-            "call".into(),
-            "-m".into(),
-            "-v".into(),
-            "-G".into(),
-            "-".into(),
-            "-f".into(),
-            "GQ".into(),
-            "-Ob".into(),
-            "-o".into(),
-            raw.display().to_string(),
-        ],
-    )?;
-    run_command(
-        &args.bcftools,
-        &["index".into(), "-f".into(), raw.display().to_string()],
-    )?;
+    if cache::validate(args, "calling", calling_key, &variant_outputs(&raw)).is_err() {
+        cache::invalidate(args, &["calling", "filtering"])?;
+        run_pipe(
+            &args.bcftools,
+            &[
+                "mpileup".into(),
+                "-f".into(),
+                reference.display().to_string(),
+                "-b".into(),
+                bam_list.display().to_string(),
+                "-q".into(),
+                args.min_mapq.to_string(),
+                "-Q".into(),
+                args.min_baseq.to_string(),
+                "-a".into(),
+                "FORMAT/DP,FORMAT/AD,FORMAT/ADF,FORMAT/ADR".into(),
+                "-Ou".into(),
+            ],
+            &args.bcftools,
+            &[
+                "call".into(),
+                "-m".into(),
+                "-v".into(),
+                "-G".into(),
+                "-".into(),
+                "-f".into(),
+                "GQ".into(),
+                "-Ob".into(),
+                "-o".into(),
+                raw.display().to_string(),
+            ],
+        )?;
+        run_command(
+            &args.bcftools,
+            &["index".into(), "-f".into(), raw.display().to_string()],
+        )?;
+
+        cache::save(args, "calling", calling_key, &variant_outputs(&raw))?;
+    } else {
+        println!("Reusing validated joint calls; applying genotype and site filters");
+    }
 
     let biallelic = variants.join("cohort.biallelic.snps.vcf.gz");
     run_pipe(
@@ -1908,6 +2002,8 @@ fn make_plink_panel(args: &Args, vcf: &Path, prefix: &Path) -> AppResult<()> {
     run_command(
         &args.plink,
         &[
+            "--threads".into(),
+            args.threads.to_string(),
             "--vcf".into(),
             vcf.display().to_string(),
             "--double-id".into(),
@@ -1923,6 +2019,8 @@ fn run_pca(args: &Args, prefix: &Path, output: &Path) -> AppResult<()> {
     run_command(
         &args.plink,
         &[
+            "--threads".into(),
+            args.threads.to_string(),
             "--bfile".into(),
             prefix.display().to_string(),
             "--allow-extra-chr".into(),
@@ -2018,6 +2116,8 @@ fn build_structure_panels(args: &Args, all_vcf: &Path, one_vcf: &Path) -> AppRes
     run_command(
         &args.plink,
         &[
+            "--threads".into(),
+            args.threads.to_string(),
             "--bfile".into(),
             all_prefix.display().to_string(),
             "--allow-extra-chr".into(),
@@ -2099,6 +2199,8 @@ fn run_population_qc(args: &Args, primary_bed: &Path) -> AppResult<()> {
         run_command(
             &args.plink,
             &[
+                "--threads".into(),
+                args.threads.to_string(),
                 "--bfile".into(),
                 primary_bed.with_extension("").display().to_string(),
                 "--allow-extra-chr".into(),
@@ -2112,6 +2214,8 @@ fn run_population_qc(args: &Args, primary_bed: &Path) -> AppResult<()> {
         run_command(
             &args.plink,
             &[
+                "--threads".into(),
+                args.threads.to_string(),
                 "--bfile".into(),
                 primary_bed.with_extension("").display().to_string(),
                 "--allow-extra-chr".into(),
@@ -2243,27 +2347,110 @@ fn run_admixture(args: &Args, primary_bed: &Path, sample_count: usize) -> AppRes
     Ok(())
 }
 
+fn variant_outputs(path: &Path) -> Vec<PathBuf> {
+    vec![
+        path.to_path_buf(),
+        PathBuf::from(format!("{}.csi", path.display())),
+    ]
+}
+
+fn mapping_outputs(args: &Args, bams: &[PathBuf]) -> Vec<PathBuf> {
+    let mut files = vec![args.output.join("population/mapping/bam.list")];
+    for bam in bams {
+        files.push(bam.clone());
+        files.push(PathBuf::from(format!("{}.bai", bam.display())));
+    }
+    files
+}
+
 fn run(args: &Args) -> AppResult<()> {
     let samples = read_samples(&args.samples_tsv)?;
-    let reference = prepare_reference(args, &samples)?;
+    let sample_key = cache::samples(&samples)?;
+    let reference_input = cache::reference_inputs(args, &samples, &sample_key).map_err(|e| {
+        format!("cannot validate reference cache inputs: {e}; rerun the reference stage")
+    })?;
+    let reference = if args.start_at == Stage::Reference {
+        cache::invalidate(args, &["reference", "mapping", "calling", "filtering"])?;
+        let reference = prepare_reference(args, &samples)?;
+        let reference_key = cache::key(&[reference_input.clone(), cache::digest(&reference)?]);
+        cache::save(
+            args,
+            "reference",
+            &reference_key,
+            std::slice::from_ref(&reference),
+        )?;
+        reference
+    } else {
+        let reference = existing_population_reference(args)?;
+        let reference_key = cache::key(&[reference_input, cache::digest(&reference)?]);
+        cache::validate(
+            args,
+            "reference",
+            &reference_key,
+            std::slice::from_ref(&reference),
+        )?;
+        reference
+    };
     println!("Population reference: {}", reference.display());
     if args.stop_after == Stage::Reference {
         return Ok(());
     }
 
+    let mapping_key = cache::key(&[
+        sample_key,
+        cache::digest(&reference)?,
+        args.mark_duplicates.to_string(),
+        cache::tool(&args.minibwa)?,
+        cache::tool(&args.samtools)?,
+    ]);
     let bams = if args.start_at <= Stage::Mapping {
-        map_samples(args, &samples, &reference)?
+        cache::invalidate(args, &["mapping", "calling", "filtering"])?;
+        let bams = map_samples(args, &samples, &reference)?;
+        cache::save(args, "mapping", &mapping_key, &mapping_outputs(args, &bams))?;
+        bams
     } else {
-        existing_bams(args, samples.len())?
+        let bams = existing_bams(args, samples.len())?;
+        cache::validate(args, "mapping", &mapping_key, &mapping_outputs(args, &bams))?;
+        bams
     };
     if args.stop_after == Stage::Mapping {
         return Ok(());
     }
 
+    let calling_key = cache::key(&[
+        mapping_key,
+        args.min_mapq.to_string(),
+        args.min_baseq.to_string(),
+        cache::tool(&args.bcftools)?,
+    ]);
+    let filtering_key = cache::key(&[
+        calling_key.clone(),
+        format!(
+            "{}:{}:{}:{}:{}",
+            args.min_dp, args.min_gq, args.min_qual, args.min_call_rate, args.min_mac
+        ),
+    ]);
     let filtered = if args.start_at <= Stage::Calling {
-        call_variants(args, &reference, &bams)?
+        cache::invalidate(args, &["filtering"])?;
+        let filtered = call_variants_cached(args, &reference, &bams, &calling_key)?;
+        cache::save(
+            args,
+            "filtering",
+            &filtering_key,
+            &variant_outputs(&filtered),
+        )?;
+        filtered
     } else {
-        existing_filtered_vcf(args)?
+        let filtered = existing_filtered_vcf(args)?;
+        let raw = args.output.join("population/variants/cohort.raw.bcf");
+        cache::validate(args, "calling", &calling_key, &variant_outputs(&raw))?;
+        cache::validate(
+            args,
+            "filtering",
+            &filtering_key,
+            &variant_outputs(&filtered),
+        )?;
+        filtered
     };
     if args.stop_after == Stage::Calling {
         return Ok(());
@@ -2308,6 +2495,19 @@ mod tests {
             parse_delimited_line("a,\"b,c\",d", ','),
             vec!["a", "b,c", "d"]
         );
+    }
+
+    #[test]
+    fn sample_ids_remain_unique_and_empty_r2_is_single_end() {
+        let path = env::temp_dir().join(format!("population-samples-{}.tsv", process::id()));
+        fs::write(&path, "A_3\tr.fq\t\tpop\tbatch\nA\tr.fq\nA\tr.fq\n").unwrap();
+        let samples = read_samples(&path).unwrap();
+        let ids: HashSet<_> = samples.iter().map(|s| &s.vcf_id).collect();
+        assert_eq!(ids.len(), 3);
+        assert_eq!(samples[0].read1, samples[0].read2);
+        assert_eq!(samples[0].population, "pop");
+        assert_eq!(samples[2].vcf_id, "A_4");
+        fs::remove_file(path).unwrap();
     }
 
     #[test]
@@ -2540,6 +2740,35 @@ printf 'CV error (K=%s): 0.%s\n' "$last" "$last"
         assert!(source_manifest.contains("external"));
         assert!(source_manifest.contains(&source.display().to_string()));
         assert!(root.join("out/population/sample_manifest.tsv").is_file());
+        let alias_args = Args {
+            reference_fasta: Some(
+                reference
+                    .parent()
+                    .unwrap()
+                    .join(".")
+                    .join("population_reference.fasta"),
+            ),
+            ..args
+        };
+        let same_reference = prepare_reference(&alias_args, &samples).unwrap();
+        assert_eq!(
+            fs::read_to_string(same_reference).unwrap(),
+            ">uce_1\nACGT\n"
+        );
+        #[cfg(unix)]
+        {
+            let hard_link = root.join("reference_hard_link.fa");
+            fs::hard_link(&reference, &hard_link).unwrap();
+            let linked_args = Args {
+                reference_fasta: Some(hard_link),
+                ..alias_args
+            };
+            let linked_reference = prepare_reference(&linked_args, &samples).unwrap();
+            assert_eq!(
+                fs::read_to_string(linked_reference).unwrap(),
+                ">uce_1\nACGT\n"
+            );
+        }
         fs::remove_dir_all(root).unwrap();
     }
 
@@ -2627,7 +2856,15 @@ printf 'CV error (K=%s): 0.%s\n' "$last" "$last"
         fs::create_dir_all(root.join("out/2_B/results")).unwrap();
         fs::create_dir_all(&tools).unwrap();
         let samples_tsv = root.join("samples.tsv");
-        fs::write(&samples_tsv, "A\ta_R1.fq\ta_R2.fq\nB\tb_R1.fq\tb_R2.fq\n").unwrap();
+        let mut rows = String::new();
+        for sample in ["A", "B"] {
+            let r1 = root.join(format!("{sample}_R1.fq"));
+            let r2 = root.join(format!("{sample}_R2.fq"));
+            fs::write(&r1, "@pair/1\nACGT\n+\nIIII\n").unwrap();
+            fs::write(&r2, "@pair/2\nACGT\n+\nIIII\n").unwrap();
+            rows.push_str(&format!("{sample}\t{}\t{}\n", r1.display(), r2.display()));
+        }
+        fs::write(&samples_tsv, rows).unwrap();
         let header = "locus,status,accepted,selected_contig_length,slice_supported_bases,slice_support_breadth,max_slice_support_gap,unique_read_count,unique_read_density,low_quality\n";
         let rows = format!(
             "{header}uce1,success,true,8,8,1.0,0,10,1.25,false\nuce2,success,true,8,8,1.0,0,10,1.25,false\n"
@@ -2679,7 +2916,10 @@ case "$cmd" in
     done
     cat > "$out"
     ;;
-  fixmate) cp "$2" "$3" ;;
+  fixmate)
+    previous=""; last=""
+    for value in "$@"; do previous="$last"; last="$value"; done
+    if [ "$last" = "-" ]; then cat "$previous"; else cp "$previous" "$last"; fi ;;
   markdup) cp "$1" "$2" ;;
   quickcheck) exit 0 ;;
   index)
@@ -2764,7 +3004,7 @@ fi
 "##,
         );
 
-        let args = Args {
+        let mut args = Args {
             output: root.join("out"),
             samples_tsv,
             minibwa: minibwa.display().to_string(),
@@ -2805,6 +3045,50 @@ fi
             fs::read_to_string(root.join("out/population/variants/variant_qc.tsv")).unwrap();
         assert!(variant_qc.contains("raw_called_variants\t3"));
         assert!(variant_qc.contains("site_filtered\t3"));
+        // Refiltering must preserve the joint calls and BAMs; selection-only
+        // restart must reject changed filtering parameters before writing files.
+        let raw = root.join("out/population/variants/cohort.raw.bcf");
+        let raw_identity = cache::identity(&raw).unwrap();
+        args.start_at = Stage::Calling;
+        args.min_dp = 6;
+        run(&args).unwrap();
+        assert_eq!(cache::identity(&raw).unwrap(), raw_identity);
+        args.min_mapq = 21;
+        run(&args).unwrap();
+        assert_ne!(cache::identity(&raw).unwrap(), raw_identity);
+        args.start_at = Stage::Selection;
+        run(&args).unwrap();
+        args.min_dp = 7;
+        assert!(run(&args).unwrap_err().contains("filtering cache"));
+        args.min_dp = 6;
+        args.threads = 8; // Scheduling changes do not invalidate biological results.
+        run(&args).unwrap();
+        let original_samples = fs::read_to_string(&args.samples_tsv).unwrap();
+        let reversed = original_samples
+            .lines()
+            .rev()
+            .collect::<Vec<_>>()
+            .join("\n");
+        fs::write(&args.samples_tsv, reversed).unwrap();
+        assert!(run(&args).unwrap_err().contains("reference cache"));
+        fs::write(&args.samples_tsv, original_samples).unwrap();
+        let reference = root.join("out/population/reference/population_reference.fasta");
+        let original_reference = fs::read(&reference).unwrap();
+        let changed_external = root.join("changed_external.fa");
+        fs::write(&changed_external, ">different\nAAAAAAAA\n").unwrap();
+        args.reference_fasta = Some(changed_external);
+        assert!(run(&args).unwrap_err().contains("reference cache"));
+        assert_eq!(fs::read(&reference).unwrap(), original_reference);
+        args.reference_fasta = None;
+        fs::write(&reference, ">uce1\nAAAAAAAA\n").unwrap();
+        assert!(run(&args).unwrap_err().contains("reference cache"));
+        fs::write(&reference, original_reference).unwrap();
+        // Restore receipts by executing the stages, then alter a read file.
+        args.start_at = Stage::Reference;
+        run(&args).unwrap();
+        fs::write(root.join("A_R1.fq"), "@pair/1\nTGCA\n+\nIIII\n").unwrap();
+        args.start_at = Stage::Calling;
+        assert!(run(&args).unwrap_err().contains("reference cache"));
         fs::remove_dir_all(root).unwrap();
     }
 }

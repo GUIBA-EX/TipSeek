@@ -120,6 +120,8 @@ See the [TE / repeatome guide](../../docs/te_EN.md). Stable `unknown` calls and 
 The `population` subcommand creates `population/` under the existing output directory:
 
 - `sample_manifest.tsv`: Mapping among original sample IDs, TipSeek internal directories (including retained legacy GeneMiner2-compatible names), VCF sample IDs, read paths, and SE/PE layouts.
+- `cache/`: Successful stage dependency/output receipts used to validate restart; incomplete stages have no valid receipt.
+- `mapping/resource_budget.tsv`: Sample concurrency, mapper/sort thread allocation, sort memory and sequential mapping mode.
 - `reference/population_reference.fasta`: Cohort UCE reference used for uniform mapping of every sample; when `--population-reference-fasta` is used, this is the copied external reference.
 - `reference/population_reference_provenance.tsv`: For internally built `pseudoref` references, source sample, selection strategy, candidate count, length, and read-support metrics for each locus.
 - `reference/reference_contribution.tsv`: For internally built `pseudoref` references, the number and fraction of loci contributed by each sample.

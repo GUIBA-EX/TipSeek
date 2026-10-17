@@ -314,7 +314,9 @@ name = "main_population"
 version = "0.5.0"
 dependencies = [
  "flate2",
+ "gm2_tools",
  "rayon",
+ "sha2",
 ]
 
 [[package]]
