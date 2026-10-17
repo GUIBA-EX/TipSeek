@@ -1,5 +1,17 @@
 # Changelog
 
+## v1.6.7 — Independent exon backend and read-supported SCO recovery
+
+Released 2026-10-18.
+
+- Added exonerate-rs as an independent exon annotation backend, invoked from the current environment by command name. Miniprot remains available.
+- Added reference-coordinate SCO reconstruction with one sequence per SCO: recovered sample bases follow reference order, while missing positions and unresolved conflicts remain N.
+- Improved cross-reference evidence projection, short exon candidate screening, and multi-contig conflict handling with read support and auditable rejection reasons.
+- Preserved reads containing internal N bases for evidence evaluation and added conservative recovery of observed terminal stop codons.
+- Added bounded family scheduling and reduced redundant candidate-chain comparisons while preserving selection and ambiguity handling.
+- Fixed output-path overlap checks involving symbolic links and parent-directory components.
+- Updated bilingual documentation and generic validation tools; removed sample-specific study materials from the release tree.
+
 ## v1.6.6 — Table-based UCE evidence and Apple silicon tuning
 
 Released 2026-10-12.
