@@ -1,6 +1,8 @@
 # Changelog
 
-## Unreleased
+## v1.6.9 — Reliable mitochondrial rescue and simpler defaults
+
+Released 2026-10-18.
 
 - Use the shared `-r` option for mito GenBank references; retain the legacy alias and automatic workflow defaults.
 - Preserve paired reads during mito refiltering and restore the primary assembly when rescue fails or does not produce a verified circle.

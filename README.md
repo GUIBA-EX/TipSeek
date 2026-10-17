@@ -14,7 +14,7 @@
 
 TipSeek 是面向短读长测序数据的 Rust 原生工具包。它通过统一入口完成参考引导的 reads 招募、目标序列组装、证据汇总和 cohort 分析，适用于 genome skimming、target capture、核基因家族、UCE、动物线粒体、RAD 补充及无参考 repeatome。发布版运行时不依赖 Python。
 
-当前版本：[v1.6.8](https://github.com/GUIBA-EX/TipSeek/releases/tag/v1.6.8)。改进 population 阶段复用、BAM 处理和质控效率，保持真实 UCE 数据的结果一致性；用法见 [population 指南](docs/population_ZH.md)，验证范围与性能取舍见 [验证报告](docs/development/population-integration-validation.md)。
+当前版本：[v1.6.9](https://github.com/GUIBA-EX/TipSeek/releases/tag/v1.6.9)。修复 mito 配对 reads 保留、补救回退、输出状态与清理流程，统一使用 `-r` 指定参考；用法见 [线粒体指南](docs/mitochondria_CN.md)。
 
 ## 相比 GeneMiner2
 
