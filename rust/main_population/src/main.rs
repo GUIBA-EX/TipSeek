@@ -1150,38 +1150,7 @@ fn run_pipe(
     right_program: &str,
     right_args: &[String],
 ) -> AppResult<()> {
-    let mut left = Command::new(left_program)
-        .args(left_args)
-        .stdout(Stdio::piped())
-        .spawn()
-        .map_err(|e| format!("unable to run {left_program}: {e}"))?;
-    let stdout = left
-        .stdout
-        .take()
-        .ok_or_else(|| format!("unable to capture {left_program} output"))?;
-    let right_status = match Command::new(right_program)
-        .args(right_args)
-        .stdin(Stdio::from(stdout))
-        .status()
-    {
-        Ok(status) => status,
-        Err(error) => {
-            // A failed consumer must not leave a producer blocked on its pipe.
-            let _ = left.kill();
-            let _ = left.wait();
-            return Err(format!("unable to run {right_program}: {error}"));
-        }
-    };
-    let left_status = left
-        .wait()
-        .map_err(|e| format!("unable to wait for {left_program}: {e}"))?;
-    if !left_status.success() {
-        return Err(format!("{left_program} failed with status {left_status}"));
-    }
-    if !right_status.success() {
-        return Err(format!("{right_program} failed with status {right_status}"));
-    }
-    Ok(())
+    run_pipeline(&[(left_program, left_args), (right_program, right_args)])
 }
 
 fn minibwa_map_args(threads: usize, sample: &Sample, reference: &Path) -> Vec<String> {
@@ -1382,13 +1351,20 @@ fn map_samples(args: &Args, samples: &[Sample], reference: &Path) -> AppResult<V
     Ok(bams)
 }
 
-// All stages run inside one sample's reserved CPU budget. Wait downstream
-// first, and reap every producer on any spawn, wait or exit failure.
 fn run_samtools_pipeline(program: &str, stages: &[Vec<String>]) -> AppResult<()> {
+    let commands: Vec<_> = stages
+        .iter()
+        .map(|args| (program, args.as_slice()))
+        .collect();
+    run_pipeline(&commands)
+}
+
+// Wait downstream first; on failure terminate and reap every remaining child.
+fn run_pipeline(stages: &[(&str, &[String])]) -> AppResult<()> {
     let mut children: Vec<std::process::Child> = Vec::new();
     let mut input = None;
     let outcome = (|| {
-        for (index, argv) in stages.iter().enumerate() {
+        for (index, &(program, argv)) in stages.iter().enumerate() {
             let mut command = Command::new(program);
             command.args(argv);
             if let Some(stdout) = input.take() {
@@ -1403,7 +1379,8 @@ fn run_samtools_pipeline(program: &str, stages: &[Vec<String>]) -> AppResult<()>
             input = child.stdout.take();
             children.push(child);
         }
-        for child in children.iter_mut().rev() {
+        for (index, child) in children.iter_mut().enumerate().rev() {
+            let program = stages[index].0;
             let status = child
                 .wait()
                 .map_err(|e| format!("pipeline wait failed: {e}"))?;
@@ -1492,6 +1469,25 @@ fn map_one_sample(
                 "-".into(),
             ],
         )?;
+        let fixmate_args = vec![
+            "fixmate".into(),
+            "-u".into(),
+            "-m".into(),
+            name_bam.display().to_string(),
+            "-".into(),
+        ];
+        let markdup_args = vec![
+            "markdup".into(),
+            "--output-fmt-option".into(),
+            "level=1".into(),
+            "--write-index".into(),
+            if budget.sequential {
+                position_bam.display().to_string()
+            } else {
+                "-".into()
+            },
+            indexed_bam.clone(),
+        ];
         if !budget.sequential {
             // Coordinate sort consumes its entire input before emitting records.
             // fixmate and markdup therefore do not process records concurrently:
@@ -1500,13 +1496,7 @@ fn map_one_sample(
             run_samtools_pipeline(
                 &args.samtools,
                 &[
-                    vec![
-                        "fixmate".into(),
-                        "-u".into(),
-                        "-m".into(),
-                        name_bam.display().to_string(),
-                        "-".into(),
-                    ],
+                    fixmate_args,
                     vec![
                         "sort".into(),
                         "-T".into(),
@@ -1521,14 +1511,7 @@ fn map_one_sample(
                         sort_extra_threads.to_string(),
                         "-".into(),
                     ],
-                    vec![
-                        "markdup".into(),
-                        "--output-fmt-option".into(),
-                        "level=1".into(),
-                        "--write-index".into(),
-                        "-".into(),
-                        indexed_bam.clone(),
-                    ],
+                    markdup_args,
                 ],
             )?;
         } else {
@@ -1536,13 +1519,7 @@ fn map_one_sample(
                 budget.sequential,
                 &fixmate_bam,
                 &args.samtools,
-                &[
-                    "fixmate".into(),
-                    "-u".into(),
-                    "-m".into(),
-                    name_bam.display().to_string(),
-                    "-".into(),
-                ],
+                &fixmate_args,
                 &args.samtools,
                 &[
                     "sort".into(),
@@ -1557,17 +1534,7 @@ fn map_one_sample(
                     "-".into(),
                 ],
             )?;
-            run_command(
-                &args.samtools,
-                &[
-                    "markdup".into(),
-                    "--output-fmt-option".into(),
-                    "level=1".into(),
-                    "--write-index".into(),
-                    position_bam.display().to_string(),
-                    indexed_bam.clone(),
-                ],
-            )?;
+            run_command(&args.samtools, &markdup_args)?;
         }
         for temporary in [&name_bam, &fixmate_bam, &position_bam] {
             let _ = fs::remove_file(temporary);
@@ -2638,6 +2605,29 @@ mod tests {
         let mut permissions = fs::metadata(path).unwrap().permissions();
         permissions.set_mode(0o755);
         fs::set_permissions(path, permissions).unwrap();
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn mixed_program_pipeline_propagates_errors_and_stops_producer() {
+        assert!(run_pipe("/bin/sh", &["-c".into(), "exit 7".into()], "/bin/cat", &[]).is_err());
+        // The downstream failure must terminate the producer, not wait for it.
+        let start = std::time::Instant::now();
+        assert!(run_pipe(
+            "/bin/sleep",
+            &["30".into()],
+            "/bin/sh",
+            &["-c".into(), "exit 7".into()]
+        )
+        .is_err());
+        assert!(start.elapsed() < std::time::Duration::from_secs(10));
+        assert!(run_pipe(
+            "/bin/sleep",
+            &["30".into()],
+            "/nonexistent/tipseek-consumer",
+            &[]
+        )
+        .is_err());
     }
 
     #[cfg(unix)]

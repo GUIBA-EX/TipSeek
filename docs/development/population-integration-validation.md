@@ -193,3 +193,16 @@ An additional instrumented run of the unchanged baseline recorded child-process 
 These measurements prioritize mapper profiling over additional flagstat thread tuning. Any future change to mapper batching, grouping or sort order must still pass full raw-call and alignment comparisons; equality of the final SNP count alone is not sufficient.
 
 Local evidence under `tipseek_population_real_validation_20261018`: `bam-collate-trial` (timings and `differences.json`), `bam-flagstat-trial` (six equivalent runs and candidate patch), `stage-profile.jsonl`, `stage-profile-summary.json`, `stage-profile-tools` and `stage-profile-run`. The restored executable hash remains `bc2c7d932f01be78101bc85f536ffb67baa1c17b99b293181818dd847448bca7`. No production-code changes remain; documentation diff checks passed. Workspace tests were not rerun for this documentation-only result.
+
+
+## Follow-up: simplify orchestration without changing successful processing
+
+Against `cc6a49d`, consolidate two-process and three-process subprocess management into one pipeline runner, retaining small call-site adapters. Both paths now use the same downstream-first wait and child termination/reaping on failure. The previous two-process implementation waited for a still-running producer after downstream failure; the shared implementation terminates it immediately. A regression test covers upstream errors, downstream failure with a sleeping producer, and failure to spawn a consumer.
+
+Build fixmate and markdup arguments once per sample and share them between streaming and sequential branches. Algorithms, tool arguments, compression, indexes, scheduling and the one-thread fallback are preserved. Production code decreases by **33 lines**; the added error-handling regression is separate. No configurable pipeline framework or new scheduling layer was added.
+
+All **368 workspace tests**, Clippy with warnings denied and formatting checks pass. The real-tool synthetic fixture preserves alignments/genotypes, complete coverage, BAI queries and restart behavior, including single-thread and skip-duplicate-marking paths.
+
+Two alternating paired trials on the unchanged real UCE dataset measured baseline 7.082/7.111 s and refactored 7.060/7.082 s (medians **7.097/7.071 s**). Treat this as effectively unchanged performance, not a demonstrated acceleration. Filesystem output blocks remain 3,035,968. All four runs pass the complete reference, 4,000,012 alignment records, raw and filtered variants, 263 filtered SNPs, 9 one-SNP loci, flagstat/coverage/mapping QC, BAI counts, PLINK and PCA checks.
+
+Local evidence: `tipseek_population_real_validation_20261018/population-simplify-real` and `population-simplify-synthetic`. Final executable SHA-256: `5179eaef886df79a964c4bc6783e2c68e75f100525162aeaf09c2cc472854bbd`.
