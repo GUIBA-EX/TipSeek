@@ -109,6 +109,37 @@ for name in ('updated', 'one_cpu', 'no_duplicates', 'no_duplicates_one_cpu'):
         expected = [row for row in sequential.splitlines() if row.split(b'\t')[2] == b'uce0']
         assert indexed.splitlines() == expected and expected, bam
 results['bai_random_access_verified'] = True
+# Compare the complete report, including zero-coverage references and fields
+# not currently used by mapping_qc.tsv.
+for name in ('updated', 'one_cpu', 'no_duplicates', 'no_duplicates_one_cpu'):
+    for sample in range(12):
+        bam = root / name / f'population/mapping/S{sample}.bam'
+        report = bam.with_suffix('.coverage.tsv')
+        if report.exists():
+            expected = subprocess.check_output([str(tools / 'samtools'), 'coverage', str(bam)], env=env)
+            assert report.read_bytes() == expected, bam
+# Exercise flag filtering and CIGAR semantics using real samtools.
+edge_sam = root / 'coverage_edge.sam'
+rows = ['@HD\tVN:1.6\tSO:unsorted', '@SQ\tSN:chr1\tLN:100', '@SQ\tSN:zero\tLN:100']
+for i, (flag, cigar) in enumerate([(0, '20M'), (16, '5S15M'), (0, '10M2I8M'),
+                                 (0, '10M3D10M'), (0, '10M20N10M'), (256, '20M'),
+                                 (512, '20M'), (1024, '20M'), (2048, '20M'), (4, '*')]):
+    rows.append(f'r{i}\t{flag}\tchr1\t10\t60\t{cigar}\t*\t0\t0\t' + 'A' * 20 + '\t' + 'I' * 20)
+rows.append('unplaced\t4\t*\t0\t0\t*\t*\t0\t0\t' + 'A' * 20 + '\t' + 'I' * 20)
+edge_sam.write_text('\n'.join(rows) + '\n')
+edge_bam = root / 'coverage_edge.bam'
+subprocess.run([str(tools / 'samtools'), 'sort', '-o', str(edge_bam), str(edge_sam)], check=True, env=env)
+subprocess.run([str(tools / 'samtools'), 'index', str(edge_bam)], check=True, env=env)
+bed = root / 'coverage_edge.bed'
+bed.write_text('chr1\t0\t100\nzero\t0\t100\n')
+view = subprocess.Popen([str(tools / 'samtools'), 'view', '-u', '-M', '-L', str(bed), str(edge_bam)],
+                        stdout=subprocess.PIPE, env=env)
+coverage = subprocess.run([str(tools / 'samtools'), 'coverage', '-'], stdin=view.stdout,
+                          stdout=subprocess.PIPE, env=env)
+view.stdout.close()
+assert view.wait() == 0 and coverage.returncode == 0
+assert coverage.stdout == subprocess.check_output([str(tools / 'samtools'), 'coverage', str(edge_bam)], env=env)
+results['coverage_reports_identical'] = True
 for name in ('updated', 'one_cpu', 'supported'):
     assert (root / name / 'population/structure/selected_snps.tsv').read_bytes() == (root / 'baseline/population/structure/selected_snps.tsv').read_bytes()
 raw = root / 'updated/population/variants/cohort.raw.bcf'

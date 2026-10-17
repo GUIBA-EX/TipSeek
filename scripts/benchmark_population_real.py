@@ -129,6 +129,9 @@ def main():
     expected_index = {name: subprocess.check_output(
         [str(tools / 'samtools'), 'idxstats', str(reference / 'mapping' / name)])
         for name in expected_bam}
+    expected_coverage = {name: subprocess.check_output(
+        [str(tools / 'samtools'), 'coverage', str(reference / 'mapping' / name)])
+        for name in expected_bam}
     check(expected_bam and expected_vcf['variants/cohort.filtered.vcf.gz'], 'Empty validation outputs')
     exact_files = ['reference/population_reference.fasta', 'structure/selected_snps.tsv']
     exact_files += [f'structure/{prefix}.{ext}' for prefix in ['all_snps', 'population', 'ld_pruned']
@@ -147,6 +150,10 @@ def main():
             check(Path(str(bam) + '.bai').is_file(), f'{bam}: BAI index missing')
             check(subprocess.check_output([str(tools / 'samtools'), 'idxstats', str(bam)])
                   == expected_index[name], f'{bam}: index counts differ')
+            coverage = current / 'mapping' / (Path(name).stem + '.coverage.tsv')
+            if coverage.exists():
+                check(coverage.read_bytes() == expected_coverage[name],
+                      f'{bam}: complete coverage report differs')
             flagstat = Path('mapping') / (Path(name).stem + '.flagstat.txt')
             check((reference / flagstat).read_bytes() == (current / flagstat).read_bytes(),
                   f'{bam}: flagstat differs')

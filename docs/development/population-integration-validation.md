@@ -113,3 +113,29 @@ The real-tool synthetic regression additionally compares the default and skip-du
 Local evidence: `tipseek_population_real_validation_20261018/bam-index-trial` and `bam-index-synthetic`. Reproduce with the same command using `023cb41` as baseline and `--repeats 3`. ADMIXTURE and full-library performance remain outside this validation.
 
 Tested executable SHA-256: `934fe1d1368b4e4e6577f36efb2ca5cae140fc15cb2a312981fcc19f651a3780`.
+
+
+## Follow-up: indexed coverage QC
+
+Compared against `2d6492e` with the same real UCE reads, accepted assemblies, eight threads and toolchain. The four final BAMs contain 4,000,012 records, including **3,991,220 unplaced unmapped records (99.78%)**. The previous coverage command decoded the entire BAM even though those unplaced records cannot contribute to coverage.
+
+Coverage now uses `samtools view -u -M -L` with full-reference BED intervals and the existing BAI, streaming the selected records into the original `samtools coverage`. It retains the full BAM header, coverage filters, depth limit, rounding and zero-coverage references. Flagstat continues to scan all records. The two single-thread commands fit the existing per-worker budget; one-CPU runs retain sequential full-scan coverage. BED-reserved reference names, empty indexes and zero-length references also use the original path. Invalid FAI lengths fail explicitly. Complete coverage reports are saved for both paths.
+
+The initial candidate measured medians of 9.486 → 9.213 s with all results equal. After adding reference-name fallback and consistent report output, the **final build** measured:
+
+| Implementation | Run 1 | Run 2 | Run 3 | Median |
+| --- | ---: | ---: | ---: | ---: |
+| `2d6492e` | 9.417 s | 9.480 s | 9.611 s | 9.480 s |
+| Indexed coverage QC | 9.256 s | 9.263 s | 9.207 s | 9.256 s |
+
+Median end-to-end elapsed time decreased **2.36%**, with every paired run faster. Filesystem output blocks changed from 2,997,624 to 2,997,664 because the small BED and coverage reports are now retained. Maximum child RSS stayed approximately 381 MiB. This improvement is specific to this dataset and host; a dataset dominated by mapped reads may benefit less or incur extra pipe overhead. Cached BAM reads are not necessarily physical disk reads.
+
+All six final-build runs preserve all alignment and variant records, 263 filtered SNPs, 9 one-SNP-per-UCE loci, reference FASTA, PLINK panels, individual QC and PCA. Comparisons additionally cover complete coverage reports (all fields), mapping QC, flagstat reports and BAI counts. The real-tool regression checks clipped, inserted, deleted and spliced CIGAR operations, reverse/secondary/supplementary/duplicate/QC-failed records, placed/unplaced unmapped reads and a zero-coverage reference. Single-thread, skip-duplicate-marking, BAI random access and restart checks also pass.
+
+All **367** workspace tests passed on a serial rerun, along with Clippy, formatting and Python compilation. The first parallel workspace run encountered an unrelated `gene_workflow` fixture `ExecutableFileBusy` error; it did not recur with serial execution. The population module tests passed separately.
+
+An isolated coverage-only measurement ran the four existing BAMs sequentially per trial, alternating full-scan and indexed modes over three trials and checking report bytes. Median aggregate coverage time was **0.9930 → 0.00894 s (99.1% less)**. This isolates coverage work; it is not the wall-time saving of the concurrently scheduled full workflow. Evidence and executable procedure are in `coverage_qc_profile.json` and `profile_coverage_qc.py` beside the local benchmark directories.
+
+Local evidence: `tipseek_population_real_validation_20261018/bam-qc-final` and `bam-qc-synthetic`. Reproduce using the benchmark command above with `2d6492e` as baseline and `--repeats 3`. ADMIXTURE and full-library performance remain untested.
+
+Final tested executable SHA-256: `fb8d38b9da87cf4824e93bf2fd51abf81dae1e05f5dc8a181ebcfa744b320f02`.

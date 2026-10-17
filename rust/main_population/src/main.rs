@@ -1263,6 +1263,30 @@ fn rate(numerator: u64, denominator: u64) -> f64 {
     }
 }
 
+// BED reserves comment/header names. Use the original full scan rather than
+// silently omit a valid reference whose name would be interpreted as metadata.
+fn coverage_regions_bed(fai: &str) -> AppResult<Option<String>> {
+    let mut regions = String::new();
+    for line in fai.lines() {
+        let mut fields = line.split('\t');
+        let name = fields.next().unwrap_or_default();
+        let length = fields
+            .next()
+            .and_then(|s| s.parse::<u64>().ok())
+            .ok_or("invalid reference index for coverage regions")?;
+        if name.is_empty()
+            || name.starts_with('#')
+            || name == "track"
+            || name == "browser"
+            || length == 0
+        {
+            return Ok(None);
+        }
+        regions.push_str(&format!("{name}\t0\t{length}\n"));
+    }
+    Ok((!regions.is_empty()).then_some(regions))
+}
+
 fn map_samples(args: &Args, samples: &[Sample], reference: &Path) -> AppResult<Vec<PathBuf>> {
     let mapping_dir = args.output.join("population").join("mapping");
     fs::create_dir_all(&mapping_dir)
@@ -1280,6 +1304,18 @@ fn map_samples(args: &Args, samples: &[Sample], reference: &Path) -> AppResult<V
         &args.samtools,
         &["faidx".into(), reference.display().to_string()],
     )?;
+
+    // Full reference intervals retain zero-coverage contigs in the BAM header;
+    // indexed iteration skips the unplaced unmapped tail during coverage QC.
+    let fai = fs::read_to_string(format!("{}.fai", reference.display()))
+        .map_err(|e| format!("unable to read reference index: {e}"))?;
+    let coverage_regions = coverage_regions_bed(&fai)?
+        .map(|regions| {
+            let path = mapping_dir.join("coverage_regions.bed");
+            fs::write(&path, regions).map_err(|e| e.to_string())?;
+            Ok::<_, String>(path)
+        })
+        .transpose()?;
 
     // Alignment and sort/markdup show diminishing returns well before the
     // full core count on typical UCE-sized references, so several samples
@@ -1299,6 +1335,7 @@ fn map_samples(args: &Args, samples: &[Sample], reference: &Path) -> AppResult<V
     thread::scope(|scope| {
         for _ in 0..worker_count {
             let queue = &queue;
+            let coverage_regions = coverage_regions.as_deref();
             let sender = sender.clone();
             let mapping_dir = &mapping_dir;
             scope.spawn(move || loop {
@@ -1306,7 +1343,14 @@ fn map_samples(args: &Args, samples: &[Sample], reference: &Path) -> AppResult<V
                 let Some((index, sample)) = next else {
                     break;
                 };
-                let outcome = map_one_sample(args, sample, reference, mapping_dir, budget);
+                let outcome = map_one_sample(
+                    args,
+                    sample,
+                    reference,
+                    mapping_dir,
+                    budget,
+                    coverage_regions,
+                );
                 if sender.send((index, outcome)).is_err() {
                     break;
                 }
@@ -1417,6 +1461,7 @@ fn map_one_sample(
     reference: &Path,
     mapping_dir: &Path,
     budget: resources::MappingBudget,
+    coverage_regions: Option<&Path>,
 ) -> AppResult<(PathBuf, String)> {
     let bam = mapping_dir.join(format!("{}.bam", sample.vcf_id));
     // Explicit BAI naming preserves restart compatibility; samtools otherwise
@@ -1556,19 +1601,41 @@ fn map_one_sample(
         return Err(format!("samtools flagstat failed for {}", sample.vcf_id));
     }
     fs::write(&flagstat_path, &output.stdout).map_err(|e| e.to_string())?;
-    let coverage_output = Command::new(&args.samtools)
-        .args(["coverage", &bam.display().to_string()])
-        .output()
-        .map_err(|e| format!("unable to run samtools coverage: {e}"))?;
-    if !coverage_output.status.success() {
-        return Err(format!("samtools coverage failed for {}", sample.vcf_id));
-    }
+    let report = mapping_dir.join(format!("{}.coverage.tsv", sample.vcf_id));
+    let coverage_bytes = if let Some(regions) = coverage_regions.filter(|_| !budget.sequential) {
+        run_pipe(
+            &args.samtools,
+            &[
+                "view".into(),
+                "-u".into(),
+                "-M".into(),
+                "-L".into(),
+                regions.display().to_string(),
+                bam.display().to_string(),
+            ],
+            &args.samtools,
+            &[
+                "coverage".into(),
+                "-o".into(),
+                report.display().to_string(),
+                "-".into(),
+            ],
+        )?;
+        fs::read(report).map_err(|e| e.to_string())?
+    } else {
+        let output = Command::new(&args.samtools)
+            .args(["coverage", &bam.display().to_string()])
+            .output()
+            .map_err(|e| format!("unable to run samtools coverage: {e}"))?;
+        if !output.status.success() {
+            return Err(format!("samtools coverage failed for {}", sample.vcf_id));
+        }
+        fs::write(&report, &output.stdout).map_err(|e| e.to_string())?;
+        output.stdout
+    };
     let mut metrics = MappingMetrics::default();
     parse_flagstat(&String::from_utf8_lossy(&output.stdout), &mut metrics);
-    parse_coverage(
-        &String::from_utf8_lossy(&coverage_output.stdout),
-        &mut metrics,
-    );
+    parse_coverage(&String::from_utf8_lossy(&coverage_bytes), &mut metrics);
     let qc_line = format!(
         "{}\tok\t{}\t{}\t{:.6}\t{}\t{:.6}\t{}\t{}\t{:.6}\t{:.4}\t{}",
         sample.vcf_id,
@@ -2605,6 +2672,18 @@ mod tests {
     }
 
     #[test]
+    fn coverage_intervals_preserve_whole_references_and_reject_bed_metadata() {
+        assert_eq!(
+            coverage_regions_bed("chr1\t30\t4\t30\t31\nchr:2\t20\t0\t20\t21\n").unwrap(),
+            Some("chr1\t0\t30\nchr:2\t0\t20\n".into())
+        );
+        for input in ["", "#chr\t30", "track\t30", "browser\t30", "empty\t0"] {
+            assert_eq!(coverage_regions_bed(input).unwrap(), None);
+        }
+        assert!(coverage_regions_bed("chr1\tinvalid").is_err());
+    }
+
+    #[test]
     fn parses_quoted_delimited_fields() {
         assert_eq!(
             parse_delimited_line("a,\"b,c\",d", ','),
@@ -3022,7 +3101,8 @@ fi
             r##"#!/bin/sh
 cmd="$1"; shift
 case "$cmd" in
-  faidx) : > "$1.fai" ;;
+  faidx) printf 'uce1\t8\t0\t8\t9\nuce2\t8\t0\t8\t9\n' > "$1.fai" ;;
+  view) exit 0 ;;
   sort)
     out=""; prev=""
     for value in "$@"; do
@@ -3050,7 +3130,9 @@ case "$cmd" in
     : > "$last.bai"
     ;;
   flagstat) printf '2 + 0 in total\n2 + 0 mapped (100.00%% : N/A)\n2 + 0 properly paired (100.00%% : N/A)\n' ;;
-  coverage) printf '#rname\tstartpos\tendpos\tnumreads\tcovbases\tcoverage\tmeandepth\tmeanbaseq\tmeanmapq\nuce1\t1\t8\t2\t8\t100\t2\t40\t60\n' ;;
+  coverage)
+    if [ "$1" = "-o" ]; then exec > "$2"; cat >/dev/null; fi
+    printf '#rname\tstartpos\tendpos\tnumreads\tcovbases\tcoverage\tmeandepth\tmeanbaseq\tmeanmapq\nuce1\t1\t8\t2\t8\t100\t2\t40\t60\n' ;;
 esac
 "##,
         );
