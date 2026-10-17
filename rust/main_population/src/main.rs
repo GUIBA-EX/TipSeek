@@ -1523,6 +1523,8 @@ fn map_one_sample(
                     ],
                     vec![
                         "markdup".into(),
+                        "--output-fmt-option".into(),
+                        "level=1".into(),
                         "--write-index".into(),
                         "-".into(),
                         indexed_bam.clone(),
@@ -1559,6 +1561,8 @@ fn map_one_sample(
                 &args.samtools,
                 &[
                     "markdup".into(),
+                    "--output-fmt-option".into(),
+                    "level=1".into(),
                     "--write-index".into(),
                     position_bam.display().to_string(),
                     indexed_bam.clone(),
@@ -1581,6 +1585,8 @@ fn map_one_sample(
                 format!("{}M", budget.sort_memory_mib),
                 "-@".into(),
                 budget.sort_extra_threads.to_string(),
+                "--output-fmt-option".into(),
+                "level=1".into(),
                 "--write-index".into(),
                 "-o".into(),
                 indexed_bam,
@@ -3119,6 +3125,7 @@ case "$cmd" in
     for value in "$@"; do previous="$last"; last="$value"; done
     if [ "$last" = "-" ]; then cat "$previous"; else cp "$previous" "$last"; fi ;;
   markdup)
+    if [ "$1" = "--output-fmt-option" ]; then shift 2; fi
     if [ "$1" = "--write-index" ]; then shift; fi
     out="$2"
     case "$out" in *'##idx##'*) : > "${out#*##idx##}"; out="${out%%##idx##*}" ;; esac

@@ -139,3 +139,27 @@ An isolated coverage-only measurement ran the four existing BAMs sequentially pe
 Local evidence: `tipseek_population_real_validation_20261018/bam-qc-final` and `bam-qc-synthetic`. Reproduce using the benchmark command above with `2d6492e` as baseline and `--repeats 3`. ADMIXTURE and full-library performance remain untested.
 
 Final tested executable SHA-256: `fb8d38b9da87cf4824e93bf2fd51abf81dae1e05f5dc8a181ebcfa744b320f02`.
+
+
+## Follow-up: reduce final BAM compression work
+
+Compared against `9778103` using the same real UCE subset, assemblies, eight threads and external tools. The retained change sets lossless BAM compression to **level 1** in both final writers: duplicate marking and coordinate sorting when duplicate marking is skipped. Index creation, record ordering, filtering, duplicate decisions, full flagstat scanning and coverage semantics are unchanged. Intermediate BAM handling and thread/memory budgets are unchanged.
+
+Flagstat decompression threading was also measured independently on the four existing BAMs: three alternating trials gave aggregate sequential-sample medians of 0.9905 s with zero additional threads and 0.9627 s with one additional thread. One paired trial was slower with the extra thread (1.0044 versus 0.9902 s). This small, inconsistent improvement was not retained. Local measurements are in `flagstat_threads_profile.json`.
+
+Three fresh alternating paired runs of the **retained final build** measured:
+
+| Implementation | Run 1 | Run 2 | Run 3 | Median |
+| --- | ---: | ---: | ---: | ---: |
+| `9778103` | 9.181 s | 9.212 s | 9.203 s | 9.203 s |
+| Final BAM compression level 1 | 7.079 s | 7.108 s | 7.155 s | 7.108 s |
+
+Median end-to-end time decreased **22.77%**, and every paired run improved. The four final BAMs grew from **371,553,820 to 391,165,669 bytes (+5.28%)**, identically across all three runs. Filesystem output blocks increased from **2,997,664 to 3,035,968 (+1.28%)**. Maximum child RSS remained approximately 381 MiB. The storage tradeoff is intentional and measured; this host/subset result does not establish a universal gain on slower storage or other data.
+
+All six runs preserve all **4,000,012 alignment records**, all eight variant record sets, **263 filtered SNPs**, **9 one-SNP-per-UCE loci**, the reference, PLINK panels, individual QC and PCA. Complete flagstat, coverage and mapping QC reports and BAI counts also agree. The real-tool regression covers both final writers, single-thread execution, indexed region queries, coverage edge cases and restart/raw-call reuse.
+
+All **367 workspace tests** passed with serial test execution, along with Clippy with warnings denied and formatting checks. The implementation change is limited to the three output compression options and the tool fixture recognizing those options; no alternative scheduler or flagstat algorithm was introduced.
+
+Local evidence: `tipseek_population_real_validation_20261018/bam-fastcompression-final` (including `summary.json` and `bam_sizes.json`) and `bam-fastcompression-synthetic`. Reproduce with the benchmark command above using `9778103` as baseline and `--repeats 3`. Timings exclude UCE assembly and comparison work, as before; ADMIXTURE remains excluded.
+
+Final tested executable SHA-256: `bc2c7d932f01be78101bc85f536ffb67baa1c17b99b293181818dd847448bca7`.
