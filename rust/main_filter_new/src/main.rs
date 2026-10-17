@@ -42,6 +42,7 @@ struct Args {
     use_composition_pattern: bool,
     mode: u8,
     fallback_kmers: Vec<usize>,
+    minimum_hit_span: usize,
     link_rad_arms: bool,
     link_rad_max_fragments: u64,
 }
@@ -62,6 +63,7 @@ impl Default for Args {
             use_composition_pattern: false,
             mode: 0,
             fallback_kmers: Vec::new(),
+            minimum_hit_span: 0,
             link_rad_arms: false,
             link_rad_max_fragments: 256,
         }
@@ -85,6 +87,7 @@ fn print_help() {
          -gr           Index reverse-complement reference k-mers\n\
          -lb           Accept the legacy composition-pattern option\n\
          -m INT        Mode 0..5 (default: 0)\n\
+         --minimum-hit-span INT  Require this span of exact anchors per target (0 disables)\n\
          --fallback-kmer INT  Query this shorter k only when earlier tiers have no hit; repeatable\n\
          --link-rad-arms      Route a hit to its sibling __R1/__R2 arm\n\
          --link-rad-max-fragments INT  Stop sibling propagation after this many direct fragments (default: 256)\n\
@@ -137,6 +140,12 @@ fn parse_args(argv: Vec<String>) -> AppResult<Args> {
                 parsed.mode = take_value(&argv, &mut i, "-m")?
                     .parse::<u8>()
                     .map_err(|_| "-m requires an integer from 0 to 5".to_string())?;
+            }
+            "--minimum-hit-span" => {
+                parsed.minimum_hit_span = parse_usize(
+                    take_value(&argv, &mut i, "--minimum-hit-span")?,
+                    "--minimum-hit-span",
+                )?
             }
             "--fallback-kmer" => parsed.fallback_kmers.push(parse_usize(
                 take_value(&argv, &mut i, "--fallback-kmer")?,
@@ -898,6 +907,7 @@ impl KmerIndex {
                         next_probe = next_probe.saturating_add(step);
                     }
                     if valid >= self.k && (sampled || start == tail) {
+                        collector.position = collector.origin + start;
                         self.collect_short(forward.min(reverse), collector);
                     }
                 }
@@ -926,6 +936,7 @@ impl KmerIndex {
                         next_probe = next_probe.saturating_add(step);
                     }
                     if valid >= self.k && (sampled || start == tail) {
+                        collector.position = collector.origin + start;
                         self.collect_medium(forward.min(reverse), collector);
                     }
                 }
@@ -939,6 +950,7 @@ impl KmerIndex {
                 {
                     if long_kmer_into(&sequence[start..start + self.k], &mut forward, &mut reverse)
                     {
+                        collector.position = collector.origin + start;
                         self.collect_long(
                             if forward <= reverse {
                                 &forward
@@ -1018,6 +1030,12 @@ struct HitCollector {
     generation: u32,
     seen: Vec<u32>,
     hits: Vec<u32>,
+    first: Vec<usize>,
+    last: Vec<usize>,
+    position: usize,
+    origin: usize,
+    minimum_span: usize,
+    required_span: usize,
 }
 
 impl HitCollector {
@@ -1026,6 +1044,12 @@ impl HitCollector {
             generation: 0,
             seen: vec![0; reference_count],
             hits: Vec::new(),
+            first: vec![0; reference_count],
+            last: vec![0; reference_count],
+            position: 0,
+            origin: 0,
+            minimum_span: 0,
+            required_span: 0,
         }
     }
 
@@ -1043,6 +1067,15 @@ impl HitCollector {
         if self.seen[reference] != self.generation {
             self.seen[reference] = self.generation;
             self.hits.push(reference as u32);
+            if self.required_span > 0 {
+                self.first[reference] = self.position;
+                self.last[reference] = self.position;
+            }
+        } else if self.required_span > 0
+            && self.last[reference] - self.first[reference] < self.required_span
+        {
+            self.first[reference] = self.first[reference].min(self.position);
+            self.last[reference] = self.last[reference].max(self.position);
         }
     }
 
@@ -1093,18 +1126,26 @@ fn collect_fragment_hits(
     step: usize,
     collector: &mut HitCollector,
 ) {
-    primary.collect_hits(first, step, collector);
-    if let Some(second) = second {
-        primary.collect_hits(second, step, collector);
-    }
-    for index in fallbacks {
+    for index in std::iter::once(primary).chain(fallbacks.iter()) {
+        collector.required_span = collector.minimum_span.saturating_sub(index.k);
+        collector.origin = 0;
+        index.collect_hits(first, step, collector);
+        if let Some(second) = second {
+            // Separate mates: one anchor on each is independent evidence.
+            collector.origin = first.len() + index.k;
+            index.collect_hits(second, step, collector);
+        }
+        if collector.minimum_span > index.k {
+            collector.hits.retain(|&id| {
+                collector.last[id as usize] - collector.first[id as usize] + index.k
+                    >= collector.minimum_span
+            });
+        }
         if !collector.hits.is_empty() {
             break;
         }
-        index.collect_hits(first, step, collector);
-        if let Some(second) = second {
-            index.collect_hits(second, step, collector);
-        }
+        // A rejected short anchor cannot leak support into another tier.
+        collector.begin();
     }
 }
 
@@ -1840,6 +1881,7 @@ fn scan_mode3_single(
     let reference_count = index.reference_names.len();
     let mut counts = vec![0_u64; reference_count];
     let mut collector = HitCollector::new(reference_count);
+    collector.minimum_span = args.minimum_hit_span;
     let mut direct_counts = vec![0_u64; reference_count];
     let max_reads = args.max_read_blocks.saturating_mul(MEBIBYTE_READS);
     for file_number in 0..args.q1.len() {
@@ -2035,6 +2077,7 @@ fn run(args: Args) -> AppResult<()> {
     let mut counts = vec![0_u64; index.reference_names.len()];
     let mut direct_counts = vec![0_u64; index.reference_names.len()];
     let mut collector = HitCollector::new(index.reference_names.len());
+    collector.minimum_span = args.minimum_hit_span;
     let mut encoded1 = Vec::with_capacity(4096);
     let mut encoded2 = Vec::with_capacity(4096);
     if args.get_reverse {
@@ -2233,6 +2276,44 @@ mod tests {
                 alphabet[(*seed as usize) % alphabet.len()]
             })
             .collect()
+    }
+
+    #[test]
+    fn sensitive_recruitment_requires_a_span_or_independent_mates_per_family() {
+        let sequence = b"AGCTTAGCGACCTGACTGACGTATCAGTA";
+        let unrelated = b"CGATTGCAATGCCATAGTCATACGGTCAA";
+        let mut index = KmerIndex::new(21, vec!["a".into(), "b".into()]);
+        index.add_reference_sequence(sequence, 0);
+        index.add_reference_sequence(unrelated, 1);
+        index.finalize_hits().unwrap();
+        let mut hits = HitCollector::new(2);
+        hits.minimum_span = 28;
+        hits.begin();
+        collect_fragment_hits(&index, &[], &sequence[..21], None, 4, &mut hits);
+        assert!(hits.hits.is_empty());
+        hits.begin();
+        collect_fragment_hits(&index, &[], sequence, None, 4, &mut hits);
+        assert_eq!(hits.hits, vec![0]);
+        hits.begin();
+        collect_fragment_hits(
+            &index,
+            &[],
+            &sequence[..21],
+            Some(&sequence[..21]),
+            4,
+            &mut hits,
+        );
+        assert_eq!(hits.hits, vec![0]);
+        hits.begin();
+        collect_fragment_hits(
+            &index,
+            &[],
+            &sequence[..21],
+            Some(&unrelated[..21]),
+            4,
+            &mut hits,
+        );
+        assert!(hits.hits.is_empty());
     }
 
     #[test]

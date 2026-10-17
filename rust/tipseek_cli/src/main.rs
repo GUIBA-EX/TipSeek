@@ -49,6 +49,7 @@ const COMMANDS: &[&str] = &[
     "rad-validate",
 ];
 const FLAG_OPTIONS: &[&str] = &[
+    "--gene-exonerate-shadow",
     "--te-estimate-genome-fraction",
     "--rad-linked-recruitment",
     "--uce-alignment-shadow",
@@ -179,11 +180,14 @@ const VALUE_OPTIONS: &[&str] = &[
     "--phylo-program",
     "--gene-protein-reference",
     "--gene-miniprot",
+    "--gene-exon-backend",
     "--gene-max-intron",
     "--gene-min-model-coverage",
     "--gene-complete-coverage",
     "--gene-flank",
     "--gene-fragment-padding",
+    "--gene-reads-root",
+    "--gene-sco-reference",
     "--gene-input",
     "--gene-mafft",
     "--gene-iqtree",
@@ -443,12 +447,23 @@ fn parse(args: &[String]) -> Result<Options, String> {
     let exon_options = [
         "--gene-protein-reference",
         "--gene-miniprot",
+        "--gene-exon-backend",
+        "--gene-exonerate-shadow",
         "--gene-max-intron",
         "--gene-min-model-coverage",
         "--gene-complete-coverage",
         "--gene-flank",
         "--gene-fragment-padding",
+        "--gene-reads-root",
+        "--gene-sco-reference",
     ];
+    let exon_backend = value(args, &["--gene-exon-backend"], "miniprot")?;
+    if !matches!(exon_backend.as_str(), "miniprot" | "exonerate-rs") {
+        return Err("--gene-exon-backend must be miniprot or exonerate-rs".into());
+    }
+    if exon_backend == "exonerate-rs" && flag(args, "--gene-exonerate-shadow")? {
+        return Err("--gene-exonerate-shadow requires the miniprot backend".into());
+    }
     let supplied_exon_option = exon_options.iter().find(|name| {
         args.iter().any(|argument| {
             argument == **name
@@ -566,6 +581,8 @@ fn parse(args: &[String]) -> Result<Options, String> {
     }
     let default_kf = if assembly_mode == "uce" {
         DEFAULT_UCE_FILTER_KMER
+    } else if assembly_mode == "exon" {
+        "21"
     } else {
         "31"
     };
@@ -2758,6 +2775,9 @@ fn execute_gene(
             "-lkd".into(),
             dictionary.display().to_string(),
         ]);
+        if opt.assembly_mode == "exon" {
+            args.extend(["--minimum-hit-span".into(), "28".into()]);
+        }
         let rad_linked = opt
             .raw
             .iter()
@@ -2827,6 +2847,7 @@ fn execute_gene(
                 .raw
                 .iter()
                 .any(|argument| argument == "--rad-internal-linked-recruitment")
+                || opt.assembly_mode == "exon"
             {
                 args.push("--keep-linked-mates".into());
             }
@@ -2866,6 +2887,9 @@ fn execute_gene(
             "-p".into(),
             "1".into(),
         ];
+        if opt.assembly_mode == "exon" {
+            args.push("--exhaust-seeds".into());
+        }
         if let Some(cache) = assembler_cache_directory(opt)? {
             fs::create_dir_all(&cache).map_err(|e| e.to_string())?;
             args.extend([
@@ -2887,21 +2911,21 @@ fn execute_gene(
     if opt.commands.iter().any(|c| c == "gene") {
         let classify_input_bytes = profile_path_size(&sample_dir.join("contigs_all"));
         let started = Instant::now();
-        let result = run(
-            bins,
-            "gene_workflow",
-            &[
-                "classify".into(),
-                "--reference".into(),
-                opt.reference.clone(),
-                "--contigs".into(),
-                sample_dir.join("contigs_all").display().to_string(),
-                "--sample".into(),
-                sample.name.clone(),
-                "--out".into(),
-                Path::new(&opt.output).join("gene").display().to_string(),
-            ],
-        );
+        let mut classify_args = vec![
+            "classify".into(),
+            "--reference".into(),
+            opt.reference.clone(),
+            "--contigs".into(),
+            sample_dir.join("contigs_all").display().to_string(),
+            "--sample".into(),
+            sample.name.clone(),
+            "--out".into(),
+            Path::new(&opt.output).join("gene").display().to_string(),
+        ];
+        if opt.assembly_mode == "exon" {
+            classify_args.push("--retain-exon-fragments".into());
+        }
+        let result = run(bins, "gene_workflow", &classify_args);
         record_profile_stage(
             profile,
             sample,
@@ -4783,8 +4807,8 @@ fn execute_exon_annotation(
         opt.reference.clone(),
         "--out".into(),
         output.display().to_string(),
-        "--miniprot".into(),
-        value(raw, &["--gene-miniprot"], "miniprot")?,
+        "--backend".into(),
+        value(raw, &["--gene-exon-backend"], "miniprot")?,
         "--threads".into(),
         opt.workers.to_string(),
         "--max-intron".into(),
@@ -4797,9 +4821,24 @@ fn execute_exon_annotation(
         value(raw, &["--gene-flank"], "0")?,
         "--fragment-padding".into(),
         value(raw, &["--gene-fragment-padding"], "100")?,
+        "--reads-root".into(),
+        value(raw, &["--gene-reads-root"], &opt.output)?,
     ];
+    if value(raw, &["--gene-exon-backend"], "miniprot")? == "miniprot" {
+        args.extend([
+            "--miniprot".into(),
+            value(raw, &["--gene-miniprot"], "miniprot")?,
+        ]);
+    }
     if !proteins.is_empty() {
         args.extend(["--protein-reference".into(), proteins]);
+    }
+    let sco_reference = value(raw, &["--gene-sco-reference"], "")?;
+    if !sco_reference.is_empty() {
+        args.extend(["--sco-reference".into(), sco_reference]);
+    }
+    if flag(raw, "--gene-exonerate-shadow")? {
+        args.push("--exonerate-shadow".into());
     }
     run(bins, "gene_workflow", &args)
 }
@@ -7870,6 +7909,7 @@ mod tests {
         .unwrap();
         assert_eq!(parsed.commands, ["filter", "refilter", "assemble", "gene"]);
         assert_eq!(parsed.assembly_mode, "exon");
+        assert_eq!(parsed.kf, "21");
     }
     #[test]
     fn uce_default_stages_are_complete() {
@@ -8099,6 +8139,46 @@ mod tests {
         assert!(!call.contains("--protein-reference"));
         assert!(call.contains(&format!("--out {}", output.display())));
         assert!(call.contains("--fragment-padding 100"));
+        assert!(call.contains(&format!("--reads-root {}", opt.output)));
+        assert!(!call.contains("--exonerate-shadow"));
+        let mut targeted = opt.raw.clone();
+        targeted.extend(["--gene-sco-reference".into(), "reference_id".into()]);
+        execute_exon_annotation(&parse(&targeted).unwrap(), &components, &input, &output).unwrap();
+        assert!(fs::read_to_string(&capture)
+            .unwrap()
+            .contains("--sco-reference reference_id"));
+        let mut independent = opt.raw.clone();
+        independent.extend(["--gene-exon-backend".into(), "exonerate-rs".into()]);
+        let exo = parse(&independent).unwrap();
+        execute_exon_annotation(&exo, &components, &input, &output).unwrap();
+        let call = fs::read_to_string(&capture).unwrap();
+        assert!(call.contains("--backend exonerate-rs"));
+        assert!(!call.contains("--miniprot"));
+        independent.push("--gene-exonerate-shadow".into());
+        assert!(parse(&independent)
+            .unwrap_err()
+            .contains("requires the miniprot backend"));
+        independent.pop();
+        *independent.last_mut().unwrap() = "invalid".into();
+        assert!(parse(&independent)
+            .unwrap_err()
+            .contains("must be miniprot or exonerate-rs"));
+        let mut args = opt.raw.clone();
+        args.push("--gene-exonerate-shadow".into());
+        let with_shadow = parse(&args).unwrap();
+        execute_exon_annotation(&with_shadow, &components, &input, &output).unwrap();
+        let call = fs::read_to_string(&capture).unwrap();
+        assert_eq!(call.split_whitespace().last(), Some("--exonerate-shadow"));
+        let mut misplaced = args;
+        let mode = misplaced
+            .iter()
+            .position(|value| value == "--assembly-mode")
+            .unwrap()
+            + 1;
+        misplaced[mode] = "gene".into();
+        assert!(parse(&misplaced)
+            .unwrap_err()
+            .contains("available only with --assembly-mode exon"));
         fs::remove_dir_all(root).unwrap();
     }
 

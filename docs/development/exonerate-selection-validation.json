@@ -1,0 +1,56 @@
+{
+  "scope": "Separate engine selection over saved per-candidate and attempted padded-join alignments; not a full alternative backend run. Terminal-stop normalization removes at most one final stop codon and compares CDS on the same protein, strand and overlapping locus. Does not prove exon-boundary or candidate-set equivalence.",
+  "input_root": "/tmp/tipseek-exonerate-shadow-ae1xogdx",
+  "tests_passed": 291,
+  "datasets": [
+    {
+      "kind": "intact",
+      "comparison_calls": 56,
+      "totals": {
+        "miniprot_models": 56,
+        "exonerate_models": 86,
+        "miniprot_accepted": 50,
+        "exonerate_accepted": 44,
+        "exact_cds_matches": 2,
+        "terminal_stop_normalized_matches": 31,
+        "unmatched_exonerate": 13,
+        "missing_miniprot": 19,
+        "miniprot_ambiguous": 0,
+        "exonerate_ambiguous": 0
+      },
+      "input_files": 282,
+      "input_digest_sha256": "36328a692c7f5df3e087429d977f1ef4289e20b2cdbd509a83066165cd427a18",
+      "report_sha256": "d33280d144283f2bedd86cf2d87c735be2e4b6f157294fba73df7a7c493f3fae",
+      "command": [
+        "target/release/examples/validate_exonerate_selection",
+        "/tmp/tipseek-exonerate-shadow-ae1xogdx/intact-shadow",
+        "docs/development/exonerate-selection-intact.tsv"
+      ]
+    },
+    {
+      "kind": "fragmented",
+      "comparison_calls": 142,
+      "totals": {
+        "miniprot_models": 132,
+        "exonerate_models": 174,
+        "miniprot_accepted": 112,
+        "exonerate_accepted": 101,
+        "exact_cds_matches": 36,
+        "terminal_stop_normalized_matches": 75,
+        "unmatched_exonerate": 26,
+        "missing_miniprot": 37,
+        "miniprot_ambiguous": 0,
+        "exonerate_ambiguous": 0
+      },
+      "input_files": 712,
+      "input_digest_sha256": "adadf7fa2dd0c892894c939e402d9c8e102e735ee74ce4d3b6d71a6f5846d232",
+      "report_sha256": "4d523d76f98b5a654860822c1607f32c2a46f9400ff4d8b37312fbfc936c0338",
+      "command": [
+        "target/release/examples/validate_exonerate_selection",
+        "/tmp/tipseek-exonerate-shadow-ae1xogdx/fragmented-shadow",
+        "docs/development/exonerate-selection-fragmented.tsv"
+      ]
+    }
+  ],
+  "replay_executable_sha256": "adfc70a9aa10eee66c3307f3440efd0cd355123d25a58f3515684d33cc0f688f"
+}

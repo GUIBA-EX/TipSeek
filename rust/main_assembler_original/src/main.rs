@@ -25,6 +25,7 @@ struct Args {
     _processes: usize,
     trace_dir: Option<PathBuf>,
     reference_cache_dir: Option<PathBuf>,
+    exhaust_seeds: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -80,11 +81,13 @@ fn parse_args() -> Args {
     let mut trace_dir = None;
     let mut reference_cache_dir = None;
     let mut processes = 1;
+    let mut exhaust_seeds = false;
     let mut it = env::args().skip(1);
     while let Some(flag) = it.next() {
         let value = |it: &mut std::iter::Skip<std::env::Args>, flag: &str| next_value(it, flag);
         match flag.as_str() {
             "-h" | "--help" => usage(0),
+            "--exhaust-seeds" => exhaust_seeds = true,
             "-r" => reference = Some(PathBuf::from(value(&mut it, "-r"))),
             "-o" => output = Some(PathBuf::from(value(&mut it, "-o"))),
             "-ka" => ka = value(&mut it, "-ka").parse().unwrap_or_else(|_| usage(2)),
@@ -148,6 +151,7 @@ fn parse_args() -> Args {
         iteration,
         cov_min,
         reference_cache_dir,
+        exhaust_seeds,
         soft_boundary,
         _processes: processes,
         trace_dir,
@@ -291,30 +295,80 @@ fn read_fasta(path: &Path) -> io::Result<Vec<(String, String)>> {
     Ok(records)
 }
 
-fn read_sequences(path: &Path, fasta: bool) -> io::Result<Vec<String>> {
-    if fasta {
-        return Ok(read_fasta(path)?
+fn known_read_segments(sequence: &str) -> Vec<String> {
+    let mut result = Vec::new();
+    let mut segment = String::with_capacity(sequence.len());
+    for base in sequence.bytes() {
+        if let Some(code) = base_code(base) {
+            segment.push(base_char(code) as char);
+        } else if !segment.is_empty() {
+            result.push(std::mem::take(&mut segment));
+        }
+    }
+    if !segment.is_empty() {
+        result.push(segment);
+    }
+    result
+}
+
+fn read_sequences(path: &Path, fasta: bool, preserve_boundaries: bool) -> io::Result<Vec<String>> {
+    let raw = if fasta {
+        read_fasta(path)?
             .into_iter()
-            .map(|(_, s)| String::from_utf8(normalize_dna(&s)).unwrap())
+            .map(|(_, s)| s)
+            .collect::<Vec<_>>()
+    } else {
+        let reader = BufReader::with_capacity(1024 * 1024, File::open(path)?);
+        let mut lines = reader.lines();
+        let mut sequences = Vec::new();
+        while let Some(header) = lines.next() {
+            let _ = header?;
+            let sequence = lines
+                .next()
+                .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidData, "truncated FASTQ"))??;
+            let _plus = lines
+                .next()
+                .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidData, "truncated FASTQ"))??;
+            let _quality = lines
+                .next()
+                .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidData, "truncated FASTQ"))??;
+            sequences.push(sequence);
+        }
+        sequences
+    };
+    if !preserve_boundaries {
+        return Ok(raw
+            .into_iter()
+            .map(|s| String::from_utf8(normalize_dna(&s)).unwrap())
             .collect());
     }
-    let reader = BufReader::with_capacity(1024 * 1024, File::open(path)?);
-    let mut lines = reader.lines();
-    let mut sequences = Vec::new();
-    while let Some(header) = lines.next() {
-        let _ = header?;
-        let sequence = lines
-            .next()
-            .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidData, "truncated FASTQ"))??;
-        let _plus = lines
-            .next()
-            .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidData, "truncated FASTQ"))??;
-        let _quality = lines
-            .next()
-            .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidData, "truncated FASTQ"))??;
-        sequences.push(String::from_utf8(normalize_dna(&sequence)).unwrap());
+    // Never manufacture an edge across an unknown read base. In exon mode
+    // each known block is a path; no sequence from opposite sides is joined.
+    let first_split = raw
+        .first()
+        .is_some_and(|s| s.bytes().any(|b| base_code(b).is_none()));
+    let mut known = Vec::with_capacity(raw.len());
+    for sequence in raw {
+        // Almost all cleaned reads already contain uppercase A/C/G/T. Keep
+        // their allocation instead of copying and growing another string.
+        if sequence
+            .bytes()
+            .all(|b| matches!(b, b'A' | b'C' | b'G' | b'T'))
+        {
+            if !sequence.is_empty() {
+                known.push(sequence);
+            }
+        } else {
+            known.extend(known_read_segments(&sequence));
+        }
     }
-    Ok(sequences)
+    if first_split {
+        // A tiny first block cannot set the representative read slice length.
+        if let Some((largest, _)) = known.iter().enumerate().max_by_key(|(_, s)| s.len()) {
+            known.swap(0, largest);
+        }
+    }
+    Ok(known)
 }
 fn fasta_files(reference: &Path) -> io::Result<Vec<(String, PathBuf)>> {
     let mut paths = Vec::new();
@@ -975,6 +1029,83 @@ struct ContigSearch<'a> {
     soft: usize,
 }
 
+// Unanchored recovery emits only unambiguous graph paths. It must not spend
+// thousands of branch combinations inventing repeat traversals without a reference
+// anchor. Branch boundaries remain separate candidates for annotation/read audit.
+fn observed_edges(reads: &[String], k: usize) -> HashSet<u128> {
+    let mut edges = HashSet::new();
+    for read in reads {
+        for window in read.as_bytes().windows(k + 1) {
+            if let Some(edge) = encode(window) {
+                edges.insert(edge);
+                edges.insert(reverse_kmer(edge, k + 1));
+            }
+        }
+    }
+    edges
+}
+
+fn get_unanchored_contig(
+    search: ContigSearch<'_>,
+    observed: Option<&HashSet<u128>>,
+) -> (Vec<Candidate>, HashSet<u128>, i32) {
+    let ContigSearch {
+        reads,
+        slice_len,
+        graph,
+        seed,
+        k,
+        ..
+    } = search;
+    let mask = (1u128 << (2 * k - 2)) - 1;
+    let mut used = HashSet::from([seed, reverse_kmer(seed, k)]);
+    let mut extend = |start: u128| {
+        let mut current = start;
+        let mut bases = String::new();
+        let mut weight = 0;
+        loop {
+            let prefix = (current & mask) << 2;
+            let next: Vec<_> = (0..4)
+                .map(|b| prefix + b)
+                .filter(|n| graph.contains_key(n))
+                .filter(|n| observed.is_none_or(|e| e.contains(&((current << 2) | (n & 3)))))
+                .collect();
+            if next.len() != 1 {
+                break;
+            }
+            let node = next[0];
+            let incoming = (0..4)
+                .map(|b| (b << (2 * k - 2)) | (node >> 2))
+                .filter(|n| graph.contains_key(n))
+                .filter(|n| observed.is_none_or(|e| e.contains(&((n << 2) | (node & 3)))))
+                .count();
+            if incoming != 1 || used.contains(&node) || used.contains(&reverse_kmer(node, k)) {
+                break;
+            }
+            used.insert(node);
+            used.insert(reverse_kmer(node, k));
+            bases.push(base_char(node & 3) as char);
+            weight += graph[&node].depth;
+            current = node;
+        }
+        (bases, weight)
+    };
+    let (right, right_weight) = extend(seed);
+    let (left, left_weight) = extend(reverse_kmer(seed, k));
+    let sequence = format!("{}{}{}", reverse_complement(&left), decode(seed, k), right);
+    let support = slice_support(&sequence, slice_len, reads);
+    let candidate = Candidate {
+        sequence,
+        support,
+        weight: left_weight + right_weight,
+    };
+    let position = graph
+        .get(&seed)
+        .filter(|info| info.ref_depth > 0)
+        .map_or(-2, |info| i32::from(info.position));
+    (vec![candidate], used, position)
+}
+
 fn get_contigs(search: ContigSearch<'_>) -> (Vec<Candidate>, HashSet<u128>, i32) {
     let ContigSearch {
         reads,
@@ -1154,7 +1285,7 @@ fn process_locus(
         fs::remove_file(&best_path)?;
         return Ok((key.to_owned(), "no filtered file".to_owned(), 0));
     };
-    let raw_reads = read_sequences(&read_path, fasta)?;
+    let raw_reads = read_sequences(&read_path, fasta, args.exhaust_seeds)?;
     let (reads, slice_len) = make_reads_dict(&raw_reads);
     if reads.is_empty() {
         fs::remove_file(&best_path)?;
@@ -1176,6 +1307,9 @@ fn process_locus(
     }
     let (reference, _) = make_ref_dict(ref_path, k, args.reference_cache_dir.as_deref())?;
     let mut graph = make_graph(&raw_reads, k, &reference);
+    // Node overlap alone can invent edges never traversed by any read. Only
+    // exon rescue uses observed edges; legacy reference assembly is unchanged.
+    let observed = args.exhaust_seeds.then(|| observed_edges(&raw_reads, k));
     if args.limit > 0 {
         graph.retain(|_, info| info.depth > args.limit || info.ref_depth > 0);
     }
@@ -1201,7 +1335,14 @@ fn process_locus(
     }
     let mut seeds: Vec<_> = graph
         .iter()
-        .filter(|(_, v)| v.position > 1 && v.position < 1000 && !v.reverse)
+        .filter(|(key, v)| {
+            (v.position > 1 && v.position < 1000 && !v.reverse)
+                // Recruited reads can encode a conserved protein while sharing
+                // no exact nucleotide seed with the reference. Exon mode must
+                // also visit their supported graph components. One orientation
+                // per unanchored kmer avoids duplicate reverse searches.
+                || (args.exhaust_seeds && v.ref_depth == 0 && **key <= reverse_kmer(**key, k))
+        })
         .map(|(&kmer, v)| (kmer, v.depth, v.position, v.ref_depth, v.insertion_order))
         .collect();
     seeds.sort_by(|a, b| (b.3, b.1, a.4).cmp(&(a.3, a.1, b.4)));
@@ -1216,20 +1357,68 @@ fn process_locus(
     let seed_set: HashSet<u128> = seeds.iter().map(|seed| seed.0).collect();
     let mut high = Vec::new();
     let mut low = Vec::new();
-    while seeds.len() as f64 > initial as f64 * 0.5 {
-        let (candidates, used, position) = get_contigs(ContigSearch {
+    let seed_ranks: HashMap<u128, usize> = if args.exhaust_seeds {
+        seeds.iter().enumerate().map(|(i, s)| (s.0, i)).collect()
+    } else {
+        HashMap::new()
+    };
+    let mut visited_seeds = vec![false; if args.exhaust_seeds { seeds.len() } else { 0 }];
+    let mut cursor = 0;
+    loop {
+        let starting_seed = if args.exhaust_seeds {
+            while cursor < seeds.len() && visited_seeds[cursor] {
+                cursor += 1;
+            }
+            if cursor == seeds.len() {
+                break;
+            }
+            seeds[cursor].0
+        } else {
+            if seeds.is_empty() || seeds.len() as f64 <= initial as f64 * 0.5 {
+                break;
+            }
+            seeds[0].0
+        };
+        let search = ContigSearch {
             reads: &reads,
             slice_len,
             graph: &graph,
-            seed: seeds[0].0,
+            seed: starting_seed,
             k,
             cov_min: args.cov_min,
             iteration: args.iteration,
             soft,
-        });
-        seeds.retain(|seed| !used.contains(&seed.0) && !used.contains(&reverse_kmer(seed.0, k)));
+        };
+        let (candidates, used, position) = if args.exhaust_seeds {
+            get_unanchored_contig(search, observed.as_ref())
+        } else {
+            get_contigs(search)
+        };
+        if args.exhaust_seeds {
+            visited_seeds[cursor] = true;
+            for &key in &used {
+                for oriented in [key, reverse_kmer(key, k)] {
+                    if let Some(&rank) = seed_ranks.get(&oriented) {
+                        visited_seeds[rank] = true;
+                    }
+                }
+            }
+        } else {
+            seeds.retain(|seed| {
+                seed.0 != starting_seed
+                    && !used.contains(&seed.0)
+                    && !used.contains(&reverse_kmer(seed.0, k))
+            });
+        }
+        let used_seed_count = seed_set.intersection(&used).count();
         for candidate in candidates {
-            let record = (candidate, seed_set.intersection(&used).count(), position);
+            let position =
+                if args.exhaust_seeds && graph[&starting_seed].ref_depth == 0 && position < 0 {
+                    -2
+                } else {
+                    position
+                };
+            let record = (candidate, used_seed_count, position);
             if record.0.support as usize * slice_len > record.0.sequence.len() {
                 high.push(record);
             } else {
@@ -1238,7 +1427,14 @@ fn process_locus(
         }
     }
     let low_quality = high.is_empty();
-    let mut selected = if low_quality { low } else { high };
+    let mut selected = if args.exhaust_seeds {
+        high.extend(low);
+        high
+    } else if low_quality {
+        low
+    } else {
+        high
+    };
     if selected.is_empty() {
         fs::remove_file(&best_path)?;
         return Ok((key.to_owned(), "no contigs".to_owned(), 0));
@@ -1315,6 +1511,110 @@ fn main() -> io::Result<()> {
 mod tests {
     use super::*;
 
+    #[test]
+    fn ambiguous_read_bases_are_path_boundaries_in_exon_mode() {
+        let sequence = "AACGTNNNTTGCA";
+        let segments = known_read_segments(sequence);
+        assert_eq!(segments, vec!["AACGT", "TTGCA"]);
+        assert!(!observed_edges(&segments, 5).contains(&encode(b"AACGTT").unwrap()));
+        assert_eq!(known_read_segments("NNNN"), Vec::<String>::new());
+        assert_eq!(known_read_segments("acguNta"), vec!["ACGT", "TA"]);
+        assert_eq!(
+            String::from_utf8(normalize_dna(sequence)).unwrap(),
+            "AACGTTTGCA"
+        );
+    }
+
+    #[test]
+    fn observed_edges_remove_only_unobserved_branches() {
+        let k = 5;
+        let raw = vec!["AACGATC".to_owned(), "TCGATTG".to_owned()];
+        // AACGA -> ACGAT -> CGATC is read-supported. CGATT is
+        // also a graph node, but ACGATT was never observed in a read.
+        let edges = observed_edges(&raw, k);
+        assert!(edges.contains(&encode(b"ACGATC").unwrap()));
+        assert!(!edges.contains(&encode(b"ACGATT").unwrap()));
+        assert!(edges.contains(&reverse_kmer(encode(b"ACGATC").unwrap(), k + 1)));
+        let graph: HashMap<_, _> = ["AACGA", "ACGAT", "CGATC", "CGATT"]
+            .into_iter()
+            .map(|s| {
+                (
+                    encode(s.as_bytes()).unwrap(),
+                    KmerInfo {
+                        depth: 3,
+                        position: 0,
+                        reverse: false,
+                        ref_depth: 0,
+                        insertion_order: 0,
+                    },
+                )
+            })
+            .collect();
+        let reads = HashMap::new();
+        let search = || ContigSearch {
+            reads: &reads,
+            slice_len: 10,
+            graph: &graph,
+            seed: encode(b"AACGA").unwrap(),
+            k,
+            cov_min: 0.0,
+            iteration: 100,
+            soft: 0,
+        };
+        assert_eq!(
+            get_unanchored_contig(search(), None).0[0].sequence,
+            "AACGAT"
+        );
+        assert_eq!(
+            get_unanchored_contig(search(), Some(&edges)).0[0].sequence,
+            "AACGATC"
+        );
+        let mut actual_branch = raw;
+        actual_branch.push("AACGATT".into());
+        let edges = observed_edges(&actual_branch, k);
+        assert_eq!(
+            get_unanchored_contig(search(), Some(&edges)).0[0].sequence,
+            "AACGAT"
+        );
+    }
+
+    #[test]
+    fn unanchored_rescue_does_not_choose_a_branch_or_loop_forever() {
+        let raw = vec!["AAACCC".to_owned(), "AAAGGG".to_owned()];
+        let graph = make_graph(&raw, 3, &HashMap::new());
+        let reads = HashMap::new();
+        let (paths, _, position) = get_unanchored_contig(
+            ContigSearch {
+                reads: &reads,
+                slice_len: 5,
+                graph: &graph,
+                seed: encode(b"AAA").unwrap(),
+                k: 3,
+                cov_min: 0.0,
+                iteration: 100,
+                soft: 0,
+            },
+            None,
+        );
+        assert_eq!(position, -2);
+        assert_eq!(paths[0].sequence, "AAA");
+        let graph = make_graph(&["ATGATGATG".to_owned()], 3, &HashMap::new());
+        let (paths, used, _) = get_unanchored_contig(
+            ContigSearch {
+                reads: &reads,
+                slice_len: 5,
+                graph: &graph,
+                seed: encode(b"ATG").unwrap(),
+                k: 3,
+                cov_min: 0.0,
+                iteration: 100,
+                soft: 0,
+            },
+            None,
+        );
+        assert!(used.len() <= graph.len());
+        assert!(paths[0].sequence.len() <= graph.len() + 3);
+    }
     #[test]
     fn reference_cache_round_trip_and_rebuilds_invalid_files() -> io::Result<()> {
         let root =

@@ -28,7 +28,6 @@ Released 2026-09-21.
 - Made external `.faa` files optional in `--assembly-mode exon`. The default route now derives auditable protein references from each coding nucleotide family, treats all six frames equally, rejects internal-stop translations, and resolves ambiguous frames only against a trustworthy within-family anchor; `--gene-protein-reference` remains a per-family override.
 - Added `manifest/reference_translation.tsv` and retained derived protein FASTA files under `manifest/derived_proteins/` so every automatic frame and strand decision is reproducible.
 - Simplified padded-fragment screening: query overlap is no longer a separate veto, unique coverage follows `--gene-min-model-coverage`, and a one-residue discretization tolerance applies only when deciding whether to attempt reannotation. Final complete-model and intron-containment validation is unchanged.
-- Validated intact and fragmented exon annotation across 56 real *Patiria pectinifera* genes with 2.0–20.0-kb target introns; all 29 accepted padded CDS results matched the corresponding unbroken-candidate result, and the synthetic interval remained intronic.
 - Added an integrated GeneMiner2-to-TipSeek innovation schematic and harmonized the bilingual README, workflow guides, command-line manual, output reference, and development notes across exon, UCE, mitochondrial, RAD, population, and repeatome routes.
 
 ## v1.6.3 — Integrated exon annotation
