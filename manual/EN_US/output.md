@@ -60,6 +60,8 @@ Each sample listed in the input table gets a folder under the output directory.
 
 **gene/**: Cohort candidate output from the default workflow, including `family_summary.tsv`, `family_count_matrix.tsv`, `pseudo_sco/`, and `multiple_candidate_families/`.
 
+**exon/sco/**: `<SCO>.fasta` contains one reference-ordered sequence per sample. Missing positions and unresolved conflicts are N; reference bases never fill gaps. This evidence composite is separate from resolve-eligible CDS and does not establish physical linkage across contigs. `exon/manifest/sco_recovery.tsv` reports recovery and conflicts, `reference_projection.tsv` audits cross-reference mappings, and the exonerate-rs backend additionally writes `backend.tsv` with engine/version and identity semantics. Raw alignments are retained in `exon/raw_miniprot/` or `exon/raw_exonerate/` according to the backend. See the [exon guide](../../docs/exon_EN.md) for cached `recover-sco` replay.
+
 **exon/**: Structural output from `--assembly-mode exon`, including resolve-eligible `cds/` and `proteins/`, coordinate-preserving `exons/`, `introns/`, `genes/`, `supercontigs/`, `gff3/`, model tables, manifests, and unresolved models. Automatic reference translation is recorded in `manifest/reference_translation.tsv`; the selected derived proteins are retained under `manifest/derived_proteins/`.
 
 `gene-resolve` and `gene-tree` write to their explicit `-o` directories. See the [exon annotation guide](../../docs/exon_EN.md) for model states, N-padding validation, and the complete exon output tree.

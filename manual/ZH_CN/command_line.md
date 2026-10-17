@@ -109,7 +109,7 @@ references/
 不显式指定子命令时，由 `--assembly-mode` 选择一条完整恢复流程：
 
 - `--assembly-mode gene`（默认）完成核基因家族候选的招募、refilter 与组装，并在 `<output>/gene/` 写出 cohort 汇总；
-- `--assembly-mode exon` 先完成相同的候选恢复，默认从 coding 核酸 family bait 自动翻译参考蛋白，再由 miniprot 在 `<output>/exon/` 写出经结构验证的结果；`--gene-protein-reference` 是可选的逐 family 覆盖，仅在 reading frame 无法可靠确定时需要；
+- `--assembly-mode exon` 先完成相同的候选恢复，默认从 coding 核酸 family bait 自动翻译参考蛋白，再由所选注释后端（默认 miniprot）在 `<output>/exon/` 写出经结构验证的结果；`--gene-protein-reference` 是可选的逐 family 覆盖，仅在 reading frame 无法可靠确定时需要；
 - `--assembly-mode uce` 用于从 genome skimming 或 target capture 恢复 UCE，运行 `filter assemble combine tree`；融合 UCEFilter 已包含 refilter 语义，并跳过 `trim`，避免新恢复的 UCE 侧翼再次被裁回参考范围；
 - `profiling` 先做一次招募，再由 Themisto 伪比对并输出参考序列级支持；不组装，也不运行下游系统发育步骤。
 
@@ -311,10 +311,12 @@ cli/tipseek stats \
 | `--gene-miniprot PATH` | miniprot 可执行文件；默认 `miniprot`，要求 0.18 或更高版本 |
 | `--gene-exon-backend NAME` | exon 独立注释后端：`miniprot`（默认）或 `exonerate-rs`；Exonerate 从当前 PATH 调用，无需路径 |
 | `--gene-exonerate-shadow` | 可选 exonerate-rs 对照，从当前环境 PATH 查找程序，无需路径；仅审计，不改变 miniprot 模型接纳；默认关闭 |
-| `--gene-max-intron INT` | miniprot 接受的最大 intron；默认 `50000` |
+| `--gene-max-intron INT` | 传递给所选注释后端的最大 intron；默认 `50000` |
 | `--gene-min-model-coverage FLOAT` | 常规 partial model 最低蛋白覆盖度；默认 `0.20`。仅补 N 尝试允许 1-aa 离散容差 |
 | `--gene-complete-coverage FLOAT` | complete model 最低覆盖度；默认 `0.80`，并且仍要求到达蛋白两端 |
 | `--gene-fragment-padding INT` | 仅为唯一互补片段重注释插入的 N 数；默认 `100`，`0` 关闭尝试 |
+| `--gene-sco-reference ID` | 选择唯一匹配的参考记录作为 SCO 坐标骨架；默认按整个 cohort 自动选择 |
+| `--gene-reads-root DIR` | 含逐样本配对招募 reads 的工作流根目录；默认使用当前工作流输出 |
 | `--gene-flank INT` | `genes_flanked/` 两侧加入的实测碱基数；默认 `0`，不会加入 N |
 
 候选只有在重注释得到唯一完整模型、全部人工区间位于 intron 且不接触 exon 时才离开 unresolved。详见 [exon 注释说明](../../docs/exon_ZH.md)。

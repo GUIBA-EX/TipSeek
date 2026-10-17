@@ -35,16 +35,16 @@ cli/tipseek --assembly-mode exon \
   -o exon_output -p 8
 ```
 
-注释要求 miniprot 0.18 或更高版本。TipSeek 先将恢复候选写入 `exon_output/gene/`，再将结构结果写入 `exon_output/exon/`。
+默认注释后端要求 miniprot 0.18 或更高版本；也可指定 `--gene-exon-backend exonerate-rs`，从当前环境 PATH 调用 `exonerate-rs`，此时不需要 miniprot。TipSeek 先将恢复候选写入 `exon_output/gene/`，再将结构结果写入 `exon_output/exon/`。
 
 ## 实现方法
 
 1. 默认 gene 工作流完成 reads 招募、refilter、组装及跨样本候选汇总。
 2. 未提供同名 `.faa` 时，TipSeek 平等检查正反两条链的六个 reading frame。允许并移除正常末端终止；任何含内部终止的 frame 都直接排除，不修补也不屏蔽后继续使用。
 3. 只有一种无内部终止 frame，或某个 frame 从起始甲硫氨酸和/或末端终止获得唯一最强的 CDS 端点支持时，才直接接受该序列；其中最长的可信翻译作为 family anchor。其余歧义序列只有在某个 frame 对该 anchor 获得唯一且大于零的氨基酸 3-mer Dice 相似度时才接受。没有可信 anchor、最佳结果并列或完全不相似时，不为该序列输出蛋白，并记录 `ambiguous_reading_frame`；若该 family 没有其他可用参考，则需要提供同名 `.faa`。所有候选和最终选择写入 `manifest/reference_translation.tsv`。
-4. 对每条候选 contig 独立运行 miniprot，避免一条 partial candidate 通过 target competition 压制另一条互补 candidate。
-5. 嵌入 PAF 提供蛋白坐标、覆盖度、score、identity、protein CIGAR、frameshift 与 in-frame stop；GFF3 提供 exon/CDS 坐标、方向和 phase。
-6. 重叠模型按结构缺陷、蛋白覆盖度、alignment score、identity、剪接证据与 miniprot rank 确定性竞争；不重叠模型保持独立。
+4. 对每条候选 contig 独立运行所选注释后端，避免一条 partial candidate 通过 target competition 压制另一条互补 candidate。
+5. miniprot 后端从嵌入 PAF 读取比对证据，从 GFF3 读取 exon/CDS 坐标、方向和 phase；exonerate-rs 后端从 vulgar 操作和实测候选 DNA 重建模型字段。两种后端共用结构质控。
+6. 重叠模型按结构缺陷、蛋白覆盖度、alignment score、identity、剪接证据与后端模型 rank 确定性竞争；不重叠模型保持独立。
 7. 对选中模型分类，写入结构化审计表，并分别进入 resolve-eligible 或 unresolved 输出。
 
 基因组输出保留 `N` 与其他 IUPAC 碱基，因此所有坐标始终对应实际用于注释的候选序列。
@@ -103,8 +103,10 @@ exon 模式会继续搜索剩余参考种子，并从已有 reads 的高支持�
 | 参数 | 默认值 | 含义 |
 | --- | ---: | --- |
 | `--gene-protein-reference` | 自动推导 | 可选 `.faa` 目录；同名 family 覆盖自动翻译 |
+| `--gene-exon-backend` | `miniprot` | 独立后端：`miniprot` 或当前 PATH 中的 `exonerate-rs` |
+| `--gene-sco-reference` | 自动选择 | SCO 坐标骨架的参考记录 ID；必须唯一匹配 |
 | `--gene-miniprot` | `miniprot` | miniprot 可执行文件 |
-| `--gene-max-intron` | `50000` | miniprot 接受的最大 intron 长度 |
+| `--gene-max-intron` | `50000` | 传递给所选注释后端的最大 intron 长度 |
 | `--gene-min-model-coverage` | `0.20` | 常规 partial model 的最低蛋白覆盖度；仅补 N 尝试允许 1-aa 离散容差 |
 | `--gene-complete-coverage` | `0.80` | complete model 最低覆盖度；仍要求覆盖蛋白两端 |
 | `--gene-fragment-padding` | `100` | 每个相邻 contig 之间插入的 N 数；`0` 关闭拼接 |
@@ -117,6 +119,7 @@ exon 模式会继续搜索剩余参考种子，并从已有 reads 的高支持�
 exon_output/
 ├── gene/                         # 恢复候选与 family 汇总
 └── exon/
+    ├── sco/                      # 每个样本每个 SCO 一条参考顺序序列；缺失和冲突为 N
     ├── cds/                      # 可进入 resolve 的 CDS；exon 中无补入的 N
     ├── proteins/                 # 与 cds/ 一一对应
     ├── exons/                    # 每个受支持 CDS exon 一条记录
@@ -125,7 +128,8 @@ exon_output/
     ├── genes_flanked/
     ├── supercontigs/             # 已选 span；验证拼接可含 intron N
     ├── gff3/                     # 标准化 gene/mRNA/exon/CDS/intron 层级
-    ├── raw_miniprot/             # 逐候选结果与补 N 验证运行
+    ├── raw_miniprot/             # 仅 miniprot 后端
+    ├── raw_exonerate/            # 仅 exonerate-rs 后端
     ├── models/
     │   ├── gene_models.tsv
     │   └── gene_segments.tsv

@@ -14,6 +14,8 @@
 
 TipSeek 是面向短读长测序数据的 Rust 原生工具包。它通过统一入口完成参考引导的 reads 招募、目标序列组装、证据汇总和 cohort 分析，适用于 genome skimming、target capture、核基因家族、UCE、动物线粒体、RAD 补充及无参考 repeatome。发布版运行时不依赖 Python。
 
+当前版本：[v1.6.7](https://github.com/GUIBA-EX/TipSeek/releases/tag/v1.6.7)。Exon 注释支持 miniprot（默认）或独立的 `exonerate-rs` 后端；reads 支持的恢复与每个 SCO 一条参考顺序序列的用法见 [exon 指南](docs/exon_ZH.md)。
+
 ## 相比 GeneMiner2
 
 TipSeek 保留了源自 GeneMiner2 的参考引导 gene candidate 核心，并在统一入口下增加三组相互独立的能力。Exon 模式提供自动蛋白参考、结构注释，以及仅在 intron 内通过验证后才接受的补 N；UCE 模式提供 fragment-aware 融合招募、自动敏感 fallback、panel-wide unique-locus 验证和可逐 locus 回滚的 reads rescue。其他原生流程涵盖线粒体闭环验证、PanRefV2/群体分析、RAD 补充、profiling 和 repeatome。各路线共享资源调度、manifest 和证据表，但不混用各自的生物学接纳标准。
@@ -70,6 +72,8 @@ cli/tipseek --assembly-mode exon \
   -f samples.tsv -r family_references \
   -o exon_out -p auto
 ```
+
+使用独立后端时，在当前环境 PATH 中安装 `exonerate-rs`，并在 exon 命令中添加 `--gene-exon-backend exonerate-rs`，无需指定程序路径或安装 miniprot。默认后端需要 miniprot 0.18 或更高版本。
 
 仅恢复 UCE contig：
 

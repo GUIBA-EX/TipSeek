@@ -59,7 +59,7 @@ The component registry declares permitted input and output types. For example, `
 ```text
 gene (default) / exon
   MainFilter -> refilter -> original-rust -> gene classify/cohort
-  exon only: -> miniprot annotation/structural validation
+  exon only: -> miniprot or exonerate-rs annotation/structural validation
 
 UCE (default)
   ucefilter -> uce-rust -> rescue (one round by default; optional disable/second round)
@@ -81,7 +81,7 @@ RAD
 | Workflow | Workflow-level stages | Per-sample stages | After all samples succeed |
 | --- | --- | --- | --- |
 | gene (default) | Build or reuse the MainFilter dictionary | `MainFilter → refilter → original-rust → classify` | `gene cohort` |
-| exon | Build or reuse the MainFilter dictionary | `MainFilter → refilter → original-rust → classify` | `gene cohort → miniprot annotation/structural validation`, then optional resolve/tree |
+| exon | Build or reuse the MainFilter dictionary | `MainFilter → refilter → original-rust → classify` | `gene cohort → miniprot or exonerate-rs annotation/structural validation`, then optional resolve/tree |
 | UCE default | None | `ucefilter fast → fallback → uce-rust → rescue (one round by default)` | combine/tree |
 | UCE compatibility | Build or reuse the MainFilter dictionary | `MainFilter → refilter → uce-rust → rescue (one round by default)` | combine/tree |
 | mito | `prepare-reference`, then build or reuse the dictionary | `MainFilter → collapse-baits → text refilter → uce-rust → seed rescue (when available) → finalize` | None; each sample reports circular or retained linear evidence independently |

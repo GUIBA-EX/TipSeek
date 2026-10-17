@@ -60,6 +60,8 @@
 
 **gene/**：默认流程的 cohort 候选结果，包括 `family_summary.tsv`、`family_count_matrix.tsv`、`pseudo_sco/` 与 `multiple_candidate_families/`。
 
+**exon/sco/**：每个 `<SCO>.fasta` 包含每个样本的一条参考顺序序列；缺失位置与未解决冲突用 N，不用参考碱基填补。此证据合并序列与可进入 resolve 的 CDS 分开，不代表跨 contig 的物理连接已经得到验证。`exon/manifest/sco_recovery.tsv` 记录恢复与冲突，`reference_projection.tsv` 审计跨参考投影，exonerate-rs 后端额外在 `backend.tsv` 记录引擎、版本与 identity 口径。原始比对按后端保存在 `exon/raw_miniprot/` 或 `exon/raw_exonerate/`。复用缓存的 `recover-sco` 用法见 [exon 指南](../../docs/exon_ZH.md)。
+
 **exon/**：`--assembly-mode exon` 的结构结果，包括可进入 resolve 的 `cds/` 与 `proteins/`、保留坐标的 `exons/`、`introns/`、`genes/`、`supercontigs/`、`gff3/`、模型表、manifest 和未解析模型。自动参考翻译记录在 `manifest/reference_translation.tsv`，选中的派生蛋白保留在 `manifest/derived_proteins/`。
 
 `gene-resolve` 与 `gene-tree` 写入各自显式指定的 `-o` 目录。模型状态、补 N 验证和完整 exon 目录树见 [exon 注释说明](../../docs/exon_ZH.md)。

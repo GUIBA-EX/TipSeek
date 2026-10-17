@@ -35,16 +35,16 @@ cli/tipseek --assembly-mode exon \
   -o exon_output -p 8
 ```
 
-Annotation requires miniprot 0.18 or later. TipSeek first writes recovered candidates to `exon_output/gene/`, then writes structural results to `exon_output/exon/`.
+The default backend requires miniprot 0.18 or later. Alternatively, select `--gene-exon-backend exonerate-rs` to use `exonerate-rs` from PATH without miniprot. TipSeek first writes recovered candidates to `exon_output/gene/`, then writes structural results to `exon_output/exon/`.
 
 ## Method
 
 1. The default gene workflow recruits, refilters, and assembles reads, then summarizes candidates across samples.
 2. Without a matching `.faa`, TipSeek examines all six reading frames equally. A terminal stop is allowed and removed from the protein reference; any frame with an internal stop is excluded rather than repaired or masked.
 3. A sequence is accepted directly only when it has one stop-free frame or one frame has uniquely strongest CDS endpoint support from an initial methionine and/or terminal stop. The longest such translation becomes the family anchor. Remaining ambiguous sequences are accepted only when one frame has a unique positive amino-acid 3-mer Dice match to that anchor. With no trustworthy anchor, a tied match, or no positive match, TipSeek emits no protein for that sequence and records `ambiguous_reading_frame`; a matching `.faa` is then required if the family has no other usable reference. Every candidate and decision is recorded in `manifest/reference_translation.tsv`.
-4. Miniprot runs independently on each candidate contig. This prevents one partial candidate from suppressing a complementary candidate through target competition.
-5. Embedded PAF supplies protein coordinates, coverage, score, identity, protein CIGAR, frameshifts, and in-frame stops. GFF3 supplies exon/CDS coordinates, strand, and phase.
-6. Overlapping models compete deterministically by structural defects, protein coverage, alignment score, identity, splice evidence, and miniprot rank. Non-overlapping models remain independent.
+4. The selected backend runs independently on each candidate contig. This prevents one partial candidate from suppressing a complementary candidate through target competition.
+5. For miniprot, embedded PAF supplies alignment evidence and GFF3 supplies exon/CDS coordinates, strand and phase. The exonerate-rs adapter reconstructs these model fields from vulgar operations and observed candidate DNA; both backends use shared structural QC.
+6. Overlapping models compete deterministically by structural defects, protein coverage, alignment score, identity, splice evidence, and backend model rank. Non-overlapping models remain independent.
 7. Selected models are classified, written to structured audit tables, and routed to resolve-eligible or unresolved output.
 
 `N` and other IUPAC bases are preserved in genomic outputs, so reported coordinates always refer to the candidate sequence used for annotation.
@@ -95,8 +95,10 @@ See `read_audit.tsv`, `fragment_read_support.tsv`, and `completion_audit.tsv` un
 | Option | Default | Meaning |
 | --- | ---: | --- |
 | `--gene-protein-reference` | auto-derived | Optional `.faa` directory; matching families override automatic translation |
+| `--gene-exon-backend` | `miniprot` | Independent backend: `miniprot` or `exonerate-rs` from PATH |
+| `--gene-sco-reference` | automatic | Reference record ID for the SCO coordinate backbone; matching must be unique |
 | `--gene-miniprot` | `miniprot` | miniprot executable |
-| `--gene-max-intron` | `50000` | Maximum intron length accepted by miniprot |
+| `--gene-max-intron` | `50000` | Maximum intron length passed to the selected backend |
 | `--gene-min-model-coverage` | `0.20` | Minimum protein coverage for a normal partial model; padding trials alone allow a 1-aa discretization margin |
 | `--gene-complete-coverage` | `0.80` | Minimum coverage for a complete model; both protein ends are also required |
 | `--gene-fragment-padding` | `100` | Ns inserted between contigs for unique-chain validation; `0` disables joining |
@@ -109,6 +111,7 @@ See `read_audit.tsv`, `fragment_read_support.tsv`, and `completion_audit.tsv` un
 exon_output/
 ├── gene/                         # recovered candidates and family summaries
 └── exon/
+    ├── sco/                      # one reference-ordered sequence per sample per SCO; missing/conflicting bases are N
     ├── cds/                      # resolve-eligible CDS; no padded N in exons
     ├── proteins/                 # one-to-one with cds/
     ├── exons/                    # one record per supported CDS exon
@@ -117,7 +120,8 @@ exon_output/
     ├── genes_flanked/
     ├── supercontigs/             # selected spans; validated joins may contain intronic N
     ├── gff3/                     # normalized gene/mRNA/exon/CDS/intron hierarchy
-    ├── raw_miniprot/             # per-candidate output and padded validation runs
+    ├── raw_miniprot/             # miniprot backend only
+    ├── raw_exonerate/            # exonerate-rs backend only
     ├── models/
     │   ├── gene_models.tsv
     │   └── gene_segments.tsv
@@ -144,7 +148,7 @@ The comparison runs `protein2genome --exhaustive no --subopt no --score 1 --revc
 
 `manifest/exonerate_shadow.tsv` records raw miniprot model counts, Exonerate hit counts, matching counts, scores, protein/genomic intervals, CDS intervals and frameshift operation counts. Intervals are zero-based, half-open and genomically ascending, including reverse-strand hits. `stage` distinguishes `candidate` and `padded_join`. `raw_exonerate_shadow/` retains version output, arguments, input snapshots, stdout/stderr, status and elapsed time after temporary workflow files are removed.
 
-`reported_hits_match` means every reported Exonerate hit has a miniprot raw model with the same protein interval, strand, genomic span and CDS intervals. It does not establish equivalent candidate sets, CDS phases, identity, structural QC or accepted models: this Exonerate mode reports only best paths, while miniprot can report multiple models. Frameshift operation counts are not assumed to have miniprot's semantics. Coordinate differences need investigation and do not identify a winner. The stage-2 adapter also writes `normalized_models.tsv` in each comparison directory, applying the shared structural QC to reconstructed CDS phases and translated proteins. Identity explicitly counts matching aligned M/S amino-acid pairs, excluding gaps; substitution-matrix positives are unavailable (`.`). These diagnostic models do not enter selection. Independent backend selection remains a later stage.
+`reported_hits_match` means every reported Exonerate hit has a miniprot raw model with the same protein interval, strand, genomic span and CDS intervals. It does not establish equivalent candidate sets, CDS phases, identity, structural QC or accepted models: this Exonerate mode reports only best paths, while miniprot can report multiple models. Frameshift operation counts are not assumed to have miniprot's semantics. Coordinate differences need investigation and do not identify a winner. The stage-2 adapter also writes `normalized_models.tsv` in each comparison directory, applying the shared structural QC to reconstructed CDS phases and translated proteins. Identity explicitly counts matching aligned M/S amino-acid pairs, excluding gaps; substitution-matrix positives are unavailable (`.`). These diagnostic models do not enter selection. For independent annotation rather than diagnostic comparison, use `--gene-exon-backend exonerate-rs` as described below.
 
 Complete status now requires both reference-protein ends to be covered. Even a small terminal omission produces `terminal_partial` and `query_start_truncated` or `query_end_truncated`. A reconstructed non-M start aligned to the origin of an M-starting reference is marked `reference_start_mismatch`; such partial models cannot validate a complete padded join. Complete is a structural/reference-coverage category, not proof of biological correctness, and miniprot is not treated as ground truth.
 

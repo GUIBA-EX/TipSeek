@@ -109,7 +109,7 @@ Stage subcommands can be listed in execution order. Standalone workflows such as
 When no subcommand is given, `--assembly-mode` selects one complete recovery workflow:
 
 - `--assembly-mode gene` (default) recruits, refilters, and assembles nuclear gene-family candidates, then writes cohort summaries under `<output>/gene/`;
-- `--assembly-mode exon` runs the same candidate recovery, derives reference proteins from coding nucleotide family baits by default, and uses miniprot to write structurally validated output under `<output>/exon/`; `--gene-protein-reference` is an optional per-family override and is needed only when no reading frame can be established reliably;
+- `--assembly-mode exon` runs the same candidate recovery, derives reference proteins from coding nucleotide family baits by default, and uses the selected annotation backend (miniprot by default) to write structurally validated output under `<output>/exon/`; `--gene-protein-reference` is an optional per-family override and is needed only when no reading frame can be established reliably;
 - `--assembly-mode uce` is for UCE recovery from genome skimming or target capture; it runs `filter assemble combine tree`. The fused UCEFilter already includes refilter semantics and omits `trim` so newly recovered UCE flanks are not cut back to the reference interval;
 - `profiling` runs one recruitment step followed by Themisto pseudoalignment and reference-level support reporting; it does not assemble or run downstream phylogenetic steps.
 
@@ -311,10 +311,12 @@ The tables below list the main public options and current defaults. Run `cli/tip
 | `--gene-miniprot PATH` | miniprot executable; default `miniprot`, version 0.18 or later required |
 | `--gene-exon-backend NAME` | Independent exon annotation backend: `miniprot` (default) or `exonerate-rs`; Exonerate is resolved through PATH without a path argument |
 | `--gene-exonerate-shadow` | Optional exonerate-rs comparison using the current environment’s PATH, with no path argument; miniprot remains authoritative; disabled by default |
-| `--gene-max-intron INT` | Maximum intron accepted by miniprot; default `50000` |
+| `--gene-max-intron INT` | Maximum intron passed to the selected backend; default `50000` |
 | `--gene-min-model-coverage FLOAT` | Minimum protein coverage for a normal partial model; default `0.20`. Padding trials alone allow a one-residue discretization margin. |
 | `--gene-complete-coverage FLOAT` | Minimum complete-model coverage; default `0.80`, with both protein termini also required |
 | `--gene-fragment-padding INT` | Ns inserted only for unique complementary-fragment reannotation; default `100`, `0` disables the attempt |
+| `--gene-sco-reference ID` | Select a uniquely matching reference record for the SCO backbone; default: cohort-wide automatic selection |
+| `--gene-reads-root DIR` | Workflow root with per-sample recruited paired reads; defaults to the current workflow output |
 | `--gene-flank INT` | Observed bases added on each side in `genes_flanked/`; default `0`, never adds Ns |
 
 Padding candidates remain unresolved unless reannotation yields one unique complete model with the entire synthetic interval inside an intron and outside every exon. See the [exon guide](../../docs/exon_EN.md).
