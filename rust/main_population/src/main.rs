@@ -1419,6 +1419,9 @@ fn map_one_sample(
     budget: resources::MappingBudget,
 ) -> AppResult<(PathBuf, String)> {
     let bam = mapping_dir.join(format!("{}.bam", sample.vcf_id));
+    // Explicit BAI naming preserves restart compatibility; samtools otherwise
+    // defaults to CSI when indexing while writing.
+    let indexed_bam = format!("{}##idx##{}.bai", bam.display(), bam.display());
     let mapper_args = minibwa_map_args(budget.mapper_threads, sample, reference);
     if args.mark_duplicates {
         let name_bam = mapping_dir.join(format!("{}.name.bam", sample.vcf_id));
@@ -1473,7 +1476,12 @@ fn map_one_sample(
                         sort_extra_threads.to_string(),
                         "-".into(),
                     ],
-                    vec!["markdup".into(), "-".into(), bam.display().to_string()],
+                    vec![
+                        "markdup".into(),
+                        "--write-index".into(),
+                        "-".into(),
+                        indexed_bam.clone(),
+                    ],
                 ],
             )?;
         } else {
@@ -1506,8 +1514,9 @@ fn map_one_sample(
                 &args.samtools,
                 &[
                     "markdup".into(),
+                    "--write-index".into(),
                     position_bam.display().to_string(),
-                    bam.display().to_string(),
+                    indexed_bam.clone(),
                 ],
             )?;
         }
@@ -1527,8 +1536,9 @@ fn map_one_sample(
                 format!("{}M", budget.sort_memory_mib),
                 "-@".into(),
                 budget.sort_extra_threads.to_string(),
+                "--write-index".into(),
                 "-o".into(),
-                bam.display().to_string(),
+                indexed_bam,
                 "-".into(),
             ],
         )?;
@@ -1536,15 +1546,6 @@ fn map_one_sample(
     run_command(
         &args.samtools,
         &["quickcheck".into(), bam.display().to_string()],
-    )?;
-    run_command(
-        &args.samtools,
-        &[
-            "index".into(),
-            "-@".into(),
-            budget.sort_extra_threads.to_string(),
-            bam.display().to_string(),
-        ],
     )?;
     let flagstat_path = mapping_dir.join(format!("{}.flagstat.txt", sample.vcf_id));
     let output = Command::new(&args.samtools)
@@ -3028,13 +3029,20 @@ case "$cmd" in
       if [ "$prev" = "-o" ]; then out="$value"; fi
       prev="$value"
     done
-    if [ -n "$out" ]; then cat > "$out"; else cat; fi
+    if [ -n "$out" ]; then
+      case "$out" in *'##idx##'*) : > "${out#*##idx##}"; out="${out%%##idx##*}" ;; esac
+      cat > "$out"
+    else cat; fi
     ;;
   fixmate)
     previous=""; last=""
     for value in "$@"; do previous="$last"; last="$value"; done
     if [ "$last" = "-" ]; then cat "$previous"; else cp "$previous" "$last"; fi ;;
-  markdup) if [ "$1" = "-" ]; then cat > "$2"; else cp "$1" "$2"; fi ;;
+  markdup)
+    if [ "$1" = "--write-index" ]; then shift; fi
+    out="$2"
+    case "$out" in *'##idx##'*) : > "${out#*##idx##}"; out="${out%%##idx##*}" ;; esac
+    if [ "$1" = "-" ]; then cat > "$out"; else cp "$1" "$out"; fi ;;
   quickcheck) exit 0 ;;
   index)
     last=""

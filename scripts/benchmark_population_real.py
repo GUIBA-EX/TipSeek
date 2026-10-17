@@ -121,6 +121,14 @@ def main():
                      'structure/one_snp_per_uce.vcf.gz', 'structure/ld_pruned.vcf.gz']
     expected_vcf = {name: records(tools / 'bcftools', reference / name) for name in variant_paths}
     expected_bam = {p.name: alignments(tools / 'samtools', p) for p in sorted((reference / 'mapping').glob('*.bam'))}
+    def mapping_qc(directory):
+        # Only output paths vary between isolated benchmark directories.
+        return [row.rsplit('\t', 1)[0] for row in
+                (directory / 'mapping/mapping_qc.tsv').read_text().splitlines()]
+    expected_qc = mapping_qc(reference)
+    expected_index = {name: subprocess.check_output(
+        [str(tools / 'samtools'), 'idxstats', str(reference / 'mapping' / name)])
+        for name in expected_bam}
     check(expected_bam and expected_vcf['variants/cohort.filtered.vcf.gz'], 'Empty validation outputs')
     exact_files = ['reference/population_reference.fasta', 'structure/selected_snps.tsv']
     exact_files += [f'structure/{prefix}.{ext}' for prefix in ['all_snps', 'population', 'ld_pruned']
@@ -133,7 +141,15 @@ def main():
         for name, expected in expected_vcf.items():
             check(records(tools / 'bcftools', current / name) == expected, f'{current}: {name} differs')
         compare_pca(reference, current)
+        check(mapping_qc(current) == expected_qc, f'{current}: mapping QC differs')
         for name, expected in expected_bam.items():
+            bam = current / 'mapping' / name
+            check(Path(str(bam) + '.bai').is_file(), f'{bam}: BAI index missing')
+            check(subprocess.check_output([str(tools / 'samtools'), 'idxstats', str(bam)])
+                  == expected_index[name], f'{bam}: index counts differ')
+            flagstat = Path('mapping') / (Path(name).stem + '.flagstat.txt')
+            check((reference / flagstat).read_bytes() == (current / flagstat).read_bytes(),
+                  f'{bam}: flagstat differs')
             check(alignments(tools / 'samtools', current / 'mapping' / name) == expected, f'{current}: {name} differs')
         run['equivalent'] = True
     summary['reference_loci'] = (reference / exact_files[0]).read_text().count('>')

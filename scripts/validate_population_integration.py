@@ -81,14 +81,34 @@ for name in ('updated', 'one_cpu', 'supported'):
     assert calls(name) == base, name
 results['called_snps'] = len(base.splitlines())
 results['genotypes_identical'] = True
+def alignments(run, sample):
+    bam = root / run / f'population/mapping/S{sample}.bam'
+    return sorted(subprocess.check_output([str(tools / 'samtools'), 'view', str(bam)], env=env).splitlines())
+
 for name in ('updated', 'one_cpu'):
     for sample in range(12):
-
-        def alignments(run):
-            bam = root / run / f'population/mapping/S{sample}.bam'
-            return sorted(subprocess.check_output([str(tools / 'samtools'), 'view', str(bam)], env=env).splitlines())
-        assert alignments(name) == alignments('baseline'), (name, sample)
+        assert alignments(name, sample) == alignments('baseline', sample), (name, sample)
 results['alignment_records_identical'] = True
+# Exercise the final sort writer as well as markdup, including one CPU.
+results['no_duplicates_baseline_seconds'] = run(
+    'no_duplicates_baseline', baseline, 4, ['--skip-mark-duplicates'])
+for name, threads in [('no_duplicates', 4), ('no_duplicates_one_cpu', 1)]:
+    results[name + '_seconds'] = run(name, new, threads, ['--skip-mark-duplicates'])
+    assert variants(name) == variants('no_duplicates_baseline'), name
+    for sample in range(12):
+        assert alignments(name, sample) == alignments('no_duplicates_baseline', sample), (name, sample)
+# Confirm the BAI is usable for random access, not merely present on disk.
+for name in ('updated', 'one_cpu', 'no_duplicates', 'no_duplicates_one_cpu'):
+    for sample in range(12):
+        bam = root / name / f'population/mapping/S{sample}.bam'
+        assert pathlib.Path(str(bam) + '.bai').is_file(), bam
+        indexed = subprocess.check_output(
+            [str(tools / 'samtools'), 'view', str(bam), 'uce0'], env=env)
+        sequential = subprocess.check_output(
+            [str(tools / 'samtools'), 'view', str(bam)], env=env)
+        expected = [row for row in sequential.splitlines() if row.split(b'\t')[2] == b'uce0']
+        assert indexed.splitlines() == expected and expected, bam
+results['bai_random_access_verified'] = True
 for name in ('updated', 'one_cpu', 'supported'):
     assert (root / name / 'population/structure/selected_snps.tsv').read_bytes() == (root / 'baseline/population/structure/selected_snps.tsv').read_bytes()
 raw = root / 'updated/population/variants/cohort.raw.bcf'

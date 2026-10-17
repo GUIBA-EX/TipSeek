@@ -91,3 +91,25 @@ Local evidence directory: `tipseek_population_real_validation_20261018/bam-strea
 All 366 workspace tests, Clippy with warnings denied and formatting checks passed. The real-tool synthetic fixture also preserved alignments/genotypes, verified one-thread execution and reused raw calls when refiltering. Rebuilding after the added regression test reproduced the benchmarked executable hash.
 
 Tested executable SHA-256: `5530833cc6bee01861b7bf59e2d7c318f0506daf3dc515ed68e15dcd4ab31972`.
+
+
+## Follow-up: build BAI while writing final BAM
+
+Compared against `023cb41` using the identical real UCE subset, accepted assemblies, eight threads and toolchain above. The remaining redundant pass was standalone `samtools index`: after creating the final BAM, every sample reopened and decoded that complete BAM to build its index. Both final writers (`markdup`, or `sort` when duplicate marking is skipped) now use `--write-index` with an explicit `.bam.bai` destination. Explicit BAI naming preserves the existing restart contract instead of using samtools' default CSI output. The BAM quickcheck, flagstat and coverage checks remain.
+
+Three fresh runs per implementation, in alternating paired order, measured:
+
+| Implementation | Run 1 | Run 2 | Run 3 | Median |
+| --- | ---: | ---: | ---: | ---: |
+| `023cb41` | 9.696 s | 9.742 s | 9.736 s | 9.736 s |
+| Index during final BAM writing | 9.472 s | 9.553 s | 9.431 s | 9.472 s |
+
+Median elapsed time decreased **2.72%**, and each paired run improved. Filesystem output blocks remained **2,997,624**; maximum child RSS remained approximately 381 MiB. The optimization removes a decoding/read pass, not another intermediate file; cached reads are not necessarily physical disk reads. This modest gain is specific to this subset and host.
+
+All six runs preserve all **4,000,012 alignment records**, all eight variant record sets, **263 filtered SNPs**, **9 one-SNP-per-UCE loci**, reference FASTA, PLINK panels, individual QC and PCA. The benchmark now also verifies BAI presence, index counts, complete flagstat reports and mapping QC (excluding output-directory paths).
+
+The real-tool synthetic regression additionally compares the default and skip-duplicate-marking paths with the baseline, verifies one-thread execution in both paths, checks indexed region queries against sequential BAM records, and exercises raw-call reuse and selection restart. Synthetic timings are correctness checks, not speed claims. All 366 workspace tests, Clippy with warnings denied, formatting and Python compilation passed.
+
+Local evidence: `tipseek_population_real_validation_20261018/bam-index-trial` and `bam-index-synthetic`. Reproduce with the same command using `023cb41` as baseline and `--repeats 3`. ADMIXTURE and full-library performance remain outside this validation.
+
+Tested executable SHA-256: `934fe1d1368b4e4e6577f36efb2ca5cae140fc15cb2a312981fcc19f651a3780`.
