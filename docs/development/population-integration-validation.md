@@ -65,3 +65,29 @@ The script creates isolated output directories, records executable hashes, prese
 All 365 workspace tests, Clippy with warnings denied, Rust formatting, and Python script compilation passed. ADMIXTURE runtime/equivalence, full datasets, non-Linux resource behavior and biological truth were not tested here.
 
 Final tested executable SHA-256: `a0d3c4fbf67a3bb31d44d8331bc7a8bf286b224e5401b7906db8da33ff05c557`.
+
+
+## Follow-up: remove the coordinate-sorted intermediate BAM
+
+Compared against `23ff0fa` on the same read subset, accepted UCE outputs, host and tools, with eight threads. Three fresh runs per binary alternated baseline–updated, updated–baseline, baseline–updated; OS caches were not flushed. The timing boundary and equivalence checks are unchanged.
+
+The retained change streams `fixmate -u` → coordinate `sort -u` → `markdup`. Name-sorted BAMs and compressed final BAMs remain; the complete intermediate coordinate-sorted BAM is no longer written/read. Sort spills, if needed, use a sample-specific prefix inside the mapping directory. A one-thread budget retains the previous sequential path.
+
+Coordinate sorting consumes all input before emitting alignments, so fixmate and markdup do not process alignment records concurrently. Existing sample concurrency and sort memory/thread limits are preserved; the sort phase needs its threads plus one active producer or consumer. All pipeline exit statuses are checked, and failures terminate and reap remaining children.
+
+| Implementation | Run 1 | Run 2 | Run 3 | Median |
+| --- | ---: | ---: | ---: | ---: |
+| `23ff0fa` | 10.083 s | 10.193 s | 10.240 s | 10.193 s |
+| Streaming duplicate marking | 9.649 s | 9.944 s | 9.738 s | 9.738 s |
+
+Median elapsed time decreased **4.46%**; every paired run was faster. GNU time filesystem output blocks fell from **5,322,120 to 2,997,624 (43.68%)** in every run. Maximum child RSS remained approximately 381 MiB. These are cumulative I/O and maximum individual-child RSS, not peak disk usage or aggregate memory. The modest runtime gain applies to this bounded subset and host, not all datasets or storage systems.
+
+Two more elaborate scheduling candidates were rejected: reducing concurrent samples gave medians of 9.958 → 13.977 s; phase-based CPU permits gave 10.139 → 13.537 s. Both preserved results and reduced I/O, but failed the speed requirement. Neither scheduler is included.
+
+All six retained-candidate runs preserve the reference, all **4,000,012 alignment records**, all eight variant record sets, **263 filtered SNPs**, **9 one-SNP-per-UCE loci**, PLINK panels, individual QC and PCA under the checks described above. ADMIXTURE is still excluded. Regression checks additionally exercise every pipeline stage failing, successful streaming, missing executables and the existing single-thread fallback.
+
+Local evidence directory: `tipseek_population_real_validation_20261018/bam-stream-trial` (summary, per-run logs and full outputs). Reproduce with the command above using `23ff0fa` as baseline and `--repeats 3`.
+
+All 366 workspace tests, Clippy with warnings denied and formatting checks passed. The real-tool synthetic fixture also preserved alignments/genotypes, verified one-thread execution and reused raw calls when refiltering. Rebuilding after the added regression test reproduced the benchmarked executable hash.
+
+Tested executable SHA-256: `5530833cc6bee01861b7bf59e2d7c318f0506daf3dc515ed68e15dcd4ab31972`.

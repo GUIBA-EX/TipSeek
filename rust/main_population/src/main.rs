@@ -1293,7 +1293,7 @@ fn map_samples(args: &Args, samples: &[Sample], reference: &Path) -> AppResult<V
         resources::available_memory_mib(),
     );
     let worker_count = budget.workers;
-    fs::write(mapping_dir.join("resource_budget.tsv"), format!("workers\tmapper_threads\tsort_extra_threads\tsort_memory_mib\tsequential\n{}\t{}\t{}\t{}\t{}\n", budget.workers, budget.mapper_threads, budget.sort_extra_threads, budget.sort_memory_mib, budget.sequential)).map_err(|e| e.to_string())?;
+    fs::write(mapping_dir.join("resource_budget.tsv"), format!("workers\tmapper_threads\tsort_extra_threads\tsort_memory_mib\tsequential\tstream_duplicates\n{}\t{}\t{}\t{}\t{}\t{}\n", budget.workers, budget.mapper_threads, budget.sort_extra_threads, budget.sort_memory_mib, budget.sequential, args.mark_duplicates && !budget.sequential)).map_err(|e| e.to_string())?;
     let queue: Mutex<VecDeque<(usize, &Sample)>> = Mutex::new(samples.iter().enumerate().collect());
     let (sender, receiver) = mpsc::channel();
     thread::scope(|scope| {
@@ -1336,6 +1336,49 @@ fn map_samples(args: &Args, samples: &[Sample], reference: &Path) -> AppResult<V
         writeln!(list, "{}", bam.display()).map_err(|e| e.to_string())?;
     }
     Ok(bams)
+}
+
+// All stages run inside one sample's reserved CPU budget. Wait downstream
+// first, and reap every producer on any spawn, wait or exit failure.
+fn run_samtools_pipeline(program: &str, stages: &[Vec<String>]) -> AppResult<()> {
+    let mut children: Vec<std::process::Child> = Vec::new();
+    let mut input = None;
+    let outcome = (|| {
+        for (index, argv) in stages.iter().enumerate() {
+            let mut command = Command::new(program);
+            command.args(argv);
+            if let Some(stdout) = input.take() {
+                command.stdin(Stdio::from(stdout));
+            }
+            if index + 1 < stages.len() {
+                command.stdout(Stdio::piped());
+            }
+            let mut child = command
+                .spawn()
+                .map_err(|e| format!("unable to start {program} pipeline: {e}"))?;
+            input = child.stdout.take();
+            children.push(child);
+        }
+        for child in children.iter_mut().rev() {
+            let status = child
+                .wait()
+                .map_err(|e| format!("pipeline wait failed: {e}"))?;
+            if !status.success() {
+                return Err(format!("{program} pipeline failed with {status}"));
+            }
+        }
+        Ok(())
+    })();
+    drop(input);
+    if outcome.is_err() {
+        for child in &mut children {
+            let _ = child.kill();
+        }
+        for child in &mut children {
+            let _ = child.wait();
+        }
+    }
+    outcome
 }
 
 // A one-CPU budget cannot run both pipeline processes concurrently.
@@ -1401,39 +1444,73 @@ fn map_one_sample(
                 "-".into(),
             ],
         )?;
-        run_budgeted_pipe(
-            budget.sequential,
-            &fixmate_bam,
-            &args.samtools,
-            &[
-                "fixmate".into(),
-                "-u".into(),
-                "-m".into(),
-                name_bam.display().to_string(),
-                "-".into(),
-            ],
-            &args.samtools,
-            &[
-                "sort".into(),
-                "-l".into(),
-                "0".into(),
-                "-m".into(),
-                format!("{}M", budget.sort_memory_mib),
-                "-@".into(),
-                budget.sort_extra_threads.to_string(),
-                "-o".into(),
-                position_bam.display().to_string(),
-                "-".into(),
-            ],
-        )?;
-        run_command(
-            &args.samtools,
-            &[
-                "markdup".into(),
-                position_bam.display().to_string(),
-                bam.display().to_string(),
-            ],
-        )?;
+        if !budget.sequential {
+            // Coordinate sort consumes its entire input before emitting records.
+            // fixmate and markdup therefore do not process records concurrently:
+            // each phase uses sort's threads plus one producer or consumer.
+            let sort_extra_threads = budget.sort_extra_threads;
+            run_samtools_pipeline(
+                &args.samtools,
+                &[
+                    vec![
+                        "fixmate".into(),
+                        "-u".into(),
+                        "-m".into(),
+                        name_bam.display().to_string(),
+                        "-".into(),
+                    ],
+                    vec![
+                        "sort".into(),
+                        "-T".into(),
+                        mapping_dir
+                            .join(format!("{}.coordinate_sort", sample.vcf_id))
+                            .display()
+                            .to_string(),
+                        "-u".into(),
+                        "-m".into(),
+                        format!("{}M", budget.sort_memory_mib),
+                        "-@".into(),
+                        sort_extra_threads.to_string(),
+                        "-".into(),
+                    ],
+                    vec!["markdup".into(), "-".into(), bam.display().to_string()],
+                ],
+            )?;
+        } else {
+            run_budgeted_pipe(
+                budget.sequential,
+                &fixmate_bam,
+                &args.samtools,
+                &[
+                    "fixmate".into(),
+                    "-u".into(),
+                    "-m".into(),
+                    name_bam.display().to_string(),
+                    "-".into(),
+                ],
+                &args.samtools,
+                &[
+                    "sort".into(),
+                    "-l".into(),
+                    "0".into(),
+                    "-m".into(),
+                    format!("{}M", budget.sort_memory_mib),
+                    "-@".into(),
+                    budget.sort_extra_threads.to_string(),
+                    "-o".into(),
+                    position_bam.display().to_string(),
+                    "-".into(),
+                ],
+            )?;
+            run_command(
+                &args.samtools,
+                &[
+                    "markdup".into(),
+                    position_bam.display().to_string(),
+                    bam.display().to_string(),
+                ],
+            )?;
+        }
         for temporary in [&name_bam, &fixmate_bam, &position_bam] {
             let _ = fs::remove_file(temporary);
         }
@@ -2489,6 +2566,43 @@ mod tests {
         fs::set_permissions(path, permissions).unwrap();
     }
 
+    #[cfg(unix)]
+    #[test]
+    fn streamed_pipeline_reports_failure_in_every_stage() {
+        // A successful downstream command must not hide an upstream failure.
+        for failed in 0..3 {
+            let stages: Vec<Vec<String>> = (0..3)
+                .map(|stage| {
+                    vec![
+                        "-c".into(),
+                        if stage == failed {
+                            "cat >/dev/null; exit 7".into()
+                        } else {
+                            "cat".into()
+                        },
+                    ]
+                })
+                .collect();
+            // The first stage supplies EOF itself; do not inherit test stdin.
+            let mut stages = stages;
+            stages[0][1] = if failed == 0 { "exit 7" } else { "printf data" }.into();
+            assert!(run_samtools_pipeline("/bin/sh", &stages).is_err());
+        }
+        assert!(run_samtools_pipeline(
+            "/bin/sh",
+            &[
+                vec!["-c".into(), "printf data".into()],
+                vec!["-c".into(), "cat".into()],
+                vec!["-c".into(), "test \"$(cat)\" = data".into()],
+            ],
+        )
+        .is_ok());
+        assert!(
+            run_samtools_pipeline("/nonexistent/tipseek-samtools", &[vec!["sort".into()]],)
+                .is_err()
+        );
+    }
+
     #[test]
     fn parses_quoted_delimited_fields() {
         assert_eq!(
@@ -2914,13 +3028,13 @@ case "$cmd" in
       if [ "$prev" = "-o" ]; then out="$value"; fi
       prev="$value"
     done
-    cat > "$out"
+    if [ -n "$out" ]; then cat > "$out"; else cat; fi
     ;;
   fixmate)
     previous=""; last=""
     for value in "$@"; do previous="$last"; last="$value"; done
     if [ "$last" = "-" ]; then cat "$previous"; else cp "$previous" "$last"; fi ;;
-  markdup) cp "$1" "$2" ;;
+  markdup) if [ "$1" = "-" ]; then cat > "$2"; else cp "$1" "$2"; fi ;;
   quickcheck) exit 0 ;;
   index)
     last=""

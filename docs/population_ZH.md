@@ -95,4 +95,4 @@ PanRefV2额外输出到 `population/reference/panrefv2/`：
 
 改变线程数不使生物学结果缓存失效。比对沿用样本队列，将同时运行的 mapper 与 samtools sort 合并计入线程预算；单线程时先写临时 SAM，再排序。sort 显式设置每线程内存上限，样本并发结合可用内存及 Linux cgroup-v2 限制收紧；这不是对外部程序全部内存的硬限制。实际安排写入 `mapping/resource_budget.tsv`。基因型检测仍使用原始 reads，不使用构图限额后的 reads 替代。
 
-临时 BAM 不压缩，以减少反复压缩的 CPU 开销；至少有两个流水线线程预算时，fixmate 直接通过管道送入坐标排序，最终 BAM 仍压缩。相比原实现，临时磁盘写入可能增加；单线程仍采用顺序临时文件。实测范围和取舍见[真实 reads 验证](development/population-integration-validation.md)。
+临时 BAM 不压缩，以减少反复压缩的 CPU 开销；至少有两个流水线线程预算时，fixmate 经坐标排序后直接通过管道送入去重，省去完整的中间坐标排序 BAM；内存不足时，排序仍可能使用各样本独立的临时文件。最终 BAM 仍压缩；单线程仍采用顺序临时文件。实测范围和取舍见[真实 reads 验证](development/population-integration-validation.md)。
