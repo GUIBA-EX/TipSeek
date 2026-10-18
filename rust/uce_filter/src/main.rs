@@ -48,6 +48,7 @@ Use --profile to print read/decode, recruitment, evidence and candidate-store ti
         max_fragments: 0,
         memory_limit_mib: 512,
         selection_auto: true,
+        selection_all: false,
         reference_is_contig: false,
         alignment_shadow: false,
         shadow_per_locus: 64,
@@ -149,9 +150,10 @@ Use --profile to print read/decode, recruitment, evidence and candidate-store ti
                 let value = next_value(&argv, &mut i, key)?;
                 config.selection_auto = match value.as_str() {
                     "auto" => true,
-                    "legacy" => false,
-                    _ => return Err("--selection must be auto or legacy".to_string()),
+                    "legacy" | "all" => false,
+                    _ => return Err("--selection must be auto, legacy or all".to_string()),
                 };
+                config.selection_all = value == "all";
             }
             "--reference-role" => {
                 let value = next_value(&argv, &mut i, key)?;
@@ -295,6 +297,15 @@ mod tests {
             .into_iter()
             .map(str::to_string)
             .collect()
+    }
+
+    #[test]
+    fn copy_recovery_can_disable_abundance_thinning() {
+        let mut args = required();
+        args.extend(["--selection".into(), "all".into()]);
+        let config = parse(args).unwrap();
+        assert!(config.selection_all);
+        assert!(!config.selection_auto);
     }
 
     #[test]

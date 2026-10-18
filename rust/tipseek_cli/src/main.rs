@@ -2,6 +2,7 @@
 //!
 //! The public CLI is implemented in Rust and does not require a Python runtime.
 
+mod profile_spans;
 mod rescue_qc;
 mod uce_recruit;
 
@@ -200,6 +201,7 @@ const VALUE_OPTIONS: &[&str] = &[
     "--gene-julia",
     "--gene-species-mode",
     "--gene-aster",
+    "--profile-copy-mode",
     "--profile-kmer-size",
     "--profile-pseudoalign-threshold",
     "--profile-relevant-kmer-fraction",
@@ -4587,20 +4589,170 @@ fn materialize_profile_reference(opt: &Options) -> Result<(PathBuf, PathBuf), St
     if !matches!(extension.as_str(), "fa" | "fasta") {
         return Err("profiling reference must use the .fa or .fasta extension".into());
     }
-    let directory = Path::new(&opt.output).join(".marker_profile_reference");
+    let key = profile_cache_key(&[&opt.reference], "reference")?;
+    let directory = Path::new(&opt.output)
+        .join(".marker_profile_reference")
+        .join(key)
+        .join("target");
     fs::create_dir_all(&directory).map_err(|e| e.to_string())?;
-    let target = directory.join(
-        input
-            .file_name()
-            .ok_or("invalid profiling reference filename")?,
-    );
-    if target.exists() {
-        fs::remove_file(&target).map_err(|e| e.to_string())?;
-    }
-    if fs::hard_link(&input, &target).is_err() {
+    let target = directory.join("marker.fasta");
+    if !target.exists() {
         fs::copy(&input, &target).map_err(|e| e.to_string())?;
     }
     Ok((target, directory))
+}
+
+fn materialize_profile_recruitment(
+    reference: &Path,
+    decoy: Option<&str>,
+) -> Result<PathBuf, String> {
+    let Some(decoy) = decoy else {
+        return Ok(reference
+            .parent()
+            .ok_or("missing reference parent")?
+            .to_path_buf());
+    };
+    let key = profile_cache_key(&[&reference.display().to_string(), decoy], "recruit")?;
+    let directory = reference
+        .parent()
+        .ok_or("missing reference parent")?
+        .join(format!("recruit_{key}"));
+    fs::create_dir_all(&directory).map_err(|e| e.to_string())?;
+    let mut combined = fs::read_to_string(reference).map_err(|e| e.to_string())?;
+    combined.push('\n');
+    let decoy_text =
+        fs::read_to_string(decoy).map_err(|e| format!("cannot read --profile-decoy: {e}"))?;
+    let mut count = 0;
+    for line in decoy_text.lines() {
+        if line.starts_with('>') {
+            count += 1;
+            combined.push_str(&format!(">__profile_decoy_{count}\n"));
+        } else {
+            combined.push_str(line);
+            combined.push('\n');
+        }
+    }
+    if count == 0 {
+        return Err("--profile-decoy contains no FASTA records".into());
+    }
+    fs::write(directory.join("marker.fasta"), combined).map_err(|e| e.to_string())?;
+    Ok(directory)
+}
+
+fn annotate_profile_candidates(
+    bins: &Path,
+    sample: &Path,
+    profile_args: &[String],
+    mode: &str,
+    reference_index: &uce_filter_core::index::UceIndex,
+) -> Result<(), String> {
+    let profile = sample.join("marker_profile");
+    let mut fasta = String::new();
+    let mut ids = Vec::new();
+    for directory in ["results", "contigs_all_low"] {
+        let path = sample.join(directory).join("marker.fasta");
+        if !path.is_file() {
+            continue;
+        }
+        let text = fs::read_to_string(path).map_err(|e| e.to_string())?;
+        if text.trim().is_empty() {
+            continue;
+        }
+        for header in text.lines().filter_map(|line| line.strip_prefix('>')) {
+            ids.push(
+                header
+                    .split_whitespace()
+                    .next()
+                    .ok_or("empty candidate ID")?
+                    .to_string(),
+            );
+        }
+        fasta.push_str(text.trim_end());
+        fasta.push('\n');
+    }
+    let queries = profile.join("its2_candidates.fasta");
+    fs::write(&queries, fasta).map_err(|e| e.to_string())?;
+    let source_output = profile.join("its2_sources");
+    if source_output.exists() {
+        fs::remove_dir_all(&source_output).map_err(|e| e.to_string())?;
+    }
+    let mut source_by_id = std::collections::BTreeMap::new();
+    if !ids.is_empty() {
+        let mut args: Vec<String> = profile_args
+            .iter()
+            .filter(|arg| arg.as_str() != "--force-rebuild")
+            .cloned()
+            .collect();
+        for (option, replacement) in [("--reads", queries), ("--output", source_output.clone())] {
+            let index = args
+                .iter()
+                .position(|arg| arg == option)
+                .ok_or("missing profiling argument")?;
+            args[index + 1] = replacement.display().to_string();
+        }
+        run(bins, "marker_profile", &args)?;
+        let table = fs::read_to_string(source_output.join("marker_query_sources.tsv"))
+            .map_err(|e| e.to_string())?;
+        for line in table.lines().skip(1) {
+            let (query, fields) = line
+                .split_once('\t')
+                .ok_or("invalid candidate source record")?;
+            let index: usize = query.parse().map_err(|_| "invalid candidate query index")?;
+            let id = ids.get(index).ok_or("candidate query index out of range")?;
+            if source_by_id
+                .insert(id.clone(), fields.to_string())
+                .is_some()
+            {
+                return Err("duplicate candidate source ID".into());
+            }
+        }
+    }
+    let spans = profile_spans::annotate(
+        reference_index,
+        &profile.join("its2_candidates.fasta"),
+        &profile.join("its2_reference_spans.fasta"),
+    )?;
+    let support = sample.join("results/marker.its2_support.tsv");
+    let mut report = String::new();
+    if support.is_file() {
+        let text = fs::read_to_string(support).map_err(|e| e.to_string())?;
+        for (index, line) in text.lines().enumerate() {
+            if index == 0 {
+                report.push_str(&format!(
+                    "{line}\tcopy_mode\ttarget_hits\tdecoy_hits\tsource_status\tgroups\t{}\n",
+                    profile_spans::HEADER
+                ));
+            } else {
+                let id = line.split('\t').next().ok_or("missing candidate ID")?;
+                let source = source_by_id
+                    .get(id)
+                    .ok_or_else(|| format!("missing source result for {id}"))?;
+                let span = spans
+                    .get(id)
+                    .ok_or_else(|| format!("missing reference span for {id}"))?;
+                report.push_str(&format!("{line}\t{mode}\t{source}\t{span}\n"));
+            }
+        }
+    } else {
+        report.push_str("variant\tcopy_mode\tsource_status\n");
+    }
+    fs::write(profile.join("its2_candidates.tsv"), report).map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+fn validate_profile_pairs(samples: &[Sample]) -> Result<(), String> {
+    for sample in samples {
+        let second = sample
+            .read2
+            .as_deref()
+            .ok_or("ITS2 copy recovery requires paired R1 and R2 files")?;
+        let first = fs::canonicalize(&sample.read1).map_err(|e| e.to_string())?;
+        let second = fs::canonicalize(second).map_err(|e| e.to_string())?;
+        if first == second {
+            return Err(format!("{}: ITS2 copy recovery requires distinct R1 and R2 files; a duplicated input is not paired evidence", sample.name));
+        }
+    }
+    Ok(())
 }
 
 fn execute_profiling(opt: &Options, bins: &Path, samples: &[Sample]) -> Result<(), String> {
@@ -4611,6 +4763,16 @@ fn execute_profiling(opt: &Options, bins: &Path, samples: &[Sample]) -> Result<(
         );
     }
     let raw = &opt.raw;
+    let copy_mode = optional_value(raw, &["--profile-copy-mode"])?;
+    if copy_mode
+        .as_deref()
+        .is_some_and(|mode| !matches!(mode, "host" | "symbiont"))
+    {
+        return Err("--profile-copy-mode must be host or symbiont".into());
+    }
+    if copy_mode.is_some() {
+        validate_profile_pairs(samples)?;
+    }
     let kmer = value(raw, &["--profile-kmer-size"], "21")?;
     let kmer_number = kmer
         .parse::<usize>()
@@ -4642,6 +4804,15 @@ fn execute_profiling(opt: &Options, bins: &Path, samples: &[Sample]) -> Result<(
     }
     let decoy = optional_value(raw, &["--profile-decoy"])?;
     let (reference, reference_dir) = materialize_profile_reference(opt)?;
+    let recruit_dir = materialize_profile_recruitment(&reference, decoy.as_deref())?;
+    let copy_reference_index = if copy_mode.is_some() {
+        Some(Arc::new(uce_filter_core::index::UceIndex::build(
+            &reference,
+            kmer_number,
+        )?))
+    } else {
+        None
+    };
     let themisto = optional_value(raw, &["--profile-themisto"])?
         .or_else(|| env::var("GM2_THEMISTO").ok())
         .unwrap_or_else(|| "themisto".into());
@@ -4680,6 +4851,9 @@ fn execute_profiling(opt: &Options, bins: &Path, samples: &[Sample]) -> Result<(
         let failures = Arc::clone(&failures);
         let next = Arc::clone(&next);
         let reference_dir = reference_dir.clone();
+        let recruit_dir = recruit_dir.clone();
+        let copy_mode = copy_mode.clone();
+        let copy_reference_index = copy_reference_index.clone();
         let reference = reference.clone();
         let cache = cache.clone();
         let themisto = themisto.clone();
@@ -4695,16 +4869,16 @@ fn execute_profiling(opt: &Options, bins: &Path, samples: &[Sample]) -> Result<(
         let uce_memory_limit_mib = profile_uce_memory_limit_mib;
         let bins = bins.to_path_buf();
         let force = flag(raw, "--profile-force-rebuild")?;
-        handles.push(thread::spawn(move || {
+        handles.push(thread::spawn(move || loop {
             let Some(sample) = next.lock().expect("profiling queue poisoned").next() else {
                 return;
             };
             let sample_dir = Path::new(&output_root).join(&sample.name);
             let mut filter = vec![
                 "-r".into(),
-                reference_dir.display().to_string(),
+                recruit_dir.display().to_string(),
                 "--recruit-references".into(),
-                reference_dir.display().to_string(),
+                recruit_dir.display().to_string(),
                 "-q1".into(),
                 sample.read1.clone(),
             ];
@@ -4717,9 +4891,13 @@ fn execute_profiling(opt: &Options, bins: &Path, samples: &[Sample]) -> Result<(
                 "-kf".into(),
                 kmer.clone(),
                 "-s".into(),
-                step,
+                step.clone(),
                 "--selection".into(),
-                "auto".into(),
+                if copy_mode.is_some() {
+                    "all".into()
+                } else {
+                    "auto".into()
+                },
                 "--reference-role".into(),
                 "bait".into(),
                 "--threads".into(),
@@ -4727,14 +4905,14 @@ fn execute_profiling(opt: &Options, bins: &Path, samples: &[Sample]) -> Result<(
                 "--memory-limit-mib".into(),
                 uce_memory_limit_mib.to_string(),
                 "--min-depth".into(),
-                low_depth,
+                low_depth.clone(),
                 "--max-depth".into(),
-                depth_limit,
+                depth_limit.clone(),
                 "--max-size".into(),
-                size_limit,
+                size_limit.clone(),
             ]);
             if max_reads != "0" {
-                filter.extend(["--max-fragments".into(), max_reads]);
+                filter.extend(["--max-fragments".into(), max_reads.clone()]);
             }
             let result = run(&bins, "uce_filter", &filter).and_then(|_| {
                 let filtered = sample_dir.join("filtered");
@@ -4771,11 +4949,11 @@ fn execute_profiling(opt: &Options, bins: &Path, samples: &[Sample]) -> Result<(
                     "--cache".into(),
                     cache.display().to_string(),
                     "--themisto".into(),
-                    themisto,
+                    themisto.clone(),
                     "--threads".into(),
                     "1".into(),
                     "--kmer-size".into(),
-                    kmer,
+                    kmer.clone(),
                     "--threshold".into(),
                     threshold.to_string(),
                     "--relevant-kmer-fraction".into(),
@@ -4783,16 +4961,51 @@ fn execute_profiling(opt: &Options, bins: &Path, samples: &[Sample]) -> Result<(
                     "--index-memory-gb".into(),
                     memory.to_string(),
                 ];
-                if let Some(group) = group {
-                    args.extend(["--groups".into(), group]);
+                if let Some(group) = &group {
+                    args.extend(["--groups".into(), group.clone()]);
                 }
-                if let Some(decoy) = decoy {
-                    args.extend(["--decoy".into(), decoy]);
+                if let Some(decoy) = &decoy {
+                    args.extend(["--decoy".into(), decoy.clone()]);
                 }
                 if force {
                     args.push("--force-rebuild".into());
                 }
                 run(&bins, "marker_profile", &args)?;
+                if let Some(mode) = &copy_mode {
+                    run(
+                        &bins,
+                        "main_assembler",
+                        &[
+                            "-r".into(),
+                            reference_dir.display().to_string(),
+                            "-o".into(),
+                            sample_dir.display().to_string(),
+                            "--assembly-mode".into(),
+                            "its2".into(),
+                            "-ka".into(),
+                            kmer.clone(),
+                            "-k_min".into(),
+                            kmer.clone(),
+                            "-k_max".into(),
+                            kmer.clone(),
+                            "--assembler-graph-format".into(),
+                            "gfa".into(),
+                            "-p".into(),
+                            "1".into(),
+                        ],
+                    )?;
+                    annotate_profile_candidates(
+                        &bins,
+                        &sample_dir,
+                        &args,
+                        mode,
+                        copy_reference_index
+                            .as_deref()
+                            .ok_or("missing copy reference index")?,
+                    )?;
+                    fs::write(profile.join("copy_mode.txt"), format!("{mode}\n"))
+                        .map_err(|e| e.to_string())?;
+                }
                 if profile.join("marker_reference_support.tsv").is_file() {
                     Ok(())
                 } else {
@@ -7004,6 +7217,7 @@ fn print_help() {
     println!(
         "TipSeek CLI\n\nNative Rust command dispatcher; no Python runtime is required.\n\n\
 Usage: tipseek [COMMAND ...] -f SAMPLES -r REFERENCES -o OUTPUT [-p INT|auto]\nMito: tipseek mito -f SAMPLES -r REFERENCE.gb -o OUTPUT (automatic defaults)\n\n\
+Profiling copies:\n  --profile-copy-mode host|symbiont enables ITS2 recovery alongside profiling.\n\n\
 Assembly modes:\n  \
 --assembly-mode gene|exon|uce\n               \
 Default: gene. Gene mode recovers and summarizes family candidates. Exon mode\n               \
@@ -7066,6 +7280,44 @@ fn main() -> ExitCode {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn copy_recovery_rejects_a_read_file_used_as_both_mates() {
+        let root = env::temp_dir().join(format!("profile_pairs_{}", std::process::id()));
+        fs::create_dir_all(&root).unwrap();
+        let first = root.join("r1.fq");
+        let second = root.join("r2.fq");
+        fs::write(&first, "").unwrap();
+        fs::write(&second, "").unwrap();
+        let mut sample = Sample {
+            name: "sample".into(),
+            read1: first.display().to_string(),
+            read2: Some(first.display().to_string()),
+        };
+        assert!(validate_profile_pairs(&[sample.clone()])
+            .unwrap_err()
+            .contains("distinct R1 and R2"));
+        sample.read2 = Some(second.display().to_string());
+        validate_profile_pairs(&[sample]).unwrap();
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn profiling_recruitment_keeps_decoys_in_one_locus() {
+        let root = env::temp_dir().join(format!("profiling_recruit_test_{}", std::process::id()));
+        fs::create_dir_all(&root).unwrap();
+        let target = root.join("marker.fasta");
+        let decoy = root.join("decoy.fasta");
+        fs::write(&target, ">target\nACGT").unwrap();
+        fs::write(&decoy, ">target\nTGCA\n").unwrap();
+        let combined = materialize_profile_recruitment(&target, decoy.to_str()).unwrap();
+        assert_eq!(
+            fs::read_to_string(combined.join("marker.fasta")).unwrap(),
+            ">target\nACGT\n>__profile_decoy_1\nTGCA\n"
+        );
+        assert_eq!(fs::read_to_string(target).unwrap(), ">target\nACGT");
+        fs::remove_dir_all(root).unwrap();
+    }
 
     #[test]
     fn cpu_lists_expand_ranges_and_reject_invalid_input() {

@@ -40,7 +40,7 @@ Assembly:
   -p, --processes INT             Parallel locus workers (default: 1)
 
 Assembly mode:
-  --assembly-mode original|uce
+  --assembly-mode original|uce|its2
                                    Assembly mode (default: original)
   --uce-path-strategy search|backbone
                                    UCE path handling (default: backbone)
@@ -151,6 +151,7 @@ fn parse_args() -> Result<Args, String> {
                 args.assembly_mode = match next_value(&arguments, &mut index, flag)?.as_str() {
                     "original" => AssemblyMode::Reference,
                     "uce" => AssemblyMode::Uce,
+                    "its2" => AssemblyMode::Its2,
                     value => return Err(format!("invalid --assembly-mode: {value}")),
                 }
             }
@@ -217,9 +218,15 @@ fn parse_args() -> Result<Args, String> {
     args.read_chunk_size = args.read_chunk_size.max(1);
 
     if args.assembly_mode == AssemblyMode::Its2 {
-        args.kmer_size = 21;
-        args.kmer_min = 21;
-        args.kmer_max = 21;
+        if !arguments.iter().any(|arg| arg == "-ka") {
+            args.kmer_size = 21;
+        }
+        if !arguments.iter().any(|arg| arg == "-k_min") {
+            args.kmer_min = 21;
+        }
+        if !arguments.iter().any(|arg| arg == "-k_max") {
+            args.kmer_max = 21;
+        }
     }
 
     if args.kmer_size > 63 || args.kmer_min > 63 || args.kmer_max > 63 {

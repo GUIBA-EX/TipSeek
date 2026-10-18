@@ -29,6 +29,9 @@ struct CacheLock(PathBuf);
 
 impl CacheLock {
     fn acquire(path: PathBuf) -> Result<Self, String> {
+        if let Some(parent) = path.parent().filter(|p| !p.as_os_str().is_empty()) {
+            fs::create_dir_all(parent).map_err(|e| format!("cannot create cache parent: {e}"))?;
+        }
         for _ in 0..600 {
             match fs::create_dir(&path) {
                 Ok(()) => return Ok(Self(path)),
@@ -281,6 +284,11 @@ fn append_fasta(
                 .cloned()
                 .unwrap_or_else(|| id.to_string())
         };
+        if !decoy && group == "DECOY" {
+            return Err(
+                "DECOY is reserved for --decoy references; rename the target group or ID".into(),
+            );
+        }
         write_record(
             records_dir,
             *next_id,
@@ -428,9 +436,24 @@ fn write_reference_support(
         }
         colors.insert(color, (reference_id, fields[2].to_string()));
     }
-    let mut support = BTreeMap::<String, (String, usize, f64, usize)>::new();
+    let has_decoy = colors.values().any(|(_, group)| group == "DECOY");
+    let mut sources = BufWriter::new(
+        File::create(output.join("marker_query_sources.tsv")).map_err(|e| e.to_string())?,
+    );
+    writeln!(
+        sources,
+        "query_index\ttarget_hits\tdecoy_hits\tsource_status\tgroups"
+    )
+    .map_err(|e| e.to_string())?;
+    let mut support = BTreeMap::<(String, String), (String, usize, f64, usize)>::new();
     for line in BufReader::new(File::open(pseudoalignments).map_err(|e| e.to_string())?).lines() {
         let line = line.map_err(|e| e.to_string())?;
+        let query = line
+            .split_whitespace()
+            .next()
+            .ok_or("empty pseudoalignment record")?
+            .parse::<usize>()
+            .map_err(|_| "invalid pseudoalignment query index")?;
         let candidates: BTreeSet<usize> = line
             .split_whitespace()
             .skip(1)
@@ -440,6 +463,33 @@ fn write_reference_support(
                     .map_err(|_| format!("invalid Themisto color: {field}"))
             })
             .collect::<Result<_, _>>()?;
+        let mut target_hits = 0;
+        let mut decoy_hits = 0;
+        let mut groups = BTreeSet::new();
+        for color in &candidates {
+            let (_, group) = colors
+                .get(color)
+                .ok_or_else(|| format!("Themisto color {color} has no reference metadata"))?;
+            if group == "DECOY" {
+                decoy_hits += 1;
+            } else {
+                target_hits += 1;
+                groups.insert(group.as_str());
+            }
+        }
+        let status = match (target_hits > 0, decoy_hits > 0, has_decoy) {
+            (true, true, _) => "ambiguous_source",
+            (false, true, _) => "decoy_only",
+            (true, false, true) => "target_only",
+            (true, false, false) => "target_match_no_decoy",
+            _ => "unclassified",
+        };
+        writeln!(
+            sources,
+            "{query}\t{target_hits}\t{decoy_hits}\t{status}\t{}",
+            groups.into_iter().collect::<Vec<_>>().join(";")
+        )
+        .map_err(|e| e.to_string())?;
         if candidates.is_empty() {
             continue;
         }
@@ -449,7 +499,7 @@ fn write_reference_support(
                 .get(&color)
                 .ok_or_else(|| format!("Themisto color {color} has no reference metadata"))?;
             let entry = support
-                .entry(reference_id.clone())
+                .entry((reference_id.clone(), group.clone()))
                 .or_insert_with(|| (group.clone(), 0, 0.0, 0));
             entry.1 += 1;
             entry.2 += weight;
@@ -466,7 +516,7 @@ fn write_reference_support(
         "reference_id\tgroup\thit_queries\tfractional_queries\tsingleton_queries\tambiguity_status"
     )
     .map_err(|e| e.to_string())?;
-    for (reference_id, (group, hits, fractional, singleton)) in support {
+    for ((reference_id, _), (group, hits, fractional, singleton)) in support {
         let status = if singleton > 0 {
             "has_singleton_support"
         } else {
@@ -479,6 +529,7 @@ fn write_reference_support(
         .map_err(|e| e.to_string())?;
     }
     out.flush().map_err(|e| e.to_string())?;
+    sources.flush().map_err(|e| e.to_string())?;
     Ok(())
 }
 
@@ -520,8 +571,8 @@ fn main() -> Result<(), String> {
         return Ok(());
     }
     let args = parse_args()?;
-    if !args.themisto.is_file() || !args.reference.is_file() || !args.reads.is_file() {
-        return Err("reference, reads and Themisto paths must be existing files".to_string());
+    if !args.reference.is_file() || !args.reads.is_file() {
+        return Err("reference and reads paths must be existing files".to_string());
     }
     let (index_prefix, metadata) = prepare_reference(&args)?;
     if args.output.exists()
@@ -583,6 +634,41 @@ mod tests {
         ));
         fs::write(&path, contents).unwrap();
         path
+    }
+
+    #[test]
+    fn target_and_decoy_with_same_id_do_not_merge_support() {
+        let root = env::temp_dir().join(format!("marker_role_test_{}", std::process::id()));
+        fs::create_dir_all(&root).unwrap();
+        let metadata = root.join("metadata.tsv");
+        let alignments = root.join("alignments.txt");
+        fs::write(&metadata, "color\treference_id\tgroup\toriginal_header\n0\tmarker_0\thost\tsame\n1\tmarker_1\tDECOY\tsame\n").unwrap();
+        fs::write(&alignments, "0 0\n1 1\n2 0 1\n3\n").unwrap();
+        write_reference_support(&root, &alignments, &metadata).unwrap();
+        let support = fs::read_to_string(root.join("marker_reference_support.tsv")).unwrap();
+        assert!(support.contains("same\thost\t2\t"));
+        assert!(support.contains("same\tDECOY\t2\t"));
+        let sources = fs::read_to_string(root.join("marker_query_sources.tsv")).unwrap();
+        assert!(sources.contains("0\t1\t0\ttarget_only\thost"));
+        assert!(sources.contains("1\t0\t1\tdecoy_only\t"));
+        assert!(sources.contains("2\t1\t1\tambiguous_source\thost"));
+        assert!(sources.contains("3\t0\t0\tunclassified\t"));
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn cache_lock_creates_missing_parent_and_releases() {
+        let root = env::temp_dir().join(format!("marker_lock_test_{}", std::process::id()));
+        let path = root.join("new/cache.lock");
+        assert!(!root.exists());
+        {
+            let _lock = CacheLock::acquire(path.clone()).unwrap();
+            assert!(path.is_dir());
+        }
+        assert!(!path.exists());
+        let _lock = CacheLock::acquire(path).unwrap();
+        drop(_lock);
+        fs::remove_dir_all(root).unwrap();
     }
 
     #[test]

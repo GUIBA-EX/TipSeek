@@ -8,3 +8,4 @@ license.workspace = true
 [dependencies]
 gm2_tools = { path = "../gm2_tools" }
 ahash = "0.8"
+uce_filter_core = { path = "../uce_filter_core" }

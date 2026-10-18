@@ -4,7 +4,7 @@ use crate::index::{
     default_verify_k, ExactSeed, IndexProfile, ReadEvidenceScratch, RecruitScratch, UceIndex,
 };
 use crate::model::{default_spill_path, Candidate, Fragment, FragmentBank, LocusId};
-use crate::selection::{choose_auto, choose_legacy, selected};
+use crate::selection::{choose_auto, choose_legacy, selected, LegacyDecision};
 use gm2_tools::fastx::{gzip_backend_name, open_input, FastxRecord};
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs::{self, File, OpenOptions};
@@ -34,6 +34,7 @@ pub struct Config {
     pub max_fragments: u64,
     pub memory_limit_mib: u64,
     pub selection_auto: bool,
+    pub selection_all: bool,
     pub reference_is_contig: bool,
     pub alignment_shadow: bool,
     pub shadow_per_locus: usize,
@@ -971,7 +972,10 @@ pub fn run(config: &Config) -> Result<RunSummary, String> {
         for (i, &locus) in loci.iter().enumerate() {
             let mate1 = mate1_evidence[i];
             let orient2 = infer_orientation(collect_runs_stats(read_evidence.orientation(i)));
-            if !keep_linked_pair(mate1.orientation, orient2) {
+            // Multi-copy recruitment must retain matches shared by several
+            // references. Such matches have no unique-window orientation vote;
+            // their pair geometry is checked against assembled candidates later.
+            if !config.selection_all && !keep_linked_pair(mate1.orientation, orient2) {
                 continue;
             }
             if !passes_alignment_filter(
@@ -1082,14 +1086,22 @@ pub fn run(config: &Config) -> Result<RunSummary, String> {
     let mut candidates = Vec::<Candidate>::new();
     for (locus_id, locus) in index.loci.iter().enumerate() {
         locus_candidates.copy_locus(locus_id, &mut candidates);
-        let decision = choose_legacy(
-            &candidates,
-            locus.effective_length,
-            config.kmer_size,
-            config.min_depth,
-            config.max_depth,
-            config.max_size_mb,
-        );
+        let decision = if config.selection_all {
+            LegacyDecision {
+                minimum_exact: Some(config.kmer_size),
+                thinning_interval: None,
+                total_bases: candidates.iter().map(|c| c.fragment_bases as u64).sum(),
+            }
+        } else {
+            choose_legacy(
+                &candidates,
+                locus.effective_length,
+                config.kmer_size,
+                config.min_depth,
+                config.max_depth,
+                config.max_size_mb,
+            )
+        };
         let (selected_ids, auto_details) = if config.selection_auto {
             let automatic = choose_auto(
                 &candidates,
@@ -1365,6 +1377,7 @@ mod tests {
             max_fragments: 0,
             memory_limit_mib: 16,
             selection_auto: true,
+            selection_all: false,
             reference_is_contig: false,
             alignment_shadow: false,
             shadow_per_locus: 64,
@@ -1425,6 +1438,7 @@ mod tests {
             max_fragments: 0,
             memory_limit_mib: 16,
             selection_auto: true,
+            selection_all: false,
             reference_is_contig: false,
             alignment_shadow: false,
             shadow_per_locus: 64,
@@ -1461,6 +1475,31 @@ mod tests {
         let alignment_filtered = run(&config).unwrap();
         assert_eq!(alignment_filtered.loci_written, 0);
         assert!(!config.output.join("filtered/locus.fq").exists());
+
+        // Duplicate/homologous panel records remove unique-window votes, but
+        // must not remove the underlying reads in multi-copy recovery mode.
+        fs::write(
+            references.join("locus.fa"),
+            format!(
+                ">a\n{}\n>b\n{}\n",
+                String::from_utf8_lossy(reference),
+                String::from_utf8_lossy(reference)
+            ),
+        )
+        .unwrap();
+        config.output = root.join("copies");
+        config.recruit_references = None;
+        config.minimum_alignment_overlap = 0;
+        config.selection_auto = false;
+        config.selection_all = true;
+        config.max_depth = 1;
+        config.max_size_mb = 0;
+        let copies = run(&config).unwrap();
+        assert_eq!(copies.loci_written, 1);
+        assert_eq!(
+            fs::read_to_string(config.output.join("filtered/locus.fq")).unwrap(),
+            format!("{}{}", fastq(1, r1), fastq(2, &r2))
+        );
         fs::remove_dir_all(root).unwrap();
     }
 

@@ -119,27 +119,102 @@ where
     Ok(())
 }
 
-// ITS2 才需要保留 mate 关系，普通 UCE 不额外背这份包袱。
-pub fn read_linked_fragments(path: &Path, fasta: bool) -> io::Result<Vec<Vec<Vec<u8>>>> {
-    let mut reads = Vec::new();
-    for_each_sequence_chunk(path, fasta, 8192, |chunk| {
-        reads.extend_from_slice(chunk);
-        Ok(())
-    })?;
-    Ok(reads.chunks(2).map(|mates| mates.to_vec()).collect())
+// Only explicitly matching read identifiers establish fragment linkage.
+pub type LinkedReads = Vec<Vec<Vec<u8>>>;
+
+#[cfg(test)]
+pub fn read_linked_fragments(path: &Path, fasta: bool) -> io::Result<LinkedReads> {
+    read_linked_reads_with_quality(path, fasta).map(|(reads, _)| reads)
+}
+
+pub fn read_linked_reads_with_quality(
+    path: &Path,
+    fasta: bool,
+) -> io::Result<(LinkedReads, LinkedReads)> {
+    let mut fragments: Vec<Vec<Vec<u8>>> = Vec::new();
+    let mut qualities: LinkedReads = Vec::new();
+    let mut previous: Option<(String, u8)> = None;
+    let mut append = |header: &str, sequence: Vec<u8>, quality: Vec<u8>| {
+        let identity = normalized_mate_header(header);
+        let paired = match (&previous, identity) {
+            (Some((name, 1)), Some((current, 2))) => name == current,
+            _ => false,
+        };
+        if paired {
+            if let Some(fragment) = fragments.last_mut() {
+                fragment.push(sequence);
+                qualities.last_mut().unwrap().push(quality);
+            }
+            previous = None;
+        } else {
+            fragments.push(vec![sequence]);
+            qualities.push(vec![quality]);
+            previous = identity.map(|(name, mate)| (name.to_string(), mate));
+        }
+    };
+    if fasta {
+        for (header, sequence) in read_fasta(path)? {
+            append(&header, sequence, Vec::new());
+        }
+    } else {
+        let mut lines = BufReader::new(File::open(path)?).lines();
+        while let Some(header) = lines.next() {
+            let header = header?;
+            let mut record = Vec::with_capacity(3);
+            for _ in 0..3 {
+                record.push(lines.next().ok_or_else(|| {
+                    io::Error::new(io::ErrorKind::InvalidData, "truncated FASTQ fragment")
+                })??);
+            }
+            if !header.starts_with('@')
+                || !record[1].starts_with('+')
+                || record[0].len() != record[2].len()
+            {
+                return Err(io::Error::new(
+                    io::ErrorKind::InvalidData,
+                    "invalid FASTQ fragment",
+                ));
+            }
+            if !record[0].bytes().all(|b| b.is_ascii_alphabetic())
+                || !record[2].bytes().all(|b| (33..=126).contains(&b))
+            {
+                return Err(io::Error::new(
+                    io::ErrorKind::InvalidData,
+                    "invalid FASTQ bases or Phred+33 qualities",
+                ));
+            }
+            append(
+                &header,
+                clean_sequence(record[0].as_bytes()),
+                record[2].bytes().map(|b| b - 33).collect(),
+            );
+        }
+    }
+    Ok((fragments, qualities))
 }
 
 fn normalized_mate_header(header: &str) -> Option<(&str, u8)> {
-    let token = header
-        .trim_start_matches(['@', '>'])
-        .split_whitespace()
-        .next()?;
+    let mut fields = header.trim_start_matches(['@', '>']).split_whitespace();
+    let token = fields.next()?;
     if let Some(name) = token.strip_suffix("/1") {
         Some((name, 1))
     } else if let Some(name) = token.strip_suffix("/2") {
         Some((name, 2))
     } else {
-        None
+        let mate_field = fields.next()?;
+        // ENA/SRA FASTQ can put /1 or /2 on the original instrument ID in
+        // the second field, while the first field holds the shared run/read ID.
+        if mate_field.ends_with("/1") {
+            return Some((token, 1));
+        }
+        if mate_field.ends_with("/2") {
+            return Some((token, 2));
+        }
+        match mate_field.split(':').next()? {
+            "1" => Some((token, 1)),
+            "2" => Some((token, 2)),
+            _ => None,
+        }
     }
 }
 
@@ -437,6 +512,58 @@ fn write_reference_cache(path: &Path, k: usize, kmers: &HashMap<u128, RefKmer>) 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn linked_fastq_keeps_phred_positions_and_rejects_corruption() {
+        let path = std::env::temp_dir().join(format!("its_quality_{}.fq", std::process::id()));
+        fs::write(&path, "@a/1\nacgt\n+\nI-5!\n@a/2\nTGCA\n+\n5555\n").unwrap();
+        let (reads, qualities) = read_linked_reads_with_quality(&path, false).unwrap();
+        assert_eq!(reads[0][0], b"ACGT");
+        assert_eq!(qualities[0][0], vec![40, 12, 20, 0]);
+        assert_eq!(qualities[0][1], vec![20; 4]);
+        fs::write(&path, "@a/1\nAC G\n+\nIIII\n").unwrap();
+        assert!(read_linked_reads_with_quality(&path, false).is_err());
+        fs::write(&path, "@a/1\nACGT\n+\nIII \n").unwrap();
+        assert!(read_linked_reads_with_quality(&path, false).is_err());
+        fs::remove_file(path).unwrap();
+    }
+
+    #[test]
+    fn sra_second_field_mate_markers_preserve_fragment_linkage() {
+        assert_eq!(
+            normalized_mate_header("@SRR123.45 INSTRUMENT:1:2:3/1"),
+            Some(("SRR123.45", 1))
+        );
+        assert_eq!(
+            normalized_mate_header("@SRR123.45 INSTRUMENT:1:2:3/2"),
+            Some(("SRR123.45", 2))
+        );
+        assert_eq!(normalized_mate_header("@SRR123.45 length=151"), None);
+    }
+
+    #[test]
+    fn linked_fragments_validate_every_pair_and_keep_orphans() {
+        let path = std::env::temp_dir().join(format!("its2_pairs_{}.fq", std::process::id()));
+        fs::write(
+            &path,
+            concat!(
+                "@a/1\nACGT\n+\nIIII\n@a/2\nTGCA\n+\nIIII\n",
+                "@orphan/1\nAAAA\n+\nIIII\n@other/2\nCCCC\n+\nIIII\n",
+                "@b 1:N:0:ACGT\nGGGG\n+\nIIII\n@b 2:N:0:ACGT\nTTTT\n+\nIIII\n",
+                "@single\nACAC\n+\nIIII\n@single2\nCACA\n+\nIIII\n"
+            ),
+        )
+        .unwrap();
+        let fragments = read_linked_fragments(&path, false).unwrap();
+        assert_eq!(
+            fragments.iter().map(Vec::len).collect::<Vec<_>>(),
+            vec![2, 1, 1, 2, 1, 1]
+        );
+        assert_eq!(fragments[3][1], b"TTTT");
+        fs::write(&path, "@bad/1\nACGT\n+\nIII\n").unwrap();
+        assert!(read_linked_fragments(&path, false).is_err());
+        fs::remove_file(path).unwrap();
+    }
 
     #[test]
     fn reference_contains_both_orientations() {

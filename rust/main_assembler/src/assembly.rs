@@ -781,6 +781,79 @@ pub fn walk_backbone(
     (vec![result], visited, positions, weight)
 }
 
+pub struct Its2PathEvidence {
+    terminals: HashSet<u128>,
+    contexts: Vec<(usize, HashMap<Vec<u8>, u8>)>,
+    max_extension: usize,
+}
+
+impl Its2PathEvidence {
+    pub fn new(reads: &HashMap<Vec<u8>, u64>, k: usize, terminals: HashSet<u128>) -> Self {
+        let maximum = reads.keys().map(Vec::len).max().unwrap_or(0);
+        let mut lengths: Vec<usize> = [k + 1, k * 2, k * 4, maximum]
+            .into_iter()
+            .filter(|&length| length > k && length <= maximum)
+            .collect();
+        lengths.sort_unstable();
+        lengths.dedup();
+        let contexts = lengths
+            .into_iter()
+            .map(|length| {
+                let mut contexts = HashMap::new();
+                for read in reads.keys() {
+                    if read.len() < length {
+                        continue;
+                    }
+                    for oriented in [read.clone(), reverse_complement(read)] {
+                        for window in oriented.windows(length) {
+                            if window
+                                .iter()
+                                .all(|base| matches!(base, b'A' | b'C' | b'G' | b'T'))
+                            {
+                                let next = crate::seq::base_bits(window[length - 1]).unwrap();
+                                *contexts.entry(window[..length - 1].to_vec()).or_default() |=
+                                    1 << next;
+                            }
+                        }
+                    }
+                }
+                (length, contexts)
+            })
+            .collect();
+        Self {
+            terminals,
+            contexts,
+            max_extension: usize::MAX,
+        }
+    }
+
+    pub fn with_max_extension(mut self, length: usize) -> Self {
+        self.max_extension = length;
+        self
+    }
+
+    fn allows(&self, seed: u128, extension: &[u8], next: u8, k: usize) -> bool {
+        let length = k + extension.len() + 1;
+        // A missing long context can simply mean that no read starts at that
+        // position. Use the longest observed prefix, rather than requiring a
+        // full-length read window at every base of an otherwise supported path.
+        for (width, contexts) in self.contexts.iter().rev().filter(|(w, _)| *w <= length) {
+            let mut suffix = if extension.len() + 1 < *width {
+                decode_kmer(seed, k)
+            } else {
+                Vec::new()
+            };
+            let start = extension.len().saturating_sub(width - 1);
+            suffix.extend(extension[start..].iter().map(|&base| bits_base(base)));
+            if let Some(mask) = contexts.get(&suffix[suffix.len() - (width - 1)..]) {
+                return mask & (1 << next) != 0;
+            }
+        }
+        self.contexts.is_empty()
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
 pub fn walk_search(
     graph: &HashMap<u128, KmerInfo>,
     seed: u128,
@@ -788,6 +861,7 @@ pub fn walk_search(
     mut iteration: usize,
     reverse_reuse_guard: &HashSet<u128>,
     reverse_reuse_reference_scale: f64,
+    path_evidence: Option<&Its2PathEvidence>,
 ) -> (Vec<PathContig>, HashSet<u128>, Vec<i32>, i64) {
     // 兼容旧策略：遇岔路就压栈回溯，多找几条候选，不是 UCE 默认路子。
     let mut path = vec![seed];
@@ -801,17 +875,27 @@ pub fn walk_search(
     let mut best_weight = 0_i64;
 
     while iteration > 0 {
-        let mut nodes = outgoing(
-            graph,
-            *path.last().expect("seed"),
-            k,
-            &path_set,
-            reverse_reuse_guard,
-            None,
-            false,
-            None,
-            reverse_reuse_reference_scale,
-        );
+        let mut nodes = if path_evidence.is_some_and(|evidence| {
+            evidence.terminals.contains(path.last().expect("seed"))
+                || current.bases.len() >= evidence.max_extension
+        }) {
+            Vec::new()
+        } else {
+            outgoing(
+                graph,
+                *path.last().expect("seed"),
+                k,
+                &path_set,
+                reverse_reuse_guard,
+                None,
+                false,
+                None,
+                reverse_reuse_reference_scale,
+            )
+        };
+        if let Some(evidence) = path_evidence {
+            nodes.retain(|node| evidence.allows(seed, &current.bases, (node.kmer & 3) as u8, k));
+        }
         if nodes.is_empty() {
             iteration -= 1;
             let weight: i64 = current.weights.iter().sum();
@@ -1091,6 +1175,7 @@ pub fn assemble_seed(
     k: usize,
     soft_boundary: usize,
     branch_support: Option<&BranchSupport>,
+    path_evidence: Option<&Its2PathEvidence>,
 ) -> (Vec<ContigRecord>, HashSet<u128>, i32) {
     // 从一个 seed 往两边接，组装成候选 contig；成不成得靠后面的证据说话。
     let reverse_seed = reverse_complement_kmer(seed, k);
@@ -1117,6 +1202,7 @@ pub fn assemble_seed(
             args.iteration,
             &empty_reverse_reuse_guard,
             args.reverse_reuse_reference_scale,
+            path_evidence,
         )
     };
     let (left_paths, left_kmers, left_positions, left_weight) = if args.assembly_mode
@@ -1141,6 +1227,7 @@ pub fn assemble_seed(
             args.iteration,
             &right_kmers,
             args.reverse_reuse_reference_scale,
+            path_evidence,
         )
     };
 
@@ -1186,11 +1273,20 @@ pub fn assemble_seed(
     } else if args.assembly_mode == AssemblyMode::Uce {
         args.side_candidates
     } else if args.assembly_mode == AssemblyMode::Its2 {
-        16
+        usize::MAX
     } else {
         3
     };
 
+    if args.assembly_mode == AssemblyMode::Its2 && args.profile {
+        eprintln!(
+            "ITS2 path sides: left={} right={} lengths={}/{}",
+            left.len(),
+            right.len(),
+            left.iter().map(|p| p.sequence.len()).max().unwrap_or(0),
+            right.iter().map(|p| p.sequence.len()).max().unwrap_or(0)
+        );
+    }
     let seed_sequence = decode_kmer(seed, k);
     let mut candidates = Vec::new();
     for left_side in left.iter().take(candidate_limit) {
@@ -1350,6 +1446,35 @@ mod tests {
     use super::*;
 
     use crate::seq::encode_kmer;
+
+    #[test]
+    fn its2_context_rejects_recombination_despite_supported_short_edges() {
+        let reads = HashMap::from_iter([(b"AACCGGTT".to_vec(), 2), (b"AATCGGTA".to_vec(), 2)]);
+        let evidence = Its2PathEvidence::new(&reads, 3, HashSet::new());
+        let permits = |sequence: &[u8]| {
+            let seed = encode_kmer(&sequence[..3]).unwrap();
+            let extension: Vec<u8> = sequence[3..sequence.len() - 1]
+                .iter()
+                .map(|&base| crate::seq::base_bits(base).unwrap())
+                .collect();
+            evidence.allows(
+                seed,
+                &extension,
+                crate::seq::base_bits(*sequence.last().unwrap()).unwrap(),
+                3,
+            )
+        };
+        for read in reads.keys() {
+            assert!(permits(read));
+            assert!(permits(&reverse_complement(read)));
+        }
+        let recombinant = b"AACCGGTA";
+        assert!(recombinant.windows(4).all(|window| reads
+            .keys()
+            .any(|read| read.windows(4).any(|observed| observed == window))));
+        assert!(!permits(recombinant));
+    }
+
     fn info(depth: i64) -> KmerInfo {
         KmerInfo {
             depth,
