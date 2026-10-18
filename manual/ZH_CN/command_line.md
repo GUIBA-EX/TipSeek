@@ -91,7 +91,7 @@ references/
 | 子命令 | 功能 |
 | --- | --- |
 | `filter` | 根据参考 k-mer 从原始数据招募 reads |
-| `profiling` | 一次招募 marker reads，免组装估计 group-level marker 信号 |
+| `profiling` | 参考序列级 marker 支持；可选 ITS2 多拷贝恢复 |
 | `refilter` | 进一步分配和过滤每个 locus 的 reads |
 | `assemble` | 使用 wDBG 组装目标序列 |
 | `gene-resolve` | 比对、建基因树并解析严格一对一子树 |
@@ -111,7 +111,7 @@ references/
 - `--assembly-mode gene`（默认）完成核基因家族候选的招募、refilter 与组装，并在 `<output>/gene/` 写出 cohort 汇总；
 - `--assembly-mode exon` 先完成相同的候选恢复，默认从 coding 核酸 family bait 自动翻译参考蛋白，再由所选注释后端（默认 miniprot）在 `<output>/exon/` 写出经结构验证的结果；`--gene-protein-reference` 是可选的逐 family 覆盖，仅在 reading frame 无法可靠确定时需要；
 - `--assembly-mode uce` 用于从 genome skimming 或 target capture 恢复 UCE，运行 `filter assemble combine tree`；融合 UCEFilter 已包含 refilter 语义，并跳过 `trim`，避免新恢复的 UCE 侧翼再次被裁回参考范围；
-- `profiling` 先做一次招募，再由 Themisto 伪比对并输出参考序列级支持；不组装，也不运行下游系统发育步骤。
+- `profiling` 先做一次招募，再由 Themisto 伪比对并输出参考序列级支持；默认不组装；`--profile-copy-mode host|symbiont` 启用 ITS2 恢复。不运行下游系统发育步骤。
 
 默认 gene 模式示例：
 
@@ -141,13 +141,15 @@ cli/tipseek \
 
 ### 4.2 Marker profiling
 
-Profiling 执行一次招募、Themisto 伪比对并输出参考序列级支持，不组装。它需要一个 `.fa` 或 `.fasta` marker 参考库；`--profile-group-map` 可选，仅增加 group 注释列。
+Profiling 执行一次招募、Themisto 伪比对并输出参考序列级支持，默认不组装。它需要一个 `.fa` 或 `.fasta` marker 参考库；`--profile-group-map` 可选，仅增加 group 注释列。
 
 ```bash
 cli/tipseek profiling \
   -f samples.tsv -r marker_reference.fasta \
   -o output -p 8
 ```
+
+profiling 专用参数只保留 `--profile-copy-mode host|symbiont`、`--profile-group-map TSV` 和 `--profile-decoy FASTA`。多拷贝恢复要求分别提供 R1/R2，保留未解决候选；共享索引用 `--reference-cache-dir`，并发样本数用 `-p`。Themisto 从 PATH 调用。旧版 profiling 阈值/k-mer、程序路径、专用缓存及强制重建参数会报错；沿用 k=21、阈值 0.8、有效 k-mer 比例 0.5、索引内存 2 GB 的默认值。迁移与结果解释见下方章节。
 
 输入、decoy、cache、QC 与定量解释见[Profiling 章节](../../docs/profiling_ZH.md)。
 

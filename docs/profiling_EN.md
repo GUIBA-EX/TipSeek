@@ -2,7 +2,7 @@
 
 [中文版本](profiling_ZH.md) · [project overview](../README_EN.md) · [command-line guide](../manual/EN_US/command_line.md) · [output guide](../manual/EN_US/output.md)
 
-Profiling is an assembly-free workflow for recovering reference-level evidence for any amplicon marker from WGS or metagenomic reads. It reports compatibility with reference sequences, not contigs or organismal abundance.
+By default, profiling is an assembly-free workflow for recovering reference-level evidence for any amplicon marker from WGS or metagenomic reads. It reports compatibility with reference sequences, not organismal abundance. Optional `--profile-copy-mode host|symbiont` adds ITS2 multi-copy assembly and read-support checks.
 
 ## Workflow
 
@@ -10,7 +10,7 @@ Profiling is an assembly-free workflow for recovering reference-level evidence f
 TipSeek k-mer recruitment → Themisto pseudoalignment → reference-level support
 ```
 
-It runs neither `refilter`, `assemble`, `combine`, nor `tree`. Recruitment and Themisto both use k=21.
+Without copy mode, it runs neither `refilter`, `assemble`, `combine`, nor `tree`. Recruitment and Themisto both use k=21.
 
 ## Inputs
 
@@ -56,7 +56,7 @@ One row is written for every hit reference sequence:
 
 This is evidence of compatibility with a reference sequence, not a claim that the reference is uniquely present, and not an organismal abundance.
 
-`marker_qc.tsv` records pseudoalignment and run parameters. `marker_reference_metadata.tsv` records the Themisto color-to-reference mapping and optional group annotation.
+`marker_qc.tsv` records pseudoalignment and run parameters. `marker_reference_metadata.tsv` in the index cache records the Themisto color-to-reference mapping and optional group annotation.
 
 ## QC and calibration
 

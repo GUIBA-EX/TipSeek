@@ -2,7 +2,7 @@
 
 [English version](profiling_EN.md) · [项目总览](../README.md) · [命令行指南](../manual/ZH_CN/command_line.md) · [输出说明](../manual/ZH_CN/output.md)
 
-Profiling 是从 WGS 或 metagenome reads 中免组装恢复任意扩增子 marker 的参考序列级证据流程。它报告与参考序列的相容证据，不生成 contig，也不是生物量比例。
+Profiling 默认从 WGS 或 metagenome reads 中免组装恢复 marker 的参考序列级证据，不估计生物量比例。可选的 `--profile-copy-mode host|symbiont` 增加 ITS2 多拷贝组装及 reads 支持检查。
 
 ## 流程
 
@@ -10,7 +10,7 @@ Profiling 是从 WGS 或 metagenome reads 中免组装恢复任意扩增子 mark
 TipSeek k-mer 招募 → Themisto 伪比对 → 参考序列级证据
 ```
 
-不会运行 `refilter`、`assemble`、`combine` 或 `tree`。招募与 Themisto 统一使用 k=21。
+未启用多拷贝模式时，不会运行 `refilter`、`assemble`、`combine` 或 `tree`。招募与 Themisto 统一使用 k=21。
 
 ## 输入
 
@@ -56,7 +56,7 @@ profiling 专用参数只保留 `--profile-copy-mode`、`--profile-group-map` �
 
 它表示“与某参考序列相容”的证据，不代表该参考必然唯一存在，也不等于生物量丰度。
 
-`marker_qc.tsv` 记录伪比对及运行参数。`marker_reference_metadata.tsv` 记录 Themisto color 到参考序列及可选 group 注释的映射。
+`marker_qc.tsv` 记录伪比对及运行参数。索引缓存内的 `marker_reference_metadata.tsv` 记录 Themisto color 到参考序列及可选 group 注释的映射。
 
 ## QC 与校准
 

@@ -14,7 +14,7 @@
 
 TipSeek 是面向短读长测序数据的 Rust 原生工具包。它通过统一入口完成参考引导的 reads 招募、目标序列组装、证据汇总和 cohort 分析，适用于 genome skimming、target capture、核基因家族、UCE、动物线粒体、RAD 补充及无参考 repeatome。发布版运行时不依赖 Python。
 
-当前版本：[v1.6.9](https://github.com/GUIBA-EX/TipSeek/releases/tag/v1.6.9)。修复 mito 配对 reads 保留、补救回退、输出状态与清理流程，统一使用 `-r` 指定参考；用法见 [线粒体指南](docs/mitochondria_CN.md)。
+当前版本：[v1.6.10](https://github.com/GUIBA-EX/TipSeek/releases/tag/v1.6.10)。增加质量感知的 ITS2 多拷贝恢复与保守分相，将 profiling 专用参数精简为三个，并修复共享索引复用；见 [Profiling 指南](docs/profiling_ZH.md)和 [WGS 验证](docs/development/profiling-parameter-validation.md)。
 
 ## 相比 GeneMiner2
 
@@ -32,7 +32,7 @@ TipSeek 保留了源自 GeneMiner2 的参考引导 gene candidate 核心，并�
 | Exon/intron 结构注释 | `tipseek --assembly-mode exon` | 基因候选、CDS、exon、intron 和 supercontig |
 | UCE core 与 reads 支持的侧翼 | `tipseek --assembly-mode uce` | UCE contig、恢复汇总和逐 locus 证据 |
 | 动物线粒体恢复 | `tipseek mito` | closed、linear 或 ambiguous 结构判定 |
-| Marker 支持度评估 | `tipseek profiling` | 每条参考序列的 reads 支持 |
+| Marker 支持度评估 | `tipseek profiling` | 参考级 reads 支持；可选 ITS2 多拷贝恢复 |
 | UCE 群体分析 | `tipseek population` | cohort reference、VCF、PCA 等 |
 | WGS 补充 RAD 矩阵 | `tipseek rad-probe` → `tipseek rad` → `tipseek rad-validate` | 双 arm 恢复和严格矩阵 |
 | 无参考 repeatome | `tipseek te` | repeat library、注释和 RPM |

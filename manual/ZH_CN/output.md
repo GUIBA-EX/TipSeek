@@ -54,7 +54,11 @@
 
 **marker_profile/marker_qc.tsv**：该样本的伪比对与运行参数汇总；计数单位是单条 FASTA/FASTQ query record。
 
-**marker_profile/marker_reference_metadata.tsv**：本次 profiling 所用的 reference ID、Themisto color 与可选 group 注释映射。
+**索引缓存内的 marker_reference_metadata.tsv**：reference ID、Themisto color 与可选 group 注释映射；文件位于所选索引缓存，而非每个样本的输出目录。
+
+**marker_profile/marker_query_sources.tsv**：每条 query 的目标/非目标参考相容性和来源冲突。
+
+启用 `--profile-copy-mode host|symbiont` 后，**marker_profile/its2_candidates.fasta** 保留接纳及未解决序列；**its2_candidates.tsv** 汇总覆盖、分相组分、诊断支持、拒绝原因及来源/参考范围注释。**its2_reference_spans.fasta** 保存样本比对区间，不补参考碱基；**assembly_graphs/marker.gfa** 保留组装图。`READ_SUPPORTED` 不代表已找回所有拷贝，`UNPHASED`、`PARTIAL` 仍为未解决结果。详见 [Profiling 指南](../../docs/profiling_ZH.md)。
 
 ## Gene 与 exon 输出
 

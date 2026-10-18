@@ -91,7 +91,7 @@ Stage subcommands can be listed in execution order. Standalone workflows such as
 | Subcommand | Function |
 | --- | --- |
 | `filter` | Recruit reads using reference k-mers |
-| `profiling` | Recruit marker reads once and estimate group-level marker signal without assembly |
+| `profiling` | Reference-level marker support, with optional ITS2 multi-copy recovery |
 | `refilter` | Refine per-locus read assignment and filtering |
 | `assemble` | Assemble target sequences with the wDBG assembler |
 | `gene-resolve` | Align candidates, infer gene trees, and select strict one-to-one clades |
@@ -111,7 +111,7 @@ When no subcommand is given, `--assembly-mode` selects one complete recovery wor
 - `--assembly-mode gene` (default) recruits, refilters, and assembles nuclear gene-family candidates, then writes cohort summaries under `<output>/gene/`;
 - `--assembly-mode exon` runs the same candidate recovery, derives reference proteins from coding nucleotide family baits by default, and uses the selected annotation backend (miniprot by default) to write structurally validated output under `<output>/exon/`; `--gene-protein-reference` is an optional per-family override and is needed only when no reading frame can be established reliably;
 - `--assembly-mode uce` is for UCE recovery from genome skimming or target capture; it runs `filter assemble combine tree`. The fused UCEFilter already includes refilter semantics and omits `trim` so newly recovered UCE flanks are not cut back to the reference interval;
-- `profiling` runs one recruitment step followed by Themisto pseudoalignment and reference-level support reporting; it does not assemble or run downstream phylogenetic steps.
+- `profiling` runs one recruitment step followed by Themisto pseudoalignment and reference-level support reporting; it is assembly-free by default; `--profile-copy-mode host|symbiont` enables ITS2 recovery. It does not run downstream phylogenetic steps.
 
 Default gene-mode example:
 
@@ -141,13 +141,15 @@ For assembly behavior, backend selection, rescue, cache semantics, and QC, see t
 
 ### 4.2 Marker profiling
 
-Profiling performs one recruitment followed by Themisto pseudoalignment and reference-level support reporting; it does not assemble. It requires one `.fa` or `.fasta` marker library. `--profile-group-map` is optional and adds a group annotation column.
+Profiling performs one recruitment followed by Themisto pseudoalignment and reference-level support reporting; it is assembly-free by default. It requires one `.fa` or `.fasta` marker library. `--profile-group-map` is optional and adds a group annotation column.
 
 ```bash
 cli/tipseek profiling \
   -f samples.tsv -r marker_reference.fasta \
   -o output -p 8
 ```
+
+The only profiling-specific options are `--profile-copy-mode host|symbiont`, `--profile-group-map TSV`, and `--profile-decoy FASTA`. Copy recovery requires distinct paired R1/R2 files and retains unresolved sequences. Use `--reference-cache-dir` to share indices and `-p` to set sample concurrency. Themisto must be on PATH. Former profiling threshold/k-mer, tool-path, dedicated cache and force-rebuild flags are rejected; defaults remain k=21, threshold=0.8, relevant fraction=0.5 and index memory=2 GB. See the chapter below for migration and interpretation.
 
 Inputs, decoys, cache control, QC, and quantitative interpretation are in the [Profiling chapter](../../docs/profiling_EN.md).
 

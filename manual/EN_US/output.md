@@ -54,7 +54,11 @@ Each sample listed in the input table gets a folder under the output directory.
 
 **marker_profile/marker_qc.tsv**: Pseudoalignment and run-parameter summary for the sample. Counts are individual FASTA/FASTQ query records.
 
-**marker_profile/marker_reference_metadata.tsv**: Reference IDs, Themisto colors, and optional group annotations used for the profile.
+**Index cache: marker_reference_metadata.tsv**: Reference IDs, Themisto colors, and optional group annotations. This file resides in the selected index cache, not the per-sample output directory.
+
+**marker_profile/marker_query_sources.tsv**: Per-query target/decoy compatibility and source ambiguity.
+
+With `--profile-copy-mode host|symbiont`, **marker_profile/its2_candidates.fasta** retains accepted and unresolved sequences; **its2_candidates.tsv** reports coverage, phase components, diagnostic support, rejection reasons and source/reference-span annotations. **its2_reference_spans.fasta** contains aligned sample intervals without reference filling. **assembly_graphs/marker.gfa** retains the assembly graph. `READ_SUPPORTED` does not establish recovery of every copy; `UNPHASED` and `PARTIAL` remain unresolved. See the [profiling guide](../../docs/profiling_EN.md).
 
 ## Gene and exon outputs
 

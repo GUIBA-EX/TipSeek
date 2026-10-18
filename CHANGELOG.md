@@ -1,6 +1,8 @@
 # Changelog
 
-## Unreleased — ITS2 evidence and simpler profiling
+## v1.6.10 — ITS2 evidence and simpler profiling
+
+Released 2026-10-18.
 
 - Add host/symbiont ITS2 recovery with linked-read recruitment, read-context graph paths, quality-aware candidate comparison and conservative phasing; retain unresolved candidates and report reference spans and source ambiguity.
 - Reduce alignment memory with rolling score rows and compact traceback, preserving the full-matrix results.

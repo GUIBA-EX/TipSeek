@@ -14,7 +14,7 @@
 
 TipSeek is a Rust-native toolkit for short-read recovery and analysis. Through one entry point, it performs reference-guided read recruitment, target assembly, evidence reporting, and cohort analysis for genome skimming, target capture, nuclear gene families, UCEs, animal mitochondria, RAD augmentation, and reference-free repeatomes. Release builds require no Python runtime.
 
-Current release: [v1.6.9](https://github.com/GUIBA-EX/TipSeek/releases/tag/v1.6.9). Fixes mito mate preservation, rescue rollback, output state and cleanup; use the shared `-r` option for references. See the [mitochondrial guide](docs/mitochondria_EN.md).
+Current release: [v1.6.10](https://github.com/GUIBA-EX/TipSeek/releases/tag/v1.6.10). Adds quality-aware ITS2 multi-copy recovery and conservative phasing, simplifies profiling to three specific options, and fixes shared-index reuse. See the [profiling guide](docs/profiling_EN.md) and [WGS validation](docs/development/profiling-parameter-validation.md).
 
 ## Beyond GeneMiner2
 
@@ -32,7 +32,7 @@ In the table below, `tipseek` refers to the built `cli/tipseek` executable.
 | Annotate exon/intron structure | `tipseek --assembly-mode exon` | Gene candidates, CDS, exons, introns, and supercontigs |
 | Recover UCE cores and read-supported flanks | `tipseek --assembly-mode uce` | UCE contigs, recovery summaries, and per-locus evidence |
 | Recover animal mitochondria | `tipseek mito` | Closed, linear, or ambiguous structure call |
-| Measure marker support | `tipseek profiling` | Read support for each reference sequence |
+| Measure marker support | `tipseek profiling` | Reference-level support; optional ITS2 multi-copy recovery |
 | Analyse UCE population data | `tipseek population` | Cohort reference, VCF, PCA, and related outputs |
 | Add WGS samples to a RAD matrix | `tipseek rad-probe` → `tipseek rad` → `tipseek rad-validate` | Independent-arm recovery and strict matrix |
 | Analyse a reference-free repeatome | `tipseek te` | Repeat library, annotation, and RPM |
