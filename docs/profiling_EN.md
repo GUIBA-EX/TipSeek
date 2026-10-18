@@ -10,7 +10,7 @@ Profiling is an assembly-free workflow for recovering reference-level evidence f
 TipSeek k-mer recruitment → Themisto pseudoalignment → reference-level support
 ```
 
-It runs neither `refilter`, `assemble`, `combine`, nor `tree`. `--profile-kmer-size` sets the same odd k-mer size, from 15 to 31, for both recruitment and Themisto.
+It runs neither `refilter`, `assemble`, `combine`, nor `tree`. Recruitment and Themisto both use k=21.
 
 ## Inputs
 
@@ -18,7 +18,7 @@ Always required:
 
 - One `.fa` or `.fasta` marker library passed to `-r`.
 - A sample table with WGS or metagenomic reads.
-- `themisto`, either on `PATH` or passed with `--profile-themisto`.
+- `themisto` on `PATH`.
 
 Optional:
 
@@ -35,7 +35,11 @@ cli/tipseek profiling \
   -o output -p 8
 ```
 
-Add `--profile-group-map marker_groups.tsv` only when the `group` annotation column is useful. Themisto indices use a content-addressed cache. Use `--profile-index-dir` to share it and `--profile-force-rebuild` only when rebuilding is intended. When calling `marker_profile` directly, use a separate cache or `--force-rebuild` after changing the reference, group map, or decoy.
+Add `--profile-group-map marker_groups.tsv` only when the `group` annotation column is useful. Themisto indices use a content-addressed cache. Use the common `--reference-cache-dir` option to share it. To rebuild, use a fresh cache directory. When calling `marker_profile` directly, use a separate cache or `--force-rebuild` after changing the reference, group map, or decoy.
+
+The only profiling-specific options are `--profile-copy-mode`, `--profile-group-map`, and `--profile-decoy`. Recruitment/assembly/index k=21, pseudoalignment threshold=0.8, relevant k-mer fraction=0.5, and index memory=2 GB retain the validated defaults. Index memory is per concurrent build, not a process memory cap. Use `-p` to control concurrent samples. Former profiling tuning, tool-path and cache flags are rejected; remove them and use `PATH` and `--reference-cache-dir` where needed. `GM2_THEMISTO` is no longer read. For experimental non-default pseudoalignment, invoke `marker_profile` directly; its outputs are not equivalent to the validated integrated defaults.
+
+Parameter simplification is checked against the prior defaults on the same three WGS samples in both modes; see the [comparison protocol and results](development/profiling-parameter-validation.md). Shared cache keys are independent of the output directory and change when reference inputs change.
 
 ## Outputs and interpretation
 
@@ -56,7 +60,7 @@ This is evidence of compatibility with a reference sequence, not a claim that th
 
 ## QC and calibration
 
-Check pseudoaligned queries, each reference’s fractional and singleton support, and the decoy-reference evidence before interpreting a result. Use negative controls, mixtures, and depth-matched downsampling to select reference libraries and pseudoalignment thresholds. Keep the reference library, optional annotation map, k-mer size, thresholds, and decoy strategy fixed for cross-sample comparisons.
+Check pseudoaligned queries, each reference’s fractional and singleton support, and the decoy-reference evidence before interpreting a result. Use negative controls, mixtures, and depth-matched downsampling to evaluate reference libraries and the fixed pseudoalignment defaults. Keep the reference library, optional annotation map, k-mer size, thresholds, and decoy strategy fixed for cross-sample comparisons.
 
 See [Filter](filter_EN.md), the [output guide](../manual/EN_US/output.md), and the [command-line guide](../manual/EN_US/command_line.md).
 

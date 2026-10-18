@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased — ITS2 evidence and simpler profiling
+
+- Add host/symbiont ITS2 recovery with linked-read recruitment, read-context graph paths, quality-aware candidate comparison and conservative phasing; retain unresolved candidates and report reference spans and source ambiguity.
+- Reduce alignment memory with rolling score rows and compact traceback, preserving the full-matrix results.
+- Keep only copy mode, group map and decoy as profiling-specific options. Use validated defaults, Themisto from PATH and the common reference cache option; reject removed options.
+- Reuse shared profiling indices across output directories and invalidate them when reference inputs change.
+- Validate parameter simplification on three real WGS samples in both modes; see [results and scope](docs/development/profiling-parameter-validation.md).
+
 ## v1.6.9 — Reliable mitochondrial rescue and simpler defaults
 
 Released 2026-10-18.

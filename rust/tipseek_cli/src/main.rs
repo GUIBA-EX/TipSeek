@@ -65,7 +65,6 @@ const FLAG_OPTIONS: &[&str] = &[
     "--strict-combine-errors",
     "--no-alignment",
     "--no-trimal",
-    "--profile-force-rebuild",
     "--cleanup-intermediates",
     "--cleanup-dry-run",
     "--no-mito-adaptive-stop",
@@ -202,14 +201,8 @@ const VALUE_OPTIONS: &[&str] = &[
     "--gene-species-mode",
     "--gene-aster",
     "--profile-copy-mode",
-    "--profile-kmer-size",
-    "--profile-pseudoalign-threshold",
-    "--profile-relevant-kmer-fraction",
     "--profile-group-map",
     "--profile-decoy",
-    "--profile-index-dir",
-    "--profile-index-memory-gb",
-    "--profile-themisto",
     "--reference-cache-dir",
     "--mito-genbank",
     "--mito-flank",
@@ -4678,11 +4671,7 @@ fn annotate_profile_candidates(
     }
     let mut source_by_id = std::collections::BTreeMap::new();
     if !ids.is_empty() {
-        let mut args: Vec<String> = profile_args
-            .iter()
-            .filter(|arg| arg.as_str() != "--force-rebuild")
-            .cloned()
-            .collect();
+        let mut args = profile_args.to_vec();
         for (option, replacement) in [("--reads", queries), ("--output", source_output.clone())] {
             let index = args
                 .iter()
@@ -4773,28 +4762,12 @@ fn execute_profiling(opt: &Options, bins: &Path, samples: &[Sample]) -> Result<(
     if copy_mode.is_some() {
         validate_profile_pairs(samples)?;
     }
-    let kmer = value(raw, &["--profile-kmer-size"], "21")?;
-    let kmer_number = kmer
-        .parse::<usize>()
-        .map_err(|_| "--profile-kmer-size must be an odd integer from 15 to 31")?;
-    let threshold = value(raw, &["--profile-pseudoalign-threshold"], "0.8")?
-        .parse::<f64>()
-        .map_err(|_| "--profile-pseudoalign-threshold must be a number")?;
-    let relevant = value(raw, &["--profile-relevant-kmer-fraction"], "0.5")?
-        .parse::<f64>()
-        .map_err(|_| "--profile-relevant-kmer-fraction must be a number")?;
-    let memory = value(raw, &["--profile-index-memory-gb"], "2")?
-        .parse::<usize>()
-        .map_err(|_| "--profile-index-memory-gb must be an integer")?;
-    let valid_parameters = (15..=31).contains(&kmer_number)
-        && !kmer_number.is_multiple_of(2)
-        && 0.0 < threshold
-        && threshold <= 1.0
-        && (0.0..=1.0).contains(&relevant)
-        && memory > 0;
-    if !valid_parameters {
-        return Err("invalid profiling parameters".into());
-    }
+    // Keep recruitment, assembly and pseudoalignment on the validated defaults.
+    let kmer_number = 21;
+    let kmer = kmer_number.to_string();
+    let threshold = 0.8;
+    let relevant = 0.5;
+    let memory = 2;
     let group = optional_value(raw, &["--profile-group-map"])?;
     if group
         .as_ref()
@@ -4813,30 +4786,22 @@ fn execute_profiling(opt: &Options, bins: &Path, samples: &[Sample]) -> Result<(
     } else {
         None
     };
-    let themisto = optional_value(raw, &["--profile-themisto"])?
-        .or_else(|| env::var("GM2_THEMISTO").ok())
-        .unwrap_or_else(|| "themisto".into());
+    let themisto = String::from("themisto");
     let key = profile_cache_key(
         &[
-            &reference.display().to_string(),
+            &opt.reference,
             group.as_deref().unwrap_or(""),
             decoy.as_deref().unwrap_or(""),
             &themisto,
         ],
         &kmer,
     )?;
-    let cache_root = optional_value(raw, &["--profile-index-dir"])?
-        .or_else(|| {
-            optional_value(raw, &["--reference-cache-dir"])
-                .ok()
-                .flatten()
-        })
-        .unwrap_or_else(|| {
-            Path::new(&opt.output)
-                .join(".gm2_reference_cache")
-                .display()
-                .to_string()
-        });
+    let cache_root = optional_value(raw, &["--reference-cache-dir"])?.unwrap_or_else(|| {
+        Path::new(&opt.output)
+            .join(".gm2_reference_cache")
+            .display()
+            .to_string()
+    });
     let cache = Path::new(&cache_root).join(format!("profile_themisto_k{kmer}_{key}"));
     let failures = Arc::new(Mutex::new(Vec::new()));
     let queued_samples = samples.to_vec();
@@ -4868,7 +4833,6 @@ fn execute_profiling(opt: &Options, bins: &Path, samples: &[Sample]) -> Result<(
         let max_reads = opt.max_reads.clone();
         let uce_memory_limit_mib = profile_uce_memory_limit_mib;
         let bins = bins.to_path_buf();
-        let force = flag(raw, "--profile-force-rebuild")?;
         handles.push(thread::spawn(move || loop {
             let Some(sample) = next.lock().expect("profiling queue poisoned").next() else {
                 return;
@@ -4966,9 +4930,6 @@ fn execute_profiling(opt: &Options, bins: &Path, samples: &[Sample]) -> Result<(
                 }
                 if let Some(decoy) = &decoy {
                     args.extend(["--decoy".into(), decoy.clone()]);
-                }
-                if force {
-                    args.push("--force-rebuild".into());
                 }
                 run(&bins, "marker_profile", &args)?;
                 if let Some(mode) = &copy_mode {
@@ -7217,7 +7178,7 @@ fn print_help() {
     println!(
         "TipSeek CLI\n\nNative Rust command dispatcher; no Python runtime is required.\n\n\
 Usage: tipseek [COMMAND ...] -f SAMPLES -r REFERENCES -o OUTPUT [-p INT|auto]\nMito: tipseek mito -f SAMPLES -r REFERENCE.gb -o OUTPUT (automatic defaults)\n\n\
-Profiling copies:\n  --profile-copy-mode host|symbiont enables ITS2 recovery alongside profiling.\n\n\
+Profiling:\n  --profile-copy-mode host|symbiont enables ITS2 recovery alongside profiling.\n  --profile-group-map TSV adds reference group annotations.\n  --profile-decoy FASTA supplies competing/non-target references.\n  --reference-cache-dir DIR shares the index cache across runs.\n  Uses themisto from PATH; k=21, threshold=0.8, relevant fraction=0.5.\n\n\
 Assembly modes:\n  \
 --assembly-mode gene|exon|uce\n               \
 Default: gene. Gene mode recovers and summarizes family candidates. Exon mode\n               \
@@ -7280,6 +7241,36 @@ fn main() -> ExitCode {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn profiling_keeps_only_biological_inputs() {
+        let args = [
+            "profiling",
+            "--profile-copy-mode",
+            "host",
+            "--profile-group-map",
+            "groups.tsv",
+            "--profile-decoy",
+            "decoy.fa",
+            "--reference-cache-dir",
+            "cache",
+        ]
+        .map(String::from);
+        assert_eq!(commands(&args).unwrap(), ["profiling"]);
+        for option in [
+            "--profile-force-rebuild",
+            "--profile-kmer-size",
+            "--profile-pseudoalign-threshold",
+            "--profile-relevant-kmer-fraction",
+            "--profile-index-dir",
+            "--profile-index-memory-gb",
+            "--profile-themisto",
+        ] {
+            for argument in [option.to_string(), format!("{option}=21")] {
+                assert!(commands(&["profiling".into(), argument]).is_err());
+            }
+        }
+    }
 
     #[test]
     fn copy_recovery_rejects_a_read_file_used_as_both_mates() {

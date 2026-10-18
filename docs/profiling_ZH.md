@@ -10,7 +10,7 @@ Profiling 是从 WGS 或 metagenome reads 中免组装恢复任意扩增子 mark
 TipSeek k-mer 招募 → Themisto 伪比对 → 参考序列级证据
 ```
 
-不会运行 `refilter`、`assemble`、`combine` 或 `tree`。`--profile-kmer-size` 同时设定招募与 Themisto 的 k-mer，必须是 15–31 的奇数。
+不会运行 `refilter`、`assemble`、`combine` 或 `tree`。招募与 Themisto 统一使用 k=21。
 
 ## 输入
 
@@ -18,7 +18,7 @@ TipSeek k-mer 招募 → Themisto 伪比对 → 参考序列级证据
 
 - 通过 `-r` 提供一个 `.fa` 或 `.fasta` marker 参考库。
 - 含 WGS 或 metagenome reads 的样本表。
-- `themisto`，放在 `PATH` 或以 `--profile-themisto` 指定。
+- `themisto`，放在当前环境的 `PATH`。
 
 可选：
 
@@ -35,7 +35,11 @@ cli/tipseek profiling \
   -o output -p 8
 ```
 
-只有需要给参考序列附加类别时，才加 `--profile-group-map marker_groups.tsv`。Themisto index 使用内容寻址 cache。用 `--profile-index-dir` 在多次运行间共享；只有需要重建时才加 `--profile-force-rebuild`。直接调用 `marker_profile` 时，若改了参考、group map 或 decoy，应换用新 cache 或加 `--force-rebuild`。
+只有需要给参考序列附加类别时，才加 `--profile-group-map marker_groups.tsv`。Themisto index 使用内容寻址 cache。用通用参数 `--reference-cache-dir` 在多次运行间共享；需要重建时使用新的缓存目录。直接调用 `marker_profile` 时，若改了参考、group map 或 decoy，应换用新 cache 或加 `--force-rebuild`。
+
+profiling 专用参数只保留 `--profile-copy-mode`、`--profile-group-map` 和 `--profile-decoy`。招募、组装及索引统一使用 k=21，伪比对阈值 0.8、有效 k-mer 比例 0.5、索引内存 2 GB，均沿用已验证的默认值。索引内存是每个并发构建任务的设置，并非进程内存硬上限；用 `-p` 控制并发样本数。旧版的 profiling 调参、程序路径和缓存参数会明确报错，请移除并按需改用 `PATH`、`--reference-cache-dir`；不再读取 `GM2_THEMISTO`。实验性非默认伪比对可直接调用 `marker_profile`，其结果不等同于这里验证过的集成默认流程。
+
+参数精简前后使用同一批三个 WGS 样本、两种模式进行对照，见[验证方法与结果](development/profiling-parameter-validation.md)。共享缓存键不依赖输出目录，参考输入变化时会生成新索引。
 
 ## 输出与解释
 
@@ -56,7 +60,7 @@ cli/tipseek profiling \
 
 ## QC 与校准
 
-解释结果前，应检查伪比对 query 数、各参考的分数化和单例支持，以及 decoy 参考的证据。应以匹配 marker 与测序深度的阴性对照、混合样和 downsampling 选择参考库与伪比对阈值。跨样本比较时，固定参考库、可选注释 map、k-mer、阈值与 decoy 策略。
+解释结果前，应检查伪比对 query 数、各参考的分数化和单例支持，以及 decoy 参考的证据。应以匹配 marker 与测序深度的阴性对照、混合样和 downsampling 评估参考库与固定的伪比对默认值。跨样本比较时，固定参考库、可选注释 map、k-mer、阈值与 decoy 策略。
 
 参见[Filter](filter_ZH.md)、[输出说明](../manual/ZH_CN/output.md)和[命令行指南](../manual/ZH_CN/command_line.md)。
 
